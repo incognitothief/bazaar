@@ -1,6 +1,10 @@
-# Deploy: Pulumi (R2) then Fly.io.
-# Configure pipeline secrets in the repository settings (not in this file):
-#   PULUMI_ACCESS_TOKEN, CLOUDFLARE_API_TOKEN, FLY_API_TOKEN
+# Deploy: Pulumi (state in Cloudflare R2) then Fly.io.
+# Pipeline secrets (repository settings; not in this file):
+#   CLOUDFLARE_API_TOKEN — Cloudflare API (Pulumi provider)
+#   PULUMI_BACKEND_URL — e.g. s3://bazaar-pulumi-state-prod?endpoint=https://<account>.r2.cloudflarestorage.com&region=auto&s3ForcePathStyle=true
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 S3 API keys for the state bucket
+#   FLY_API_TOKEN
+# Bootstrap the stack once locally (file backend → up → export → login s3 → import); see packages/infra/index.ts.
 # See https://docs.tangled.org/spindles.html#pipelines
 
 when:
@@ -35,6 +39,14 @@ steps:
         echo "Set PULUMI_STACK in the workflow environment section."
         exit 1
       fi
+      if [ -z "${PULUMI_BACKEND_URL:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+        echo "Set PULUMI_BACKEND_URL, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY (R2 S3 API) in pipeline secrets."
+        exit 1
+      fi
+      export PULUMI_BACKEND_URL
+      export AWS_ACCESS_KEY_ID
+      export AWS_SECRET_ACCESS_KEY
+      export AWS_REGION=auto
       cd packages/infra
       pulumi up --yes --stack "${PULUMI_STACK}"
 

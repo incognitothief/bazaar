@@ -1,5 +1,7 @@
 name: bazaar-infra
-description: Cloudflare R2 for Bazaar (assets + Litestream backups)
+description: >-
+  Cloudflare R2: app bucket, Litestream backups, dedicated Pulumi state bucket.
+  State uses the S3 backend on R2 (PULUMI_BACKEND_URL + AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).
 runtime:
   name: nodejs
   options:
