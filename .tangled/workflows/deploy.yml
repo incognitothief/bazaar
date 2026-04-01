@@ -25,6 +25,9 @@ dependencies:
 
 environment:
   NODE_ENV: production
+  # Pulumi (Go user.Current) needs USER when the image has no cgo/passwd entry.
+  USER: ci
+  HOME: /tmp
   # Non-secret; change to match your Pulumi stack name.
   PULUMI_STACK: prod
 
