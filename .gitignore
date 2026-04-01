@@ -10,3 +10,4 @@ dist
 .pulumi
 Pulumi.*.yaml
 !Pulumi.yaml
+.alignment/
