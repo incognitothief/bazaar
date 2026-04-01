@@ -1,3 +1,42 @@
 # Bazaar
 
-First push
+## Setting up infra with `pulumi` for the first time
+
+This is some pre-cursory bootstrapping for your stack. We have to create it locally first before integrating it into the automated CI workflow
+
+_run_
+```
+pulumi login file://~/.pulumi
+cd packages/infra
+pulumi init prod
+pulumi select prod
+```
+
+## Setting up Cloudflare account
+
+These are manual steps that need to be performed in the cloudfront dashboard
+
+- Make a cloudflare account
+- Create an API token for Workers R2 Storage:Edit
+- Go to the R2 Dashboard and subscribe to the R2 service
+- Run in your terminal
+```
+export CLOUDFLARE_API_TOKEN="your-token"
+pulumi up
+```
+
+## migrating the local stack to cloud
+
+_following the steps in `packages/infra/index.ts`_
+- Create an S3 API Key (different than account API key)
+- Run
+```
+pulumi stack export > stack.json
+export AWS_ACCESS_KEY_ID="your-access-key-id"
+export AWS_SECRET_ACCESS_KEY="your-secret-access-key"
+pulumi login 's3://<state-bucket>?endpoint=https://<accountId>.r2.cloudflarestorage.com&region=auto&s3ForcePathStyle=true'
+pulumi stack init prod
+pulumi stack select prod
+pulumi stack import --file stack.json
+```
+
