@@ -1,6 +1,7 @@
 # Deploy: Pulumi (state in Cloudflare R2) then Fly.io.
 # Pipeline secrets (repository settings; not in this file):
-#   CLOUDFLARE_API_TOKEN — Cloudflare API (Pulumi provider)
+#   CLOUDFLARE_API_TOKEN — Cloudflare API (Pulumi provider); must appear as this exact env name
+#     (Spindle/OpenBao secret key should match). If unset, you get "Missing ... Authorization headers".
 #   CLOUDFLARE_ACCOUNT_ID — same as bazaar-infra:cloudflareAccountId (avoid committing stack config)
 #   PULUMI_CONFIG_PASSPHRASE — set when spinning up the stack locally
 #   PULUMI_BACKEND_URL — e.g. s3://bazaar-pulumi-state-prod?endpoint=https://<account>.r2.cloudflarestorage.com&region=auto&s3ForcePathStyle=true
@@ -42,6 +43,10 @@ steps:
       set -euo pipefail
       if [ -z "${PULUMI_STACK:-}" ]; then
         echo "Set PULUMI_STACK in the workflow environment section."
+        exit 1
+      fi
+      if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+        echo "CLOUDFLARE_API_TOKEN is empty or not set. Add a pipeline secret with that exact name (Cloudflare API token)."
         exit 1
       fi
       if [ -z "${PULUMI_BACKEND_URL:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
