@@ -16,9 +16,13 @@ import * as pulumi from "@pulumi/pulumi";
  * 5. `pulumi stack import --file stack.json`
  *
  * After that, set `PULUMI_BACKEND_URL` in CI to the same `s3://...` URL and the AWS env vars.
+ * In CI you can set `CLOUDFLARE_ACCOUNT_ID` (secret) instead of `pulumi config` so nothing
+ * sensitive is committed; locally use `pulumi config set bazaar-infra:cloudflareAccountId …`.
  */
 const config = new pulumi.Config();
-const accountId = config.require("cloudflareAccountId");
+const accountId =
+  process.env.CLOUDFLARE_ACCOUNT_ID?.trim() ||
+  config.require("cloudflareAccountId");
 
 const bucket = new cloudflare.R2Bucket("primary", {
   accountId,
