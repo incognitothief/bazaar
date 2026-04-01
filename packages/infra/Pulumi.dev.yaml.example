@@ -1,0 +1,5 @@
+config:
+  bazaar-infra:cloudflareAccountId: YOUR_ACCOUNT_ID
+  # Optional overrides:
+  # bazaar-infra:bucketName: my-unique-bucket
+  # bazaar-infra:location: WNAM

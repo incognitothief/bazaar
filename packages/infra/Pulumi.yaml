@@ -1,0 +1,6 @@
+name: bazaar-infra
+description: Cloudflare R2 for Bazaar (assets + Litestream backups)
+runtime:
+  name: nodejs
+  options:
+    typescript: true

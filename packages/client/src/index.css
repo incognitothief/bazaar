@@ -1,0 +1,41 @@
+:root {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem;
+}
+
+.lede {
+  color: #475569;
+}
+
+.card {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: #fff;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+.pre {
+  overflow: auto;
+  padding: 0.75rem;
+  background: #f1f5f9;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.error {
+  color: #b91c1c;
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@bazaar/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes bun@1.2.0 run --watch src/index.ts",
+    "build": "npx --yes bun@1.2.0 build src/index.ts --outdir=dist --target=bun",
+    "start": "npx --yes bun@1.2.0 dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "npx --yes bun@1.2.0 run src/migrate.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.38.3",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "drizzle-kit": "^0.30.1",
+    "typescript": "~5.7.2"
+  }
+}

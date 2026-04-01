@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.github
+alignment
+.turbo
+*.db
+.env
+.env.*
+**/.pulumi
+packages/infra

@@ -1,0 +1,42 @@
+# Deploy: Pulumi (R2) then Fly.io.
+# Configure pipeline secrets in the repository settings (not in this file):
+#   PULUMI_ACCESS_TOKEN, CLOUDFLARE_API_TOKEN, FLY_API_TOKEN
+# See https://docs.tangled.org/spindles.html#pipelines
+
+when:
+  - event: ["push", "manual"]
+    branch: ["main"]
+
+engine: "nixery"
+
+clone:
+  depth: 1
+  submodules: false
+
+dependencies:
+  nixpkgs:
+    - nodejs
+    - pulumi-bin
+    - flyctl
+
+environment:
+  NODE_ENV: production
+  # Non-secret; change to match your Pulumi stack name.
+  PULUMI_STACK: prod
+
+steps:
+  - name: Install dependencies
+    command: npm ci
+
+  - name: Pulumi up (Cloudflare R2)
+    command: |
+      set -euo pipefail
+      if [ -z "${PULUMI_STACK:-}" ]; then
+        echo "Set PULUMI_STACK in the workflow environment section."
+        exit 1
+      fi
+      cd packages/infra
+      pulumi up --yes --stack "${PULUMI_STACK}"
+
+  - name: Fly deploy
+    command: flyctl deploy --remote-only
