@@ -1,5 +1,7 @@
 # Bazaar
 
+Note: Must be set up on github in order to deploy to fly.io. (`fly` only supports github)
+
 ## Setting up infra with `pulumi` for the first time
 
 This is some pre-cursory bootstrapping for your stack. We have to create it locally first before integrating it into the automated CI workflow
@@ -39,4 +41,6 @@ pulumi stack init prod
 pulumi stack select prod
 pulumi stack import --file stack.json
 ```
+
+
 

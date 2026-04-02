@@ -1,5 +1,5 @@
 # Rename `app` to your Fly app name before the first deploy.
-app = "bazaar"
+app = "bazaar-jwkvxw"
 primary_region = "iad"
 
 [build]

@@ -5,8 +5,9 @@
 #   CLOUDFLARE_ACCOUNT_ID — same as bazaar-infra:cloudflareAccountId
 #   PULUMI_CONFIG_PASSPHRASE — if the stack uses passphrase-encrypted config secrets
 #   PULUMI_BACKEND_URL — s3://… R2 backend URL (query params for endpoint/region)
-#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 S3 API keys for the state bucket
-#   FLY_API_TOKEN
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 S3 API keys (R2 → Manage R2 API Tokens), NOT the Cloudflare API token.
+#     Must allow read+write on the SAME bucket as PULUMI_BACKEND_URL (incl. ListBucket). Scoped-only-to-primary-bucket tokens → 403 on .pulumi/meta.yaml.
+#   FLY_API_TOKEN — deploy token for the Fly org that owns `app` in fly.toml (`fly tokens create deploy`, or https://fly.io/dashboard/personal/tokens ). Wrong/missing token → `unauthorized`.
 #
 # Optional repository variable: PULUMI_STACK (defaults to prod).
 
@@ -70,6 +71,12 @@ jobs:
           pulumi up --yes --stack "${PULUMI_STACK}"
 
       - name: Fly deploy
-        run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "FLY_API_TOKEN secret is not set."
+            exit 1
+          fi
+          flyctl deploy --remote-only
