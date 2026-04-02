@@ -39,7 +39,8 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - uses: pulumi/actions/setup-pulumi@v3
+      # Install Pulumi CLI only (omit `command`); see https://github.com/pulumi/actions
+      - uses: pulumi/actions@v6
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
