@@ -42,5 +42,21 @@ pulumi stack select prod
 pulumi stack import --file stack.json
 ```
 
+## Setting up secrets
+
+Make sure to set all the secrets for your GH Action to deploy
+
+GitHub repository secrets (Settings → Secrets and variables → Actions):
+- CLOUDFLARE_API_TOKEN — Cloudflare API (Pulumi provider)
+- CLOUDFLARE_ACCOUNT_ID — same as bazaar-infra:cloudflareAccountId
+- PULUMI_CONFIG_PASSPHRASE — if the stack uses passphrase-encrypted config secrets
+- PULUMI_BACKEND_URL — s3://… R2 backend URL (query params for endpoint/region)
+- AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 S3 API keys (R2 → Manage R2 API Tokens), NOT the Cloudflare API token.
+    Must allow read+write on the SAME bucket as PULUMI_BACKEND_URL (incl. ListBucket). Scoped-only-to-primary-bucket tokens → 403 on .pulumi/meta.yaml.
+- FLY_API_TOKEN — deploy token for the Fly org that owns `app` in fly.toml (`fly tokens create deploy`, or https://fly.io/dashboard/personal/tokens ). Wrong/missing token → `unauthorized`.
+
+
+The action will run on push and deploy the application
+
 
 
