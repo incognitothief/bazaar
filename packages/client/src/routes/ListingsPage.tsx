@@ -102,7 +102,7 @@ export function ListingsPage() {
   if (!session || !agent) return null;
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       <h1 className="text-2xl font-semibold mb-6">Listings</h1>
       {rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">

@@ -16,7 +16,27 @@ const COOKIE_OPTS = {
   sameSite: "Lax" as const,
   maxAge: 60 * 60 * 24 * 30,
 };
+const RETURN_COOKIE = "bazaar_oauth_return";
+const RETURN_COOKIE_OPTS = {
+  httpOnly: true,
+  path: "/",
+  sameSite: "Lax" as const,
+  maxAge: 600,
+};
 const HANDLE_PREFIX = "oauth:handle:";
+
+/** Same-origin path only; blocks open redirects. */
+function safeOauthReturnPath(raw: string | null | undefined): string | null {
+  if (raw == null || raw === "") return null;
+  const s = raw.trim();
+  if (s.length > 2048) return null;
+  if (!s.startsWith("/")) return null;
+  if (s.startsWith("//")) return null;
+  if (s.includes("://")) return null;
+  if (s.includes("\\")) return null;
+  if (s.startsWith("/merchant/signin")) return null;
+  return s;
+}
 
 export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
   const r = new Hono();
@@ -46,6 +66,12 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
     const handle = c.req.query("handle");
     if (!handle) {
       return c.text("Missing ?handle query parameter (e.g. user.bsky.social)", 400);
+    }
+    const returnPath = safeOauthReturnPath(c.req.query("returnTo"));
+    if (returnPath) {
+      setCookie(c, RETURN_COOKIE, returnPath, RETURN_COOKIE_OPTS);
+    } else {
+      deleteCookie(c, RETURN_COOKIE, { path: "/" });
     }
     try {
       const url = await oauthClient.authorize(handle, {
@@ -86,7 +112,12 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       }
 
       setCookie(c, COOKIE, did, COOKIE_OPTS);
-      return c.redirect(`${oauthAppBaseUrl()}/merchant/dashboard`);
+
+      const rawReturn = getCookie(c, RETURN_COOKIE);
+      deleteCookie(c, RETURN_COOKIE, { path: "/" });
+      const returnPath = safeOauthReturnPath(rawReturn) ?? "/";
+
+      return c.redirect(`${oauthAppBaseUrl()}${returnPath}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return c.text(`OAuth callback failed: ${msg}`, 400);

@@ -1,24 +1,176 @@
-import { useEffect } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { ChevronDown, Menu } from "lucide-react";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+} from "@/components/ui/sheet";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { cn } from "@/lib/utils";
 import { getAuthRole } from "@/lib/auth";
 
-const nav = [
-  { to: "/merchant/dashboard", label: "Dashboard" },
-  { to: "/merchant/upload/digital", label: "Upload track" },
-  {
-    to: "/merchant/upload/digital?class=album",
-    label: "Upload collection",
-  },
+const mainNav: { to: string; label: string }[] = [
   { to: "/merchant/listings", label: "Listings" },
   { to: "/merchant/license", label: "License templates" },
   { to: "/merchant/settings", label: "Settings" },
 ];
 
+const inventoryLinks: { to: string; label: string; albumMode: boolean }[] = [
+  { to: "/merchant/upload/digital", label: "Upload track", albumMode: false },
+  {
+    to: "/merchant/upload/digital?class=album",
+    label: "Upload collection",
+    albumMode: true,
+  },
+];
+
+function UploadDigitalNavLink({
+  to,
+  label,
+  albumMode,
+  onNavigate,
+}: {
+  to: string;
+  label: string;
+  albumMode: boolean;
+  onNavigate?: () => void;
+}) {
+  const loc = useLocation();
+  const onUpload = loc.pathname === "/merchant/upload/digital";
+  const classParam = new URLSearchParams(loc.search).get("class");
+  const isAlbum = classParam === "album";
+  const isActive = onUpload && (albumMode ? isAlbum : !isAlbum);
+
+  return (
+    <Link
+      to={to}
+      className={cn(
+        "rounded-md px-2 py-1.5 text-sm hover:bg-muted block",
+        isActive && "bg-muted font-medium",
+      )}
+      onClick={onNavigate}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function MerchantNavPanel({
+  inventoryOpen,
+  setInventoryOpen,
+  onNavigate,
+  signOut,
+  sheetVariant,
+}: {
+  inventoryOpen: boolean;
+  setInventoryOpen: (v: boolean | ((b: boolean) => boolean)) => void;
+  onNavigate?: () => void;
+  signOut: () => void | Promise<void>;
+  /** Extra top padding so nav clears the sheet close control. */
+  sheetVariant?: boolean;
+}) {
+  const navCls = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "rounded-md px-2 py-1.5 text-sm hover:bg-muted",
+      isActive && "bg-muted font-medium",
+    );
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col gap-4 p-4",
+        sheetVariant && "pt-14",
+      )}
+    >
+      <Link
+        to="/"
+        className="shrink-0 font-semibold"
+        onClick={onNavigate}
+      >
+        bazaar
+      </Link>
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain">
+        <NavLink
+          to="/merchant/dashboard"
+          className={navCls}
+          onClick={onNavigate}
+        >
+          Dashboard
+        </NavLink>
+
+        <div className="shrink-0 rounded-md">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-left"
+            onClick={() => setInventoryOpen((o) => !o)}
+            aria-expanded={inventoryOpen}
+          >
+            <span className="font-medium">Inventory</span>
+            <ChevronDown
+              className={cn(
+                "size-4 shrink-0 text-muted-foreground transition-transform",
+                inventoryOpen && "rotate-180",
+              )}
+            />
+          </button>
+          {inventoryOpen ? (
+            <div className="mt-1 flex flex-col gap-0.5 border-l border-border ml-2 pl-2">
+              {inventoryLinks.map((l) => (
+                <UploadDigitalNavLink
+                  key={l.to}
+                  to={l.to}
+                  label={l.label}
+                  albumMode={l.albumMode}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {mainNav.map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            className={navCls}
+            onClick={onNavigate}
+          >
+            {n.label}
+          </NavLink>
+        ))}
+      </nav>
+      <div className="shrink-0 border-t border-border pt-3">
+        <button
+          type="button"
+          className="w-full text-left text-sm text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            onNavigate?.();
+            void signOut();
+          }}
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function MerchantLayout() {
   const { session, loading, signOut } = useAtpSession();
   const navigate = useNavigate();
+  const location = useLocation();
+  const inventoryPathPrefix = "/merchant/upload";
+  const [inventoryOpen, setInventoryOpen] = useState(() =>
+    location.pathname.startsWith(inventoryPathPrefix),
+  );
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (location.pathname.startsWith(inventoryPathPrefix)) {
+      setInventoryOpen(true);
+    }
+  }, [location.pathname, inventoryPathPrefix]);
 
   useEffect(() => {
     if (!loading && !session) {
@@ -55,37 +207,50 @@ export function MerchantLayout() {
   }
 
   return (
-    <div className="min-h-screen flex">
-      <aside className="w-56 shrink-0 border-r border-border bg-card p-4 flex flex-col gap-6">
+    <div className="flex min-h-dvh flex-col bg-background md:h-dvh md:flex-row md:overflow-hidden">
+      <header className="flex shrink-0 items-center justify-between border-b border-border bg-card px-4 py-3 md:hidden">
         <Link to="/" className="font-semibold">
           bazaar
         </Link>
-        <nav className="flex flex-col gap-1">
-          {nav.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              className={({ isActive }) =>
-                cn(
-                  "rounded-md px-2 py-1.5 text-sm hover:bg-muted",
-                  isActive && "bg-muted font-medium",
-                )
-              }
-            >
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
-        <button
+        <Button
           type="button"
-          className="mt-auto text-left text-sm text-muted-foreground hover:text-foreground"
-          onClick={() => void signOut()}
+          variant="outline"
+          size="icon"
+          aria-label="Open navigation menu"
+          onClick={() => setMobileNavOpen(true)}
         >
-          Sign out
-        </button>
+          <Menu className="size-5" />
+        </Button>
+      </header>
+
+      <aside className="hidden min-h-0 w-56 shrink-0 flex-col border-r border-border bg-card md:flex">
+        <MerchantNavPanel
+          inventoryOpen={inventoryOpen}
+          setInventoryOpen={setInventoryOpen}
+          signOut={signOut}
+        />
       </aside>
-      <main className="flex-1 p-8 overflow-auto">
-        <Outlet />
+
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent
+          side="left"
+          showCloseButton
+          className="flex w-[min(100%,18rem)] flex-col gap-0 overflow-hidden p-0"
+        >
+          <MerchantNavPanel
+            sheetVariant
+            inventoryOpen={inventoryOpen}
+            setInventoryOpen={setInventoryOpen}
+            onNavigate={() => setMobileNavOpen(false)}
+            signOut={signOut}
+          />
+        </SheetContent>
+      </Sheet>
+
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-y-none p-4 sm:p-6 md:p-8">
+        <div className="mx-auto w-full min-w-0 max-w-6xl flex-1">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

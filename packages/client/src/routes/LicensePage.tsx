@@ -9,7 +9,7 @@ export function LicensePage() {
   if (!session || !agent) return null;
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="w-full min-w-0 max-w-4xl space-y-6">
       <h1 className="text-2xl font-semibold">License templates</h1>
       <p className="text-sm text-muted-foreground">
         Pre-create license terms on your PDS so uploads can reference them.
