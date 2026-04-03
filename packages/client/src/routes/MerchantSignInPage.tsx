@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAtpSession } from "@/hooks/useAtpSession";
 
 const devMockSignIn =
@@ -11,25 +12,31 @@ const devMockSignIn =
 export function MerchantSignInPage() {
   const { signIn } = useAtpSession();
   const [handle, setHandle] = useState("");
+  const [busy, setBusy] = useState(false);
 
   return (
-    <div className="mx-auto max-w-md space-y-6 py-12">
+    <div className="mx-auto max-w-md space-y-6 py-12 px-4 sm:px-0">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {devMockSignIn ? (
             <>
-              Development mode: Continue stores a{" "}
-              <span className="font-mono text-foreground">local mock session</span>{" "}
-              (no OAuth). Use any handle string for display;{" "}
-              <span className="font-mono text-foreground">VITE_ARTIST_DID</span>{" "}
-              is used as the merchant DID.
+              Development mode: no OAuth — your handle is resolved to a DID via{" "}
+              <span className="font-mono text-foreground">
+                VITE_ATPROTO_SERVICE
+              </span>{" "}
+              and stored locally. You get the merchant dashboard only if that
+              DID matches{" "}
+              <span className="font-mono text-foreground">VITE_ARTIST_DID</span>
+              , same as production.
             </>
           ) : (
             <>
               Enter your ATProto handle (for example{" "}
               <span className="font-mono text-foreground">you.bsky.social</span>
-              ). You will be redirected to your host to authorize Bazaar.
+              ). You will be redirected to your host to authorize Bazaar. After
+              OAuth, you are a merchant only if your account DID equals{" "}
+              <span className="font-mono text-foreground">VITE_ARTIST_DID</span>.
             </>
           )}
         </p>
@@ -39,19 +46,25 @@ export function MerchantSignInPage() {
         onSubmit={(e) => {
           e.preventDefault();
           const h = handle.trim();
-          if (!h) return;
-          signIn(h);
+          if (!h || busy) return;
+          setBusy(true);
+          void signIn(h).finally(() => setBusy(false));
         }}
       >
-        <Input
-          type="text"
-          autoComplete="username"
-          placeholder="handle.example.com"
-          value={handle}
-          onChange={(e) => setHandle(e.target.value)}
-        />
-        <Button type="submit" className="w-full">
-          Continue
+        <div className="space-y-2">
+          <Label htmlFor="signin-handle">Handle</Label>
+          <Input
+            id="signin-handle"
+            type="text"
+            autoComplete="username"
+            placeholder="handle.example.com"
+            value={handle}
+            onChange={(e) => setHandle(e.target.value)}
+            disabled={busy}
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={busy}>
+          {busy ? "Resolving…" : "Continue"}
         </Button>
       </form>
       <p className="text-center text-sm text-muted-foreground">

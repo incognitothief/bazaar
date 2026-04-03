@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { getAuthRole } from "@/lib/auth";
+import { createPublicAgent } from "@/lib/atproto/session";
+import { safeReturnPath } from "@/lib/signInReturn";
 
 export type AtpSession = {
   did: string;
@@ -14,15 +17,9 @@ function devMockSignInEnabled(): boolean {
   );
 }
 
-/** DID used for mock merchant session; must match VITE_ARTIST_DID / VITE_APP_DID for getAuthRole. */
-function resolveDevMockMerchantDid(): string {
-  const explicit = import.meta.env.VITE_DEV_MOCK_MERCHANT_DID?.trim();
-  if (explicit?.startsWith("did:")) return explicit;
-  const artist = import.meta.env.VITE_ARTIST_DID?.trim();
-  if (artist?.startsWith("did:")) return artist;
-  const app = import.meta.env.VITE_APP_DID?.trim();
-  if (app?.startsWith("did:")) return app;
-  return "";
+function artistDid(): string {
+  const d = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
+  return d.startsWith("did:") ? d : "";
 }
 
 function apiOrigin(): string {
@@ -33,10 +30,17 @@ function apiOrigin(): string {
   return `https://${raw}`;
 }
 
+function postSignInDestination(did: string): string {
+  const params = new URLSearchParams(window.location.search);
+  const ret = safeReturnPath(params.get("returnTo"));
+  if (ret) return ret;
+  return getAuthRole(did) === "merchant" ? "/merchant/dashboard" : "/dashboard";
+}
+
 export function useAtpSession(): {
   session: AtpSession | null;
   loading: boolean;
-  signIn: (handle: string) => void;
+  signIn: (handle: string) => Promise<void>;
   signOut: () => void;
 } {
   const [session, setSession] = useState<AtpSession | null>(null);
@@ -81,21 +85,36 @@ export function useAtpSession(): {
     void load();
   }, [load]);
 
-  // handle is passed so the server can discover the correct PDS via ATProto identity resolution
-  const signIn = useCallback((handle: string) => {
+  const signIn = useCallback(async (handle: string) => {
     const h = handle.trim();
     if (!h) return;
 
     if (devMockSignInEnabled()) {
-      const did = resolveDevMockMerchantDid();
-      if (!did) {
+      if (!artistDid()) {
         window.alert(
-          "Mock sign-in needs a merchant DID: set VITE_ARTIST_DID (or VITE_DEV_MOCK_MERCHANT_DID) to a did:… value that matches your store.",
+          "Mock sign-in needs VITE_ARTIST_DID set to your store owner did:…",
         );
         return;
       }
-      localStorage.setItem(MOCK_KEY, JSON.stringify({ did, handle: h }));
-      window.location.assign("/merchant/dashboard");
+      try {
+        const agent = createPublicAgent();
+        const { data } = await agent.com.atproto.identity.resolveHandle({
+          handle: h,
+        });
+        const did = data.did;
+        if (!did) {
+          window.alert("Handle resolved but no DID was returned.");
+          return;
+        }
+        localStorage.setItem(MOCK_KEY, JSON.stringify({ did, handle: h }));
+        window.location.assign(postSignInDestination(did));
+      } catch (e) {
+        window.alert(
+          `Could not resolve handle (check the handle and VITE_ATPROTO_SERVICE): ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      }
       return;
     }
 
@@ -104,7 +123,12 @@ export function useAtpSession(): {
       window.alert("Set VITE_API_ORIGIN to your API server URL.");
       return;
     }
-    window.location.href = `${origin}/api/atproto/signin?handle=${encodeURIComponent(h)}`;
+    const qs = new URLSearchParams({ handle: h });
+    const back = safeReturnPath(
+      new URLSearchParams(window.location.search).get("returnTo"),
+    );
+    if (back) qs.set("returnTo", back);
+    window.location.href = `${origin}/api/atproto/signin?${qs.toString()}`;
   }, []);
 
   const signOut = useCallback(async () => {

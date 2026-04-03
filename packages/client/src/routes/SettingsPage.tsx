@@ -20,7 +20,7 @@ import { toast } from "sonner";
 export function SettingsPage() {
   const { session, signOut } = useAtpSession();
   const agent = useMerchantAgent(session);
-  const [displayName, setDisplayName] = useState("");
+  const [storefrontName, setStorefrontName] = useState("");
   const [description, setDescription] = useState("");
   const [profileRkey, setProfileRkey] = useState<string | null>(null);
   const [profileCid, setProfileCid] = useState<string | null>(null);
@@ -62,7 +62,7 @@ export function SettingsPage() {
       setProfileRkey(row.uri.split("/").pop() ?? null);
       setProfileCid(row.cid);
       const v = row.value as ActorProfile;
-      setDisplayName(v.displayName ?? "");
+      setStorefrontName(v.displayName ?? "");
       setDescription(v.description ?? "");
       setProfileCreatedAt(v.createdAt);
     })();
@@ -72,7 +72,7 @@ export function SettingsPage() {
     if (!agent || !session) return;
     const record: ActorProfile = {
       $type: "diamonds.whereditgo.bazaar.actor.profile",
-      displayName: displayName || undefined,
+      displayName: storefrontName || undefined,
       description: description || undefined,
       createdAt: profileCreatedAt,
     };
@@ -81,7 +81,7 @@ export function SettingsPage() {
         await putActorProfile(agent, record, profileRkey, profileCid);
       } else {
         const created = await createActorProfile(agent, {
-          displayName: displayName || undefined,
+          displayName: storefrontName || undefined,
           description: description || undefined,
         });
         setProfileRkey(created.uri.split("/").pop() ?? null);
@@ -118,17 +118,17 @@ export function SettingsPage() {
   if (!session || !agent) return null;
 
   return (
-    <div className="max-w-xl space-y-12">
+    <div className="w-full min-w-0 max-w-xl space-y-12">
       <h1 className="text-2xl font-semibold">Settings</h1>
 
       <section className="space-y-4">
         <h2 className="text-lg font-medium">Profile</h2>
         <div className="space-y-2">
-          <Label htmlFor="dn">Display name</Label>
+          <Label htmlFor="storefront-name">Storefront name</Label>
           <Input
-            id="dn"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            id="storefront-name"
+            value={storefrontName}
+            onChange={(e) => setStorefrontName(e.target.value)}
           />
         </div>
         <div className="space-y-2">

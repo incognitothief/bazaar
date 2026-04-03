@@ -58,7 +58,7 @@ export function DashboardPage() {
   if (!session || !agent) return null;
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       <h1 className="text-2xl font-semibold mb-6">Dashboard</h1>
       <OnboardingChecklist
         session={session}

@@ -1,12 +1,12 @@
 import { useEffect } from "react";
 import { Link, Outlet, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useAtpSession } from "@/hooks/useAtpSession";
-import { getAuthRole } from "@/lib/auth";
+import { PublicHeaderAccount } from "@/components/public/PublicHeaderAccount";
+
+const SOURCE_CODE_HREF = "https://github.com/incognitothief/bazaar";
 
 export function PublicLayout() {
   const [search] = useSearchParams();
-  const { session, loading } = useAtpSession();
 
   useEffect(() => {
     if (search.get("login") === "required") {
@@ -16,13 +16,6 @@ export function PublicLayout() {
       });
     }
   }, [search]);
-
-  const headerLink =
-    !loading && session
-      ? getAuthRole(session.did) === "merchant"
-        ? { to: "/merchant/dashboard", label: "Merchant Dashboard" }
-        : { to: "/dashboard", label: "Dashboard" }
-      : { to: "/merchant/signin", label: "Login" };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -34,13 +27,8 @@ export function PublicLayout() {
           >
             bazaar
           </Link>
-          <nav>
-            <Link
-              to={headerLink.to}
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              {headerLink.label}
-            </Link>
+          <nav className="flex items-center">
+            <PublicHeaderAccount />
           </nav>
         </div>
       </header>
@@ -50,16 +38,14 @@ export function PublicLayout() {
       <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground">
         <p>
           bazaar ·{" "}
-          <Link
-            to={
-              !loading && session && getAuthRole(session.did) === "merchant"
-                ? "/merchant/dashboard"
-                : "/merchant/signin"
-            }
-            className="underline underline-offset-2"
+          <a
+            href={SOURCE_CODE_HREF}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
           >
-            Merchant Dashboard
-          </Link>
+            Source Code
+          </a>
         </p>
       </footer>
     </div>

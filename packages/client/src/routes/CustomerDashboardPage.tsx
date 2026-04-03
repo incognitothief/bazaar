@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
 
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { getAuthRole } from "@/lib/auth";
+import { merchantSignInUrl } from "@/lib/signInReturn";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import type { Listing, PurchaseReceipt } from "@/types/lexicons";
@@ -35,8 +36,9 @@ type ReceiptValidationResult = {
 };
 
 export function CustomerDashboardPage() {
-  const { session, loading } = useAtpSession();
+  const { session, loading, signOut } = useAtpSession();
   const navigate = useNavigate();
+  const location = useLocation();
   const agent = useMemo(() => createPublicAgent(), []);
 
   const [receiptUri, setReceiptUri] = useState("");
@@ -129,18 +131,23 @@ export function CustomerDashboardPage() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-muted-foreground">Loading…</div>
+      <div className="px-4 py-8 text-center text-muted-foreground sm:px-6">
+        Loading…
+      </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="mx-auto max-w-lg space-y-6 text-center py-12">
+      <div className="mx-auto max-w-lg space-y-6 px-4 py-12 text-center sm:px-6">
         <h1 className="text-2xl font-semibold">Receipt validation</h1>
         <p className="text-sm text-muted-foreground">
           Sign in to validate your purchase receipts against available listings.
         </p>
-        <Link to="/merchant/signin" className="underline underline-offset-4">
+        <Link
+          to={merchantSignInUrl(location.pathname, location.search)}
+          className="underline underline-offset-4"
+        >
           Login
         </Link>
       </div>
@@ -148,14 +155,24 @@ export function CustomerDashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">Receipt validation</h1>
-        <p className="text-sm text-muted-foreground">
-          Paste your Bazaar <code className="text-xs">purchase.receipt</code>{" "}
-          URI. We will verify the receipt and confirm the referenced listing
-          is still available.
-        </p>
+    <div className="mx-auto w-full min-w-0 max-w-2xl space-y-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-2 min-w-0">
+          <h1 className="text-2xl font-semibold">Receipt validation</h1>
+          <p className="text-sm text-muted-foreground">
+            Paste your Bazaar <code className="text-xs">purchase.receipt</code>{" "}
+            URI. We will verify the receipt and confirm the referenced listing
+            is still available.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0"
+          onClick={() => void signOut()}
+        >
+          Sign out
+        </Button>
       </div>
 
       <form

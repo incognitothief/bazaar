@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AtpSession } from "@/hooks/useAtpSession";
+import { merchantSignInUrl } from "@/lib/signInReturn";
 import { cn } from "@/lib/utils";
 
 export type OnboardingItem = {
@@ -32,6 +33,8 @@ export function OnboardingChecklist({
   hasItem: boolean;
 }) {
   const [dismissed, setDismissed] = useState(false);
+  const { pathname, search } = useLocation();
+  const signInHref = merchantSignInUrl(pathname, search);
 
   const items: OnboardingItem[] = [
     {
@@ -42,7 +45,7 @@ export function OnboardingChecklist({
       blocking: true,
       action: {
         label: "Connect",
-        href: "/merchant/signin",
+        href: signInHref,
       },
     },
     {

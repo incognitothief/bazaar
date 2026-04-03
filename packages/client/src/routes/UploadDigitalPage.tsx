@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AudioFileDropzone } from "@/components/shared/AudioFileDropzone";
+import {
+  BatchAudioFileDropzone,
+  type BatchAudioEntry,
+} from "@/components/shared/BatchAudioFileDropzone";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
 import { CompletenessIndicator } from "@/components/merchant/CompletenessIndicator";
 import { TrackListBuilder, type TrackSlot } from "@/components/merchant/TrackListBuilder";
@@ -63,6 +67,7 @@ export function UploadDigitalPage() {
   const [audioErr, setAudioErr] = useState("");
   const [artErr, setArtErr] = useState("");
   const [albumTracks, setAlbumTracks] = useState<TrackSlot[]>([]);
+  const [batchStaged, setBatchStaged] = useState<BatchAudioEntry[]>([]);
 
   const [description, setDescription] = useState("");
   const [genre, setGenre] = useState("");
@@ -108,13 +113,26 @@ export function UploadDigitalPage() {
     artworkFile,
   ]);
 
+  const appendBatch = useCallback((entries: BatchAudioEntry[]) => {
+    setBatchStaged((prev) => {
+      const seen = new Set(prev.map((e) => `${e.file.name}-${e.file.size}`));
+      const add = entries.filter((e) => {
+        const k = `${e.file.name}-${e.file.size}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      return [...prev, ...add];
+    });
+  }, []);
+
   if (!session || !agent) return null;
 
   const step1Valid =
     !!title.trim() &&
     !!artistName.trim() &&
     (itemClass === "album"
-      ? albumTracks.length > 0
+      ? albumTracks.length > 0 || batchStaged.length > 0
       : !!audioFile && !!parsedMeta);
 
   function buildLicenseTermsPayload() {
@@ -137,6 +155,17 @@ export function UploadDigitalPage() {
 
   async function onPublish() {
     if (!agent || !session) return;
+    if (
+      itemClass === "album" &&
+      albumTracks.length === 0 &&
+      batchStaged.length > 0
+    ) {
+      toast.error("Batch collection publish is not available yet", {
+        description:
+          "Staged files are ready for when catalog APIs support batch import. Add existing track records, or publish after backend support lands.",
+      });
+      return;
+    }
     const licensePayload = buildLicenseTermsPayload();
     if (!licensePayload) {
       toast.error("Select a license template");
@@ -244,7 +273,7 @@ export function UploadDigitalPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="w-full min-w-0 max-w-2xl space-y-8">
       <h1 className="text-2xl font-semibold">Upload digital release</h1>
       <div className="flex gap-2 text-sm text-muted-foreground">
         {[1, 2, 3, 4].map((s) => (
@@ -299,9 +328,11 @@ export function UploadDigitalPage() {
             <Label>Item class</Label>
             <Select
               value={itemClass}
-              onValueChange={(v) =>
-                setItemClass(v as (typeof ITEM_CLASSES)[number])
-              }
+              onValueChange={(v) => {
+                const next = v as (typeof ITEM_CLASSES)[number];
+                setItemClass(next);
+                if (next !== "album") setBatchStaged([]);
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -316,12 +347,47 @@ export function UploadDigitalPage() {
             </Select>
           </div>
           {itemClass === "album" ? (
-            <TrackListBuilder
-              artistDid={session.did}
-              agent={agent}
-              value={albumTracks}
-              onChange={setAlbumTracks}
-            />
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Batch audio (collections)</p>
+                <BatchAudioFileDropzone
+                  onBatch={appendBatch}
+                  onError={(m) => toast.error(m)}
+                />
+                {batchStaged.length > 0 ? (
+                  <ul className="rounded-md border border-border divide-y divide-border text-sm max-h-48 overflow-auto">
+                    {batchStaged.map((e) => (
+                      <li
+                        key={e.id}
+                        className="flex items-center justify-between gap-2 px-3 py-2"
+                      >
+                        <span className="truncate">
+                          {e.meta.title || e.file.name}
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setBatchStaged((prev) =>
+                              prev.filter((x) => x.id !== e.id),
+                            )
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <TrackListBuilder
+                artistDid={session.did}
+                agent={agent}
+                value={albumTracks}
+                onChange={setAlbumTracks}
+              />
+            </div>
           ) : null}
           <div className="space-y-2">
             <Label>Artwork (optional)</Label>
