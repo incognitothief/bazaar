@@ -4,6 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAtpSession } from "@/hooks/useAtpSession";
 
+const devMockSignIn =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_DEV_MOCK_ATPROTO_SIGNIN === "true";
+
 export function MerchantSignInPage() {
   const { signIn } = useAtpSession();
   const [handle, setHandle] = useState("");
@@ -13,9 +17,21 @@ export function MerchantSignInPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Enter your ATProto handle (for example{" "}
-          <span className="font-mono text-foreground">you.bsky.social</span>).
-          You will be redirected to your host to authorize Bazaar.
+          {devMockSignIn ? (
+            <>
+              Development mode: Continue stores a{" "}
+              <span className="font-mono text-foreground">local mock session</span>{" "}
+              (no OAuth). Use any handle string for display;{" "}
+              <span className="font-mono text-foreground">VITE_ARTIST_DID</span>{" "}
+              is used as the merchant DID.
+            </>
+          ) : (
+            <>
+              Enter your ATProto handle (for example{" "}
+              <span className="font-mono text-foreground">you.bsky.social</span>
+              ). You will be redirected to your host to authorize Bazaar.
+            </>
+          )}
         </p>
       </div>
       <form
