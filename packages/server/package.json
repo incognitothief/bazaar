@@ -8,10 +8,13 @@
     "start": "npx --yes bun@1.2.0 dist/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "npx --yes bun@1.2.0 run src/migrate.ts",
-    "test": "npx --yes bun@1.2.0 test"
+    "test": "npx --yes bun@1.2.0 test",
+    "oauth:jwk": "npx --yes bun@1.2.0 scripts/generate-oauth-jwk.mjs"
   },
   "dependencies": {
     "@atproto/api": "^0.19.5",
+    "@atproto/jwk-jose": "^0.1.11",
+    "@atproto/oauth-client-node": "^0.3.17",
     "@atproto/syntax": "^0.5.2",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.6.14",

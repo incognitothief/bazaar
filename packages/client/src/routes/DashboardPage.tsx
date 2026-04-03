@@ -12,6 +12,7 @@ import {
   listListingRows,
 } from "@/lib/atproto/records";
 import { scoreCompleteness } from "@/hooks/useCompletenessScore";
+import { apiUrl } from "@/lib/apiUrl";
 import type { DigitalItem } from "@/types/lexicons";
 
 export function DashboardPage() {
@@ -27,10 +28,9 @@ export function DashboardPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const r = await fetch(
-          `${import.meta.env.VITE_API_ORIGIN}/api/stripe/account-status`,
-          { credentials: "include" },
-        );
+        const r = await fetch(apiUrl("/api/stripe/account-status"), {
+          credentials: "include",
+        });
         if (r.ok) {
           const j = (await r.json()) as { connected?: boolean };
           setStripeConnected(!!j.connected);

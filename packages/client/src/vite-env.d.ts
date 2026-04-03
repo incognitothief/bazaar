@@ -7,7 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_APP_URL: string;
   readonly VITE_LEXICON_NAMESPACE: string;
   readonly VITE_ARTIST_DID: string;
-  readonly VITE_API_ORIGIN: string;
+  /** Empty = same-origin `/api` (Vite proxy or SPA served by API). */
+  readonly VITE_API_ORIGIN?: string;
 }
 
 interface ImportMeta {

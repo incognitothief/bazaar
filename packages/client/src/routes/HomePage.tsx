@@ -1,15 +1,36 @@
 import { createPublicAgent } from "@/lib/atproto/session";
 import { InventoryGrid, InventoryGridSkeleton } from "@/components/public/InventoryGrid";
+import { buttonVariants } from "@/components/ui/button";
 import { useCatalog } from "@/hooks/useCatalog";
+import { apiUrl } from "@/lib/apiUrl";
+import { useSearchParams } from "react-router-dom";
 
 export function HomePage() {
+  const [search] = useSearchParams();
   const artistDid = import.meta.env.VITE_ARTIST_DID;
   const { entries, listingsByItemUri, loading, error } = useCatalog(artistDid);
   const agent = createPublicAgent();
   const hasActive = entries.some((e) => listingsByItemUri[e.uri]);
+  const loginRequired = search.get("login") === "required";
 
   return (
     <div className="space-y-8">
+      {loginRequired ? (
+        <div
+          className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+          role="status"
+        >
+          <p className="text-sm text-muted-foreground">
+            Sign in with your ATProto account to open the merchant dashboard.
+          </p>
+          <a
+            href={apiUrl("/api/atproto/signin")}
+            className={buttonVariants({ className: "shrink-0" })}
+          >
+            Continue to sign in
+          </a>
+        </div>
+      ) : null}
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Storefront</h1>
         <p className="mt-2 text-muted-foreground max-w-prose">

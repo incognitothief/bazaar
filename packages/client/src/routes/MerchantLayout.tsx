@@ -1,6 +1,7 @@
-import { useEffect } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
+import { buttonVariants } from "@/components/ui/button";
 import { useAtpSession } from "@/hooks/useAtpSession";
+import { apiUrl } from "@/lib/apiUrl";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -17,13 +18,6 @@ const nav = [
 
 export function MerchantLayout() {
   const { session, loading, signOut } = useAtpSession();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!loading && !session) {
-      navigate("/?login=required", { replace: true });
-    }
-  }, [loading, session, navigate]);
 
   if (loading) {
     return (
@@ -33,8 +27,28 @@ export function MerchantLayout() {
 
   if (!session) {
     return (
-      <div className="p-8 text-center text-muted-foreground">
-        Redirecting…
+      <div className="min-h-screen flex flex-col items-center justify-center gap-6 p-8">
+        <div className="max-w-md space-y-3 text-center">
+          <h1 className="text-xl font-semibold tracking-tight">
+            Merchant sign in
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Open the ATProto provider sign-in page to connect your account. You
+            need a session before the dashboard can load.
+          </p>
+        </div>
+        <a
+          href={apiUrl("/api/atproto/signin")}
+          className={buttonVariants({ size: "lg" })}
+        >
+          Continue to sign in
+        </a>
+        <Link
+          to="/"
+          className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        >
+          Back to storefront
+        </Link>
       </div>
     );
   }

@@ -1,18 +1,35 @@
-import { useEffect } from "react";
-import { Link, Outlet, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
+import { Link, Outlet } from "react-router-dom";
+import { useAtpSession } from "@/hooks/useAtpSession";
+import { apiUrl } from "@/lib/apiUrl";
+
+function MerchantHeaderLink() {
+  const { session, loading } = useAtpSession();
+  if (loading) {
+    return (
+      <span className="text-sm text-muted-foreground tabular-nums">…</span>
+    );
+  }
+  if (session) {
+    return (
+      <Link
+        to="/merchant/dashboard"
+        className="text-sm text-muted-foreground hover:text-foreground"
+      >
+        Merchant dashboard
+      </Link>
+    );
+  }
+  return (
+    <a
+      href={apiUrl("/api/atproto/signin")}
+      className="text-sm text-muted-foreground hover:text-foreground"
+    >
+      Merchant sign in
+    </a>
+  );
+}
 
 export function PublicLayout() {
-  const [search] = useSearchParams();
-
-  useEffect(() => {
-    if (search.get("login") === "required") {
-      toast.message("Sign in required", {
-        description: "Connect your ATProto account to open the merchant dashboard.",
-      });
-    }
-  }, [search]);
-
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border bg-card">
@@ -24,12 +41,7 @@ export function PublicLayout() {
             bazaar
           </Link>
           <nav>
-            <Link
-              to="/merchant/dashboard"
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              Merchant login
-            </Link>
+            <MerchantHeaderLink />
           </nav>
         </div>
       </header>

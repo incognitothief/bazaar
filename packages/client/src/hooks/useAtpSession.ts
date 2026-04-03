@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { apiUrl } from "@/lib/apiUrl";
 
 export type AtpSession = {
   did: string;
@@ -8,10 +9,6 @@ export type AtpSession = {
 };
 
 const MOCK_KEY = "bazaar_mock_atp_session";
-
-function apiOrigin(): string {
-  return import.meta.env.VITE_API_ORIGIN ?? "";
-}
 
 export function useAtpSession(): {
   session: AtpSession | null;
@@ -36,12 +33,7 @@ export function useAtpSession(): {
           }
         }
       }
-      const origin = apiOrigin();
-      if (!origin) {
-        setSession(null);
-        return;
-      }
-      const res = await fetch(`${origin}/api/atproto/session`, {
+      const res = await fetch(apiUrl("/api/atproto/session"), {
         credentials: "include",
       });
       if (!res.ok) {
@@ -62,23 +54,15 @@ export function useAtpSession(): {
   }, [load]);
 
   const signIn = useCallback(() => {
-    const origin = apiOrigin();
-    if (!origin) {
-      window.alert("Set VITE_API_ORIGIN to your API server URL.");
-      return;
-    }
-    window.location.href = `${origin}/api/atproto/signin`;
+    window.location.href = apiUrl("/api/atproto/signin");
   }, []);
 
   const signOut = useCallback(async () => {
     if (import.meta.env.DEV) localStorage.removeItem(MOCK_KEY);
-    const origin = apiOrigin();
-    if (origin) {
-      await fetch(`${origin}/api/atproto/signout`, {
-        method: "POST",
-        credentials: "include",
-      });
-    }
+    await fetch(apiUrl("/api/atproto/signout"), {
+      method: "POST",
+      credentials: "include",
+    });
     setSession(null);
   }, []);
 

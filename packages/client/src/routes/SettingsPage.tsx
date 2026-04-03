@@ -13,6 +13,7 @@ import {
   putListing,
 } from "@/lib/atproto/records";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
+import { apiUrl } from "@/lib/apiUrl";
 import { cn } from "@/lib/utils";
 import type { ActorProfile, Listing } from "@/types/lexicons";
 import { toast } from "sonner";
@@ -33,10 +34,9 @@ export function SettingsPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const r = await fetch(
-          `${import.meta.env.VITE_API_ORIGIN}/api/stripe/account-status`,
-          { credentials: "include" },
-        );
+        const r = await fetch(apiUrl("/api/stripe/account-status"), {
+          credentials: "include",
+        });
         if (r.ok) {
           const j = (await r.json()) as { connected?: boolean };
           setStripeConnected(!!j.connected);
@@ -178,7 +178,7 @@ export function SettingsPage() {
               : "Not connected."}
           </p>
           <a
-            href={`${import.meta.env.VITE_API_ORIGIN}/api/stripe/connect`}
+            href={apiUrl("/api/stripe/connect")}
             className={cn(buttonVariants({ variant: "secondary" }), "mt-2 inline-flex")}
           >
             Connect Stripe
