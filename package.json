@@ -1,7 +1,9 @@
 {
   "name": "bazaar",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
@@ -9,6 +11,8 @@
     "db:migrate": "turbo db:migrate"
   },
   "devDependencies": {
+    "@atproto/crypto": "^0.4.5",
+    "multiformats": "^13.4.2",
     "turbo": "^2.3.3"
   },
   "packageManager": "npm@10.9.2"

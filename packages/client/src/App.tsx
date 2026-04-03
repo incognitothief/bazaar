@@ -1,32 +1,38 @@
-import { useEffect, useState } from "react";
-
-type Health = { ok: boolean; service: string };
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
+import { PublicLayout } from "@/routes/PublicLayout";
+import { HomePage } from "@/routes/HomePage";
+import { ItemDetailPage } from "@/routes/ItemDetailPage";
+import { PurchaseSuccessPage } from "@/routes/PurchaseSuccessPage";
+import { MerchantLayout } from "@/routes/MerchantLayout";
+import { DashboardPage } from "@/routes/DashboardPage";
+import { UploadDigitalPage } from "@/routes/UploadDigitalPage";
+import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
+import { ListingsPage } from "@/routes/ListingsPage";
+import { LicensePage } from "@/routes/LicensePage";
+import { SettingsPage } from "@/routes/SettingsPage";
 
 export function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<Health>;
-      })
-      .then(setHealth)
-      .catch((e: Error) => setErr(e.message));
-  }, []);
-
   return (
-    <main className="main">
-      <h1>Bazaar</h1>
-      <p className="lede">React + Vite in dev; Hono serves this app in production.</p>
-      <section className="card">
-        <h2>API</h2>
-        {err && <p className="error">Could not reach /api/health: {err}</p>}
-        {health && (
-          <pre className="pre">{JSON.stringify(health, null, 2)}</pre>
-        )}
-      </section>
-    </main>
+    <BrowserRouter>
+      <Toaster richColors position="top-center" />
+      <Routes>
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/item/:uri" element={<ItemDetailPage />} />
+          <Route path="/purchase/success" element={<PurchaseSuccessPage />} />
+        </Route>
+        <Route path="/merchant" element={<MerchantLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="upload/digital" element={<UploadDigitalPage />} />
+          <Route path="upload/physical" element={<UploadPhysicalPage />} />
+          <Route path="listings" element={<ListingsPage />} />
+          <Route path="license" element={<LicensePage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

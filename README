@@ -60,3 +60,19 @@ The action will run on push and deploy the application
 
 
 
+## Create a DID for the bazaar instance
+
+Your storefront needs an identifier. Create one using the included script:
+
+_run_
+``` bash
+npm i
+chmod 700 scripts/gen-did.sh
+./scripts/gen-did.sh
+```
+
+be sure to save all of this information somewhere secure. Without it, you will not be able to prove ownership of your store
+
+
+
+
