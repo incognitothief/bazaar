@@ -1,14 +1,11 @@
 import { useMemo } from "react";
-import { createSessionAgent } from "@/lib/atproto/session";
+import { createProxyAgent } from "@/lib/atproto/session";
+import type { ATPRepoClient } from "@/lib/atproto/session";
 import type { AtpSession } from "./useAtpSession";
 
-export function useMerchantAgent(session: AtpSession | null) {
+export function useMerchantAgent(session: AtpSession | null): ATPRepoClient | null {
   return useMemo(() => {
     if (!session) return null;
-    return createSessionAgent(
-      session.accessJwt,
-      session.refreshJwt,
-      session.did,
-    );
+    return createProxyAgent(session.did);
   }, [session]);
 }

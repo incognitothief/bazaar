@@ -5,8 +5,9 @@ import { meta } from "./db/schema";
 import { createAtprotoRouter } from "./routes/atproto";
 import { createCatalogRouter } from "./routes/catalog";
 import { createStripeRouter } from "./routes/stripe";
+import type { OAuthClient } from "./lib/atproto/oauth";
 
-export function createApiRouter(db: Db) {
+export function createApiRouter(db: Db, oauthClient: OAuthClient) {
   const api = new Hono();
 
   api.get("/health", (c) =>
@@ -24,7 +25,7 @@ export function createApiRouter(db: Db) {
     });
   });
 
-  api.route("/atproto", createAtprotoRouter());
+  api.route("/atproto", createAtprotoRouter(db, oauthClient));
   api.route("/stripe", createStripeRouter(db));
   api.route("/catalog", createCatalogRouter());
 

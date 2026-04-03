@@ -37,7 +37,7 @@ export function OnboardingChecklist({
       blocking: true,
       action: {
         label: "Connect",
-        href: `${apiOrigin()}/api/atproto/signin`,
+        href: "/merchant/signin",
       },
     },
     {

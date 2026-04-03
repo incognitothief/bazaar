@@ -1,5 +1,5 @@
-import type { Agent } from "@atproto/api";
 import { AtUri } from "@atproto/syntax";
+import type { ATPRepoClient } from "./session";
 import type {
   ActorProfile,
   Collection,
@@ -9,6 +9,16 @@ import type {
   PurchaseReceipt,
 } from "@/types/lexicons";
 import { BAZAAR_COLLECTION } from "./ns";
+
+type ListRecordsResponse = {
+  data: {
+    records: Array<{ uri: string; cid: string; value: unknown }>;
+  };
+};
+
+type GetRecordResponse = {
+  data: { cid: string; value: unknown };
+};
 
 const TEMPLATE_BASE = {
   rightsType: "both" as const,
@@ -75,7 +85,7 @@ function nowIso(): string {
 }
 
 export async function createDigitalItem(
-  agent: Agent,
+  agent: ATPRepoClient,
   record: Omit<DigitalItem, "$type" | "createdAt">,
 ): Promise<{ uri: string; cid: string }> {
   const did = agent.session?.did;
@@ -94,7 +104,7 @@ export async function createDigitalItem(
 }
 
 export async function createCollection(
-  agent: Agent,
+  agent: ATPRepoClient,
   record: Omit<Collection, "$type" | "createdAt">,
 ): Promise<{ uri: string; cid: string }> {
   const did = agent.session?.did;
@@ -113,7 +123,7 @@ export async function createCollection(
 }
 
 export async function createListing(
-  agent: Agent,
+  agent: ATPRepoClient,
   record: Omit<Listing, "$type" | "createdAt">,
 ): Promise<{ uri: string; cid: string }> {
   const did = agent.session?.did;
@@ -132,7 +142,7 @@ export async function createListing(
 }
 
 export async function createLicenseTerms(
-  agent: Agent,
+  agent: ATPRepoClient,
   record: Omit<LicenseTerms, "$type" | "createdAt">,
 ): Promise<{ uri: string; cid: string }> {
   const did = agent.session?.did;
@@ -151,7 +161,7 @@ export async function createLicenseTerms(
 }
 
 export async function createReceipt(
-  agent: Agent,
+  agent: ATPRepoClient,
   record: Omit<PurchaseReceipt, "$type">,
 ): Promise<{ uri: string; cid: string }> {
   const did = agent.session?.did;
@@ -205,14 +215,14 @@ export type DigitalItemRow = { uri: string; cid: string; item: DigitalItem };
 export type CollectionRow = { uri: string; cid: string; item: Collection };
 
 export async function listDigitalItemRows(
-  agent: Agent,
+  agent: ATPRepoClient,
   did: string,
 ): Promise<DigitalItemRow[]> {
-  const res = await agent.com.atproto.repo.listRecords({
+  const res = (await agent.com.atproto.repo.listRecords({
     repo: did,
     collection: BAZAAR_COLLECTION.digitalItem,
     limit: 100,
-  });
+  })) as ListRecordsResponse;
   return res.data.records
     .filter((r) => isDigitalItem(r.value))
     .map((r) => ({
@@ -223,14 +233,14 @@ export async function listDigitalItemRows(
 }
 
 export async function listCollectionRows(
-  agent: Agent,
+  agent: ATPRepoClient,
   did: string,
 ): Promise<CollectionRow[]> {
-  const res = await agent.com.atproto.repo.listRecords({
+  const res = (await agent.com.atproto.repo.listRecords({
     repo: did,
     collection: BAZAAR_COLLECTION.collection,
     limit: 100,
-  });
+  })) as ListRecordsResponse;
   return res.data.records
     .filter((r) => isCollection(r.value))
     .map((r) => ({
@@ -241,7 +251,7 @@ export async function listCollectionRows(
 }
 
 export async function listCatalogItems(
-  agent: Agent,
+  agent: ATPRepoClient,
   did: string,
 ): Promise<DigitalItem[]> {
   const rows = await listDigitalItemRows(agent, did);
@@ -249,7 +259,7 @@ export async function listCatalogItems(
 }
 
 export async function listCollections(
-  agent: Agent,
+  agent: ATPRepoClient,
   did: string,
 ): Promise<Collection[]> {
   const rows = await listCollectionRows(agent, did);
@@ -257,28 +267,28 @@ export async function listCollections(
 }
 
 export async function listListings(
-  agent: Agent,
+  agent: ATPRepoClient,
   did: string,
 ): Promise<Listing[]> {
-  const res = await agent.com.atproto.repo.listRecords({
+  const res = (await agent.com.atproto.repo.listRecords({
     repo: did,
     collection: BAZAAR_COLLECTION.listing,
     limit: 100,
-  });
+  })) as ListRecordsResponse;
   return res.data.records.map((r) => r.value).filter(isListing);
 }
 
 export type ListingRow = { uri: string; cid: string; listing: Listing };
 
 export async function listListingRows(
-  agent: Agent,
+  agent: ATPRepoClient,
   did: string,
 ): Promise<ListingRow[]> {
-  const res = await agent.com.atproto.repo.listRecords({
+  const res = (await agent.com.atproto.repo.listRecords({
     repo: did,
     collection: BAZAAR_COLLECTION.listing,
     limit: 100,
-  });
+  })) as ListRecordsResponse;
   return res.data.records
     .filter((r) => isListing(r.value))
     .map((r) => ({
@@ -289,7 +299,7 @@ export async function listListingRows(
 }
 
 export async function putActorProfile(
-  agent: Agent,
+  agent: ATPRepoClient,
   record: ActorProfile,
   rkey: string,
   swapCid?: string,
@@ -306,7 +316,7 @@ export async function putActorProfile(
 }
 
 export async function createActorProfile(
-  agent: Agent,
+  agent: ATPRepoClient,
   record: Omit<ActorProfile, "$type" | "createdAt">,
 ): Promise<{ uri: string; cid: string }> {
   const did = agent.session?.did;
@@ -325,19 +335,19 @@ export async function createActorProfile(
 }
 
 export async function listLicenseTerms(
-  agent: Agent,
+  agent: ATPRepoClient,
   did: string,
 ): Promise<LicenseTerms[]> {
-  const res = await agent.com.atproto.repo.listRecords({
+  const res = (await agent.com.atproto.repo.listRecords({
     repo: did,
     collection: BAZAAR_COLLECTION.licenseTerms,
     limit: 100,
-  });
+  })) as ListRecordsResponse;
   return res.data.records.map((r) => r.value).filter(isLicenseTerms);
 }
 
 export async function getRecordValue<T>(
-  agent: Agent,
+  agent: ATPRepoClient,
   uri: string,
 ): Promise<T | null> {
   try {
@@ -346,11 +356,11 @@ export async function getRecordValue<T>(
     const collection = at.collection;
     const rkey = at.rkey;
     if (!collection || !rkey) return null;
-    const res = await agent.com.atproto.repo.getRecord({
+    const res = (await agent.com.atproto.repo.getRecord({
       repo,
       collection,
       rkey,
-    });
+    })) as GetRecordResponse;
     return res.data.value as T;
   } catch {
     return null;
@@ -358,7 +368,7 @@ export async function getRecordValue<T>(
 }
 
 export async function putListing(
-  agent: Agent,
+  agent: ATPRepoClient,
   uri: string,
   record: Listing,
 ): Promise<void> {
@@ -366,11 +376,11 @@ export async function putListing(
   if (!did) throw new Error("Not authenticated");
   const at = new AtUri(uri);
   if (at.hostname !== did) throw new Error("Listing repo mismatch");
-  const cur = await agent.com.atproto.repo.getRecord({
+  const cur = (await agent.com.atproto.repo.getRecord({
     repo: did,
     collection: BAZAAR_COLLECTION.listing,
     rkey: at.rkey,
-  });
+  })) as GetRecordResponse;
   await agent.com.atproto.repo.putRecord({
     repo: did,
     collection: BAZAAR_COLLECTION.listing,
@@ -381,7 +391,7 @@ export async function putListing(
 }
 
 export async function listTracksForArtist(
-  agent: Agent,
+  agent: ATPRepoClient,
   did: string,
 ): Promise<DigitalItem[]> {
   const items = await listCatalogItems(agent, did);
@@ -389,16 +399,16 @@ export async function listTracksForArtist(
 }
 
 export async function findLicenseByTemplateKey(
-  agent: Agent,
+  agent: ATPRepoClient,
   did: string,
   templateKey: LicenseTemplateKey,
 ): Promise<{ uri: string; cid: string } | null> {
   const template = LICENSE_TEMPLATES[templateKey];
-  const res = await agent.com.atproto.repo.listRecords({
+  const res = (await agent.com.atproto.repo.listRecords({
     repo: did,
     collection: BAZAAR_COLLECTION.licenseTerms,
     limit: 100,
-  });
+  })) as ListRecordsResponse;
   for (const row of res.data.records) {
     const v = row.value;
     if (!isLicenseTerms(v)) continue;
