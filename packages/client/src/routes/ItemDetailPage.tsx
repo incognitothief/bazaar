@@ -1,0 +1,207 @@
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
+import Markdown from "react-markdown";
+import {
+  getRecordValue,
+  listListingRows,
+} from "@/lib/atproto/records";
+import { createPublicAgent } from "@/lib/atproto/session";
+import { ArtworkImage } from "@/components/public/ArtworkImage";
+import { BuyButton } from "@/components/public/BuyButton";
+import { FormatBadge } from "@/components/shared/FormatBadge";
+import { MetadataChip } from "@/components/shared/MetadataChip";
+import { TrackList } from "@/components/public/TrackList";
+import { Button } from "@/components/ui/button";
+import type { CatalogItem, LicenseTerms, Listing } from "@/types/lexicons";
+
+function formatMoney(m: { amount: number; currency: string }): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: m.currency,
+  }).format(m.amount / 100);
+}
+
+export function ItemDetailPage() {
+  const { uri: uriParam } = useParams<{ uri: string }>();
+  const itemUri = uriParam ? decodeURIComponent(uriParam) : "";
+  const artistDid = import.meta.env.VITE_ARTIST_DID;
+  const agent = useMemo(() => createPublicAgent(), []);
+
+  const [item, setItem] = useState<CatalogItem | null>(null);
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [listingUri, setListingUri] = useState<string | null>(null);
+  const [license, setLicense] = useState<LicenseTerms | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [legalOpen, setLegalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!itemUri || !artistDid?.startsWith("did:")) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const v = await getRecordValue<CatalogItem>(agent, itemUri);
+        if (cancelled) return;
+        setItem(v);
+        const rows = await listListingRows(agent, artistDid);
+        if (cancelled) return;
+        const row = rows.find((r) => r.listing.item.uri === itemUri);
+        setListing(row?.listing ?? null);
+        setListingUri(row?.uri ?? null);
+        const licUri =
+          v && "$type" in v && v.$type.includes("digital")
+            ? (v as { defaultLicenseUri?: string }).defaultLicenseUri
+            : undefined;
+        if (licUri) {
+          const lt = await getRecordValue<LicenseTerms>(agent, licUri);
+          if (!cancelled) setLicense(lt);
+        } else setLicense(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agent, itemUri, artistDid]);
+
+  if (!itemUri) {
+    return <p className="text-muted-foreground">Missing item.</p>;
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-pulse" aria-busy>
+        <div className="aspect-[21/9] w-full rounded-xl bg-muted" />
+        <div className="h-8 bg-muted rounded w-1/2" />
+        <div className="h-4 bg-muted rounded w-1/3" />
+      </div>
+    );
+  }
+
+  if (!item) {
+    return <p className="text-muted-foreground">Item not found.</p>;
+  }
+
+  const title = item.title;
+  const artistName =
+    item.$type === "diamonds.whereditgo.bazaar.collection"
+      ? item.artistName
+      : item.artistDid;
+  const isCollection =
+    item.$type === "diamonds.whereditgo.bazaar.collection";
+  const blobDid =
+    item.$type === "diamonds.whereditgo.bazaar.catalog.item.digital"
+      ? item.artistDid
+      : artistDid ?? "";
+
+  return (
+    <article className="space-y-10">
+      <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
+        <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)]">
+          <ArtworkImage
+            agent={agent}
+            did={blobDid}
+            cid={item.artworkCid}
+            alt=""
+            className="h-full w-full"
+          />
+        </div>
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+            <p className="text-muted-foreground mt-1">{artistName}</p>
+          </div>
+          {listing ? (
+            <p className="text-2xl font-medium">
+              {formatMoney(listing.price)}
+            </p>
+          ) : (
+            <p className="text-muted-foreground">Not currently for sale.</p>
+          )}
+          {"formats" in item && item.formats?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {item.formats.map((f: string) => (
+                <FormatBadge key={f} format={f} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="flex flex-wrap gap-2" aria-label="Metadata">
+        {"releaseDate" in item && item.releaseDate ? (
+          <MetadataChip>Release {item.releaseDate}</MetadataChip>
+        ) : null}
+        {"durationMs" in item && item.durationMs ? (
+          <MetadataChip>
+            {Math.round(item.durationMs / 60000)} min
+          </MetadataChip>
+        ) : null}
+        {isCollection ? (
+          <MetadataChip>{item.tracks.length} tracks</MetadataChip>
+        ) : null}
+        {item.genre?.map((g) => (
+          <MetadataChip key={g}>{g}</MetadataChip>
+        ))}
+      </section>
+
+      {isCollection ? (
+        <section>
+          <h2 className="text-lg font-medium mb-3">Tracks</h2>
+          <TrackList agent={agent} collection={item} />
+        </section>
+      ) : null}
+
+      {"description" in item && item.description ? (
+        <section className="prose prose-neutral dark:prose-invert max-w-none text-sm">
+          <h2 className="text-lg font-medium mb-2 not-prose">Description</h2>
+          <Markdown>{item.description}</Markdown>
+        </section>
+      ) : null}
+
+      <section>
+        <h2 className="text-lg font-medium mb-2">License</h2>
+        <p className="text-sm text-muted-foreground">
+          {license?.summary ??
+            "Personal use license. Download and listen for your own enjoyment."}
+        </p>
+      </section>
+
+      {"isrc" in item && (item.isrc || item.iswc) ? (
+        <section>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mb-2 -ml-2"
+            onClick={() => setLegalOpen((o) => !o)}
+            aria-expanded={legalOpen}
+          >
+            Legal identifiers {legalOpen ? "▼" : "▶"}
+          </Button>
+          {legalOpen ? (
+            <ul className="text-sm text-muted-foreground space-y-1">
+              {item.isrc ? <li>ISRC: {item.isrc}</li> : null}
+              {item.iswc ? <li>ISWC: {item.iswc}</li> : null}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
+
+      {listing && listingUri ? (
+        <section>
+          <BuyButton
+            listingUri={listingUri}
+            listing={listing}
+            item={item}
+            licenseTerms={license}
+          />
+        </section>
+      ) : null}
+    </article>
+  );
+}

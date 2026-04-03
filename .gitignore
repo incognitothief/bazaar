@@ -11,3 +11,4 @@ dist
 Pulumi.*.yaml
 !Pulumi.yaml
 .alignment/
+*.pem
