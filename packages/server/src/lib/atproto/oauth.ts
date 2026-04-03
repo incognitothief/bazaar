@@ -12,6 +12,7 @@ import {
 const DPOP_KEY = "oauth:dpop_key";
 const STATE_PREFIX = "oauth:state:";
 const SESSION_PREFIX = "oauth:session:";
+export const OAUTH_SCOPE = "atproto";
 
 async function loadOrCreateDpopKey(db: Db): Promise<JoseKey> {
   const row = await db.select().from(meta).where(eq(meta.key, DPOP_KEY)).get();
@@ -95,7 +96,7 @@ export async function createOAuthClient(db: Db): Promise<NodeOAuthClient> {
     ? ({
         client_id: "http://localhost" as const,
         redirect_uris: [redirectUri] as [string, ...string[]],
-        scope: "atproto transition:generic",
+        scope: OAUTH_SCOPE,
         grant_types: ["authorization_code", "refresh_token"] as [
           string,
           ...string[],
@@ -110,7 +111,7 @@ export async function createOAuthClient(db: Db): Promise<NodeOAuthClient> {
         client_name: "Bazaar",
         client_uri: appUrl,
         redirect_uris: [redirectUri] as [string, ...string[]],
-        scope: "atproto transition:generic",
+        scope: OAUTH_SCOPE,
         grant_types: ["authorization_code", "refresh_token"] as [
           string,
           ...string[],

@@ -13,7 +13,12 @@ export type OnboardingItem = {
   blocking: boolean;
 };
 
-const apiOrigin = () => import.meta.env.VITE_API_ORIGIN ?? "";
+const apiOrigin = () => {
+  const raw = (import.meta.env.VITE_API_ORIGIN ?? "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  return `https://${raw}`;
+};
 
 export function OnboardingChecklist({
   session,

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { Agent } from "@atproto/api";
 import { eq } from "drizzle-orm";
+import { OAUTH_SCOPE } from "../lib/atproto/oauth";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { oauthAppBaseUrl, oauthRedirectUri } from "../lib/atproto/oauth-url";
 import type { Db } from "../db";
@@ -30,7 +31,7 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       client_name: "Bazaar",
       client_uri: appUrl,
       redirect_uris: [redirectUri],
-      scope: "atproto transition:generic",
+      scope: OAUTH_SCOPE,
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
@@ -48,7 +49,7 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
     }
     try {
       const url = await oauthClient.authorize(handle, {
-        scope: "atproto transition:generic",
+        scope: OAUTH_SCOPE,
       });
       return c.redirect(url.toString());
     } catch (err) {

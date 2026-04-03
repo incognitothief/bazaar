@@ -8,7 +8,11 @@ export type AtpSession = {
 const MOCK_KEY = "bazaar_mock_atp_session";
 
 function apiOrigin(): string {
-  return import.meta.env.VITE_API_ORIGIN ?? "";
+  const raw = (import.meta.env.VITE_API_ORIGIN ?? "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  // Be forgiving in production if env is set as "example.com" without protocol.
+  return `https://${raw}`;
 }
 
 export function useAtpSession(): {
