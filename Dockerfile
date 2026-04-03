@@ -2,6 +2,24 @@
 
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
+
+# Frontend build-time configuration (passed from deploy via --build-arg)
+ARG VITE_ATPROTO_SERVICE
+ARG VITE_APP_DID
+ARG VITE_STRIPE_PUBLISHABLE_KEY
+ARG VITE_APP_URL
+ARG VITE_LEXICON_NAMESPACE
+ARG VITE_ARTIST_DID
+ARG VITE_API_ORIGIN
+
+ENV VITE_ATPROTO_SERVICE=${VITE_ATPROTO_SERVICE} \
+    VITE_APP_DID=${VITE_APP_DID} \
+    VITE_STRIPE_PUBLISHABLE_KEY=${VITE_STRIPE_PUBLISHABLE_KEY} \
+    VITE_APP_URL=${VITE_APP_URL} \
+    VITE_LEXICON_NAMESPACE=${VITE_LEXICON_NAMESPACE} \
+    VITE_ARTIST_DID=${VITE_ARTIST_DID} \
+    VITE_API_ORIGIN=${VITE_API_ORIGIN}
+
 COPY package.json package-lock.json turbo.json ./
 COPY packages/client/package.json packages/client/
 COPY packages/server/package.json packages/server/
