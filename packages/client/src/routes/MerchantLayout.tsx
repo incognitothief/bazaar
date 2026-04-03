@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { cn } from "@/lib/utils";
+import { getAuthRole } from "@/lib/auth";
 
 const nav = [
   { to: "/merchant/dashboard", label: "Dashboard" },
@@ -23,6 +24,12 @@ export function MerchantLayout() {
     if (!loading && !session) {
       navigate("/?login=required", { replace: true });
     }
+    if (!loading && session) {
+      const role = getAuthRole(session.did);
+      if (role !== "merchant") {
+        navigate("/dashboard", { replace: true });
+      }
+    }
   }, [loading, session, navigate]);
 
   if (loading) {
@@ -32,6 +39,14 @@ export function MerchantLayout() {
   }
 
   if (!session) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        Redirecting…
+      </div>
+    );
+  }
+
+  if (getAuthRole(session.did) !== "merchant") {
     return (
       <div className="p-8 text-center text-muted-foreground">
         Redirecting…

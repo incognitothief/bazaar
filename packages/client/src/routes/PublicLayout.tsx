@@ -1,17 +1,28 @@
 import { useEffect } from "react";
 import { Link, Outlet, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useAtpSession } from "@/hooks/useAtpSession";
+import { getAuthRole } from "@/lib/auth";
 
 export function PublicLayout() {
   const [search] = useSearchParams();
+  const { session, loading } = useAtpSession();
 
   useEffect(() => {
     if (search.get("login") === "required") {
       toast.message("Sign in required", {
-        description: "Connect your ATProto account to open the merchant dashboard.",
+        description:
+          "Connect your ATProto account to access the dashboard and receipt validation.",
       });
     }
   }, [search]);
+
+  const headerLink =
+    !loading && session
+      ? getAuthRole(session.did) === "merchant"
+        ? { to: "/merchant/dashboard", label: "Merchant Dashboard" }
+        : { to: "/dashboard", label: "Dashboard" }
+      : { to: "/merchant/signin", label: "Login" };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -25,10 +36,10 @@ export function PublicLayout() {
           </Link>
           <nav>
             <Link
-              to="/merchant/signin"
+              to={headerLink.to}
               className="text-sm text-muted-foreground hover:text-foreground"
             >
-              Merchant login
+              {headerLink.label}
             </Link>
           </nav>
         </div>
@@ -39,8 +50,15 @@ export function PublicLayout() {
       <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground">
         <p>
           bazaar ·{" "}
-          <Link to="/merchant/signin" className="underline underline-offset-2">
-            Artist dashboard
+          <Link
+            to={
+              !loading && session && getAuthRole(session.did) === "merchant"
+                ? "/merchant/dashboard"
+                : "/merchant/signin"
+            }
+            className="underline underline-offset-2"
+          >
+            Merchant Dashboard
           </Link>
         </p>
       </footer>

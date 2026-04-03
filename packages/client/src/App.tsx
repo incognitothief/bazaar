@@ -6,6 +6,7 @@ import { ItemDetailPage } from "@/routes/ItemDetailPage";
 import { PurchaseSuccessPage } from "@/routes/PurchaseSuccessPage";
 import { MerchantLayout } from "@/routes/MerchantLayout";
 import { DashboardPage } from "@/routes/DashboardPage";
+import { CustomerDashboardPage } from "./routes/CustomerDashboardPage";
 import { UploadDigitalPage } from "@/routes/UploadDigitalPage";
 import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
 import { ListingsPage } from "@/routes/ListingsPage";
@@ -23,6 +24,7 @@ export function App() {
           <Route path="/item/:uri" element={<ItemDetailPage />} />
           <Route path="/purchase/success" element={<PurchaseSuccessPage />} />
           <Route path="/merchant/signin" element={<MerchantSignInPage />} />
+          <Route path="/dashboard" element={<CustomerDashboardPage />} />
         </Route>
         <Route path="/merchant" element={<MerchantLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />

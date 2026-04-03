@@ -11,9 +11,7 @@ export function MerchantSignInPage() {
   return (
     <div className="mx-auto max-w-md space-y-6 py-12">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Merchant sign in
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Enter your ATProto handle (for example{" "}
           <span className="font-mono text-foreground">you.bsky.social</span>).
