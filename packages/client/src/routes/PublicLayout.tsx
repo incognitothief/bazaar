@@ -25,7 +25,7 @@ export function PublicLayout() {
           </Link>
           <nav>
             <Link
-              to="/merchant/dashboard"
+              to="/merchant/signin"
               className="text-sm text-muted-foreground hover:text-foreground"
             >
               Merchant login
@@ -39,7 +39,7 @@ export function PublicLayout() {
       <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground">
         <p>
           bazaar ·{" "}
-          <Link to="/merchant/dashboard" className="underline underline-offset-2">
+          <Link to="/merchant/signin" className="underline underline-offset-2">
             Artist dashboard
           </Link>
         </p>

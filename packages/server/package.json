@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@atproto/api": "^0.19.5",
+    "@atproto/oauth-client-node": "^0.3.17",
     "@atproto/syntax": "^0.5.2",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.6.14",

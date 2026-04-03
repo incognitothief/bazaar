@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import type { Agent } from "@atproto/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listDigitalItemRows } from "@/lib/atproto/records";
+import type { ATPRepoClient } from "@/lib/atproto/session";
 
 export type TrackSlot = {
   uri: string;
@@ -17,7 +17,7 @@ export function TrackListBuilder({
   onChange,
 }: {
   artistDid: string;
-  agent: Agent;
+  agent: ATPRepoClient;
   value: TrackSlot[];
   onChange: (tracks: TrackSlot[]) => void;
 }) {

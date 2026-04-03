@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { createApiRouter } from "./api";
 import { createDb } from "./db";
+import { createOAuthClient } from "./lib/atproto/oauth";
 
 const port = Number(process.env.PORT ?? 3000);
 const databasePath = process.env.DATABASE_PATH ?? "./data/app.db";
@@ -25,7 +26,8 @@ try {
   process.exit(1);
 }
 
-const api = createApiRouter(db);
+const oauthClient = await createOAuthClient(db);
+const api = createApiRouter(db, oauthClient);
 const app = new Hono();
 
 app.route("/api", api);
@@ -40,7 +42,7 @@ app.notFound(async (c) => {
   }
   if (existsSync(staticRoot)) {
     const file = Bun.file(join(staticRoot, "index.html"));
-    if (await file.exists()) return c.html(file);
+    if (await file.exists()) return c.html(await file.text());
   }
   if (c.req.path === "/") {
     return c.text(

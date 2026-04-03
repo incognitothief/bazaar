@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { Agent } from "@atproto/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -8,9 +7,10 @@ import {
   LICENSE_TEMPLATES,
   type LicenseTemplateKey,
 } from "@/lib/atproto/records";
+import type { ATPRepoClient } from "@/lib/atproto/session";
 import { toast } from "sonner";
 
-export function LicensePickerSimple({ agent }: { agent: Agent }) {
+export function LicensePickerSimple({ agent }: { agent: ATPRepoClient }) {
   const [key, setKey] = useState<LicenseTemplateKey | null>(null);
   const [saving, setSaving] = useState(false);
 

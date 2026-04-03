@@ -5,6 +5,7 @@ import type { Db } from "../db";
 import { meta } from "../db/schema";
 import { getAgent } from "../lib/atproto/client";
 import { signReceiptPayload } from "../lib/atproto/sign";
+import { oauthAppBaseUrl } from "../lib/atproto/oauth-url";
 
 function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -63,12 +64,12 @@ export function createStripeRouter(db: Db) {
       return c.json({ error: "Invalid listing price" }, 400);
     }
     const title = (item.title as string | undefined) ?? "Bazaar item";
-    const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+    const appUrl = oauthAppBaseUrl();
     const listingCid = listingRes.data.cid;
     const metadata: Record<string, string> = {
       listingUri,
       itemUri,
-      listingCid,
+      listingCid: listingCid ?? "",
       appDid: process.env.APP_DID ?? "",
       buyerDid: body?.buyerDid ?? "",
     };

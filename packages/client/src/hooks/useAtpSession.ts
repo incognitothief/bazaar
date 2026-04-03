@@ -3,8 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 export type AtpSession = {
   did: string;
   handle: string;
-  accessJwt: string;
-  refreshJwt: string;
 };
 
 const MOCK_KEY = "bazaar_mock_atp_session";
@@ -16,7 +14,7 @@ function apiOrigin(): string {
 export function useAtpSession(): {
   session: AtpSession | null;
   loading: boolean;
-  signIn: () => void;
+  signIn: (handle: string) => void;
   signOut: () => void;
 } {
   const [session, setSession] = useState<AtpSession | null>(null);
@@ -29,7 +27,7 @@ export function useAtpSession(): {
         const raw = localStorage.getItem(MOCK_KEY);
         if (raw) {
           const parsed = JSON.parse(raw) as AtpSession;
-          if (parsed?.did && parsed?.accessJwt) {
+          if (parsed?.did) {
             setSession(parsed);
             setLoading(false);
             return;
@@ -61,13 +59,14 @@ export function useAtpSession(): {
     void load();
   }, [load]);
 
-  const signIn = useCallback(() => {
+  // handle is passed so the server can discover the correct PDS via ATProto identity resolution
+  const signIn = useCallback((handle: string) => {
     const origin = apiOrigin();
     if (!origin) {
       window.alert("Set VITE_API_ORIGIN to your API server URL.");
       return;
     }
-    window.location.href = `${origin}/api/atproto/signin`;
+    window.location.href = `${origin}/api/atproto/signin?handle=${encodeURIComponent(handle)}`;
   }, []);
 
   const signOut = useCallback(async () => {

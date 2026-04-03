@@ -50,11 +50,13 @@ export function SettingsPage() {
   useEffect(() => {
     if (!agent || !session) return;
     void (async () => {
-      const res = await agent.com.atproto.repo.listRecords({
+      const res = (await agent.com.atproto.repo.listRecords({
         repo: session.did,
         collection: BAZAAR_COLLECTION.actorProfile,
         limit: 1,
-      });
+      })) as {
+        data: { records: Array<{ uri: string; cid: string; value: unknown }> };
+      };
       const row = res.data.records[0];
       if (!row) return;
       setProfileRkey(row.uri.split("/").pop() ?? null);
