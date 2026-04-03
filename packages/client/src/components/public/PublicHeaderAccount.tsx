@@ -5,6 +5,7 @@ import { getAuthRole } from "@/lib/auth";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { createPublicAgent } from "@/lib/atproto/session";
+import { fetchActorAvatarByActor } from "@/lib/actorTypeahead";
 import type { ActorProfile } from "@/types/lexicons";
 import { merchantSignInUrl } from "@/lib/signInReturn";
 import { cn } from "@/lib/utils";
@@ -15,11 +16,23 @@ export function PublicHeaderAccount() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  /** Bluesky CDN (or relay) URL — do not revoke. */
+  const [relayAvatarUrl, setRelayAvatarUrl] = useState<string | null>(null);
+  /** Bazaar repo blob — must revoke on replace/unmount. */
+  const [bazaarAvatarObjectUrl, setBazaarAvatarObjectUrl] = useState<
+    string | null
+  >(null);
+
+  const [relayAvatarBroken, setRelayAvatarBroken] = useState(false);
+
+  useEffect(() => {
+    setRelayAvatarBroken(false);
+  }, [relayAvatarUrl]);
 
   useEffect(() => {
     if (!session?.did) {
-      setAvatarUrl((prev) => {
+      setRelayAvatarUrl(null);
+      setBazaarAvatarObjectUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
@@ -27,6 +40,23 @@ export function PublicHeaderAccount() {
     }
 
     let cancelled = false;
+    const ac = new AbortController();
+
+    setRelayAvatarUrl(null);
+    setBazaarAvatarObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+
+    void fetchActorAvatarByActor(session.did, ac.signal)
+      .then((url) => {
+        if (cancelled || !url) return;
+        setRelayAvatarUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setRelayAvatarUrl(null);
+      });
+
     void (async () => {
       try {
         const agent = createPublicAgent();
@@ -45,13 +75,13 @@ export function PublicHeaderAccount() {
           return;
         }
         if (!url) return;
-        setAvatarUrl((prev) => {
+        setBazaarAvatarObjectUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
           return url;
         });
       } catch {
         if (!cancelled) {
-          setAvatarUrl((prev) => {
+          setBazaarAvatarObjectUrl((prev) => {
             if (prev) URL.revokeObjectURL(prev);
             return null;
           });
@@ -61,7 +91,9 @@ export function PublicHeaderAccount() {
 
     return () => {
       cancelled = true;
-      setAvatarUrl((prev) => {
+      ac.abort();
+      setRelayAvatarUrl(null);
+      setBazaarAvatarObjectUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
@@ -128,9 +160,16 @@ export function PublicHeaderAccount() {
         aria-expanded={menuOpen}
         aria-haspopup="menu"
       >
-        {avatarUrl ? (
+        {relayAvatarUrl && !relayAvatarBroken ? (
           <img
-            src={avatarUrl}
+            src={relayAvatarUrl}
+            alt=""
+            className="size-8 shrink-0 rounded-full object-cover"
+            onError={() => setRelayAvatarBroken(true)}
+          />
+        ) : bazaarAvatarObjectUrl ? (
+          <img
+            src={bazaarAvatarObjectUrl}
             alt=""
             className="size-8 shrink-0 rounded-full object-cover"
           />
@@ -168,7 +207,10 @@ export function PublicHeaderAccount() {
                 className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                 onClick={() => {
                   setMenuOpen(false);
-                  void signOut().then(() => navigate("/", { replace: true }));
+                  void (async () => {
+                    await signOut();
+                    navigate("/", { replace: true });
+                  })();
                 }}
               >
                 {item.label}

@@ -41,7 +41,7 @@ export function useAtpSession(): {
   session: AtpSession | null;
   loading: boolean;
   signIn: (handle: string) => Promise<void>;
-  signOut: () => void;
+  signOut: () => Promise<void>;
 } {
   const [session, setSession] = useState<AtpSession | null>(null);
   const [loading, setLoading] = useState(true);

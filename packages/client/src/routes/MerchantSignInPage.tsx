@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { ActorHandleTypeaheadInput } from "@/components/shared/ActorHandleTypeaheadInput";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAtpSession } from "@/hooks/useAtpSession";
 
@@ -53,13 +53,12 @@ export function MerchantSignInPage() {
       >
         <div className="space-y-2">
           <Label htmlFor="signin-handle">Handle</Label>
-          <Input
+          <ActorHandleTypeaheadInput
             id="signin-handle"
-            type="text"
             autoComplete="username"
             placeholder="handle.example.com"
             value={handle}
-            onChange={(e) => setHandle(e.target.value)}
+            onChange={setHandle}
             disabled={busy}
           />
         </div>
