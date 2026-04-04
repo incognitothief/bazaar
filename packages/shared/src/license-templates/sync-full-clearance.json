@@ -1,0 +1,21 @@
+{
+  "$type": "diamonds.whereditgo.bazaar.license.terms",
+  "title": "Sync License — Full Clearance",
+  "tier": "syncFull",
+  "rightsType": "both",
+  "version": "1.0",
+  "territoryCoverage": { "scope": "worldwide" },
+  "checkoutConsentRequired": true,
+  "usageRestrictions": {
+    "allowsStreaming": false,
+    "allowsDownload": true,
+    "allowsCommercialUse": true,
+    "allowsDerivatives": false,
+    "allowsSync": true,
+    "allowsBroadcast": false,
+    "requiresAttribution": true,
+    "requiresMechanicalReporting": true,
+    "requiresShareAlike": false
+  },
+  "summary": "Full sync clearance — both master and publishing rights included. No separate clearance required."
+}

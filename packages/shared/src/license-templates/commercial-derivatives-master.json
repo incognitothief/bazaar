@@ -1,0 +1,21 @@
+{
+  "$type": "diamonds.whereditgo.bazaar.license.terms",
+  "title": "Commercial Use with Derivatives — Master Only",
+  "tier": "commercial",
+  "rightsType": "master",
+  "version": "1.0",
+  "territoryCoverage": { "scope": "worldwide" },
+  "checkoutConsentRequired": true,
+  "usageRestrictions": {
+    "allowsStreaming": true,
+    "allowsDownload": true,
+    "allowsCommercialUse": true,
+    "allowsDerivatives": true,
+    "allowsSync": false,
+    "allowsBroadcast": false,
+    "requiresAttribution": true,
+    "requiresMechanicalReporting": false,
+    "requiresShareAlike": false
+  },
+  "summary": "Commercial use and derivative works permitted on the master recording. Publishing rights not included."
+}

@@ -25,13 +25,19 @@ import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { scoreCompleteness } from "@/hooks/useCompletenessScore";
 import type { ParsedAudioMeta } from "@/lib/audio/parse";
 import {
+  LICENSE_TEMPLATE_COMPLEXITY_META,
+  LICENSE_TEMPLATE_COMPLEXITY_ORDER,
+  licenseTemplatesForComplexity,
+  type LicenseTemplateComplexity,
+  type LicenseTemplateId,
+} from "@bazaar/shared";
+import {
   createCollection,
   createDigitalItem,
   createLicenseTerms,
   createListing,
-  findLicenseByTemplateKey,
-  LICENSE_TEMPLATES,
-  type LicenseTemplateKey,
+  findLicenseByTemplateId,
+  licenseTermsPayloadFromTemplateId,
 } from "@/lib/atproto/records";
 import { sha256HexOfFile } from "@/lib/crypto/sha256File";
 import { uploadBlob } from "@/lib/atproto/upload";
@@ -78,8 +84,8 @@ export function UploadDigitalPage() {
   const [licenseMode, setLicenseMode] = useState<"template" | "custom">(
     "template",
   );
-  const [licenseTemplateKey, setLicenseTemplateKey] =
-    useState<LicenseTemplateKey | null>("personalOnly");
+  const [licenseTemplateId, setLicenseTemplateId] =
+    useState<LicenseTemplateId | null>("personal-use");
 
   const [priceAmount, setPriceAmount] = useState("9.99");
   const [listingStatus, setListingStatus] = useState<
@@ -162,21 +168,8 @@ export function UploadDigitalPage() {
       : !!audioFile && !!parsedMeta);
 
   function buildLicenseTermsPayload() {
-    if (licenseMode !== "template" || !licenseTemplateKey) return null;
-    const t = LICENSE_TEMPLATES[licenseTemplateKey];
-    return {
-      title: t.title,
-      tier: t.tier,
-      rightsType: t.rightsType,
-      version: t.version,
-      territoryCoverage: { ...t.territoryCoverage },
-      usageRestrictions: t.usageRestrictions
-        ? { ...t.usageRestrictions }
-        : undefined,
-      checkoutConsentRequired: t.checkoutConsentRequired,
-      humanReadableUrl: t.humanReadableUrl,
-      summary: t.summary,
-    };
+    if (licenseMode !== "template" || !licenseTemplateId) return null;
+    return licenseTermsPayloadFromTemplateId(licenseTemplateId);
   }
 
   async function onPublish() {
@@ -212,10 +205,10 @@ export function UploadDigitalPage() {
       setSubmitStep("Uploading audio…");
       let licenseUri: string;
       let licenseGrantCid: string;
-      const existing = await findLicenseByTemplateKey(
+      const existing = await findLicenseByTemplateId(
         agent,
         session.did,
-        licenseTemplateKey!,
+        licenseTemplateId!,
       );
       if (existing) {
         licenseUri = existing.uri;
@@ -526,24 +519,41 @@ export function UploadDigitalPage() {
             </Button>
           </div>
           {licenseMode === "template" ? (
-            <div className="grid gap-3">
-              {(Object.keys(LICENSE_TEMPLATES) as LicenseTemplateKey[]).map(
-                (k) => {
-                  const t = LICENSE_TEMPLATES[k];
+            <div className="space-y-8 max-h-[min(70vh,520px)] overflow-y-auto pr-1">
+              {LICENSE_TEMPLATE_COMPLEXITY_ORDER.map(
+                (complexity: LicenseTemplateComplexity) => {
+                  const meta = LICENSE_TEMPLATE_COMPLEXITY_META[complexity];
+                  const templates = licenseTemplatesForComplexity(complexity);
                   return (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setLicenseTemplateKey(k)}
-                      className={`rounded-lg border p-4 text-left ${
-                        licenseTemplateKey === k ? "ring-2 ring-ring" : ""
-                      }`}
-                    >
-                      <p className="font-medium">{t.title}</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {t.summary}
-                      </p>
-                    </button>
+                    <div key={complexity} className="space-y-3">
+                      <div>
+                        <p className="text-sm font-medium">{meta.label}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {meta.description}
+                        </p>
+                      </div>
+                      <div className="grid gap-2">
+                        {templates.map((def) => (
+                          <button
+                            key={def.id}
+                            type="button"
+                            onClick={() => setLicenseTemplateId(def.id)}
+                            className={`rounded-lg border p-3 text-left ${
+                              licenseTemplateId === def.id
+                                ? "ring-2 ring-ring"
+                                : ""
+                            }`}
+                          >
+                            <p className="text-sm font-medium">
+                              {def.record.title}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                              {def.record.summary}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   );
                 },
               )}
@@ -560,7 +570,7 @@ export function UploadDigitalPage() {
               Back
             </Button>
             <Button
-              disabled={!licenseTemplateKey}
+              disabled={!licenseTemplateId}
               onClick={() => setStep(4)}
             >
               Continue

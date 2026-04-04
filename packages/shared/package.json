@@ -4,16 +4,23 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
     "./lexicons": {
-      "types": "./dist/lexicons/docs.d.ts",
-      "import": "./dist/lexicons/docs.js"
+      "types": "./src/lexicons/docs.ts",
+      "import": "./src/lexicons/docs.ts",
+      "default": "./src/lexicons/docs.ts"
+    },
+    "./license-templates": {
+      "types": "./src/license-templates/registry.ts",
+      "import": "./src/license-templates/registry.ts",
+      "default": "./src/license-templates/registry.ts"
     }
   },
   "scripts": {
-    "build": "tsc && cp src/lexicons/*.json dist/lexicons/",
+    "build": "tsc && mkdir -p dist/lexicons dist/license-templates && cp src/lexicons/*.json dist/lexicons/ && cp src/license-templates/*.json dist/license-templates/",
     "validate-lexicons": "node ./scripts/validate-lexicons.mjs"
   },
   "dependencies": {

@@ -1,0 +1,22 @@
+{
+  "$type": "diamonds.whereditgo.bazaar.license.terms",
+  "title": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 (CC BY-NC-ND)",
+  "tier": "personal",
+  "rightsType": "master",
+  "version": "4.0",
+  "territoryCoverage": { "scope": "worldwide" },
+  "checkoutConsentRequired": false,
+  "humanReadableUrl": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+  "usageRestrictions": {
+    "allowsStreaming": true,
+    "allowsDownload": true,
+    "allowsCommercialUse": false,
+    "allowsDerivatives": false,
+    "allowsSync": false,
+    "allowsBroadcast": false,
+    "requiresAttribution": true,
+    "requiresMechanicalReporting": false,
+    "requiresShareAlike": false
+  },
+  "summary": "Free to share with attribution. No commercial use and no modifications permitted. This is a public grant, not a buyer-specific license."
+}
