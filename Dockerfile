@@ -23,9 +23,11 @@ ENV VITE_ATPROTO_SERVICE=${VITE_ATPROTO_SERVICE} \
 COPY package.json package-lock.json turbo.json ./
 COPY packages/client/package.json packages/client/
 COPY packages/server/package.json packages/server/
+COPY packages/shared/package.json packages/shared/
 RUN npm ci
 COPY packages/client packages/client
 COPY packages/server packages/server
+COPY packages/shared packages/shared
 RUN npm run build
 
 FROM oven/bun:1-slim
