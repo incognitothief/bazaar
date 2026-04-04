@@ -272,8 +272,8 @@ export type Fulfillment = {
   updatedAt?: string;
 };
 
-export type ActorProfile = {
-  $type: "diamonds.whereditgo.bazaar.actor.profile";
+export type ActorMerchant = {
+  $type: "diamonds.whereditgo.bazaar.actor.merchant";
   displayName: string;
   description?: string;
   storefrontUrl?: string;

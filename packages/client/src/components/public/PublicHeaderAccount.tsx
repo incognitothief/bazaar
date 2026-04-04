@@ -6,7 +6,7 @@ import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { fetchActorAvatarByActor } from "@/lib/actorTypeahead";
-import type { ActorProfile } from "@/types/lexicons";
+import type { ActorMerchant } from "@/types/lexicons";
 import { merchantSignInUrl } from "@/lib/signInReturn";
 import { cn } from "@/lib/utils";
 
@@ -62,11 +62,11 @@ export function PublicHeaderAccount() {
         const agent = createPublicAgent();
         const res = await agent.com.atproto.repo.listRecords({
           repo: session.did,
-          collection: BAZAAR_COLLECTION.actorProfile,
+          collection: BAZAAR_COLLECTION.actorMerchant,
           limit: 1,
         });
         const row = res.data.records[0];
-        const v = row?.value as ActorProfile | undefined;
+        const v = row?.value as ActorMerchant | undefined;
         const cid = v?.avatarCid;
         if (!cid) return;
         const url = await fetchBlobObjectUrl(agent, session.did, cid);

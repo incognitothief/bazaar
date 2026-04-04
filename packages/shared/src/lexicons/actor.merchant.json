@@ -1,6 +1,6 @@
 {
   "lexicon": 1,
-  "id": "diamonds.whereditgo.bazaar.actor.profile",
+  "id": "diamonds.whereditgo.bazaar.actor.merchant",
   "defs": {
     "main": {
       "type": "record",

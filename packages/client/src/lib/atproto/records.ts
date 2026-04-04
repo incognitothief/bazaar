@@ -7,7 +7,7 @@ import {
 } from "@bazaar/shared";
 import type { ATPRepoClient } from "./session";
 import type {
-  ActorProfile,
+  ActorMerchant,
   Collection,
   DigitalItem,
   LicenseTerms,
@@ -259,9 +259,9 @@ export async function listListingRows(
     }));
 }
 
-export async function putActorProfile(
+export async function putActorMerchant(
   agent: ATPRepoClient,
-  record: ActorProfile,
+  record: ActorMerchant,
   rkey: string,
   swapCid?: string,
 ): Promise<void> {
@@ -269,27 +269,27 @@ export async function putActorProfile(
   if (!did) throw new Error("Not authenticated");
   await agent.com.atproto.repo.putRecord({
     repo: did,
-    collection: BAZAAR_COLLECTION.actorProfile,
+    collection: BAZAAR_COLLECTION.actorMerchant,
     rkey,
     ...(swapCid ? { swapRecord: swapCid } : {}),
     record: record as unknown as Record<string, unknown>,
   });
 }
 
-export async function createActorProfile(
+export async function createActorMerchant(
   agent: ATPRepoClient,
-  record: Omit<ActorProfile, "$type" | "createdAt">,
+  record: Omit<ActorMerchant, "$type" | "createdAt">,
 ): Promise<{ uri: string; cid: string }> {
   const did = agent.session?.did;
   if (!did) throw new Error("Not authenticated");
-  const full: ActorProfile = {
-    $type: "diamonds.whereditgo.bazaar.actor.profile",
+  const full: ActorMerchant = {
+    $type: "diamonds.whereditgo.bazaar.actor.merchant",
     ...record,
     createdAt: nowIso(),
   };
   const res = await agent.com.atproto.repo.createRecord({
     repo: did,
-    collection: BAZAAR_COLLECTION.actorProfile,
+    collection: BAZAAR_COLLECTION.actorMerchant,
     record: full as unknown as Record<string, unknown>,
   });
   return { uri: res.data.uri, cid: res.data.cid };
