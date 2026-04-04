@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, Menu } from "lucide-react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-} from "@/components/ui/sheet";
+  Link,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { cn } from "@/lib/utils";
 import { getAuthRole } from "@/lib/auth";
@@ -83,11 +86,7 @@ function MerchantNavPanel({
         sheetVariant && "pt-14",
       )}
     >
-      <Link
-        to="/"
-        className="shrink-0 font-semibold"
-        onClick={onNavigate}
-      >
+      <Link to="/" className="shrink-0 font-semibold" onClick={onNavigate}>
         bazaar
       </Link>
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain">
@@ -130,12 +129,7 @@ function MerchantNavPanel({
         </div>
 
         {mainNav.map((n) => (
-          <NavLink
-            key={n.to}
-            to={n.to}
-            className={navCls}
-            onClick={onNavigate}
-          >
+          <NavLink key={n.to} to={n.to} className={navCls} onClick={onNavigate}>
             {n.label}
           </NavLink>
         ))}
@@ -186,23 +180,21 @@ export function MerchantLayout() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-muted-foreground">Loading…</div>
+      <div className="p-8 text-center text-muted-foreground">
+        Pulling data from pds...
+      </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="p-8 text-center text-muted-foreground">
-        Redirecting…
-      </div>
+      <div className="p-8 text-center text-muted-foreground">Redirecting…</div>
     );
   }
 
   if (getAuthRole(session.did) !== "merchant") {
     return (
-      <div className="p-8 text-center text-muted-foreground">
-        Redirecting…
-      </div>
+      <div className="p-8 text-center text-muted-foreground">Redirecting…</div>
     );
   }
 
