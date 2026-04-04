@@ -9,9 +9,9 @@ import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { fetchActorAvatarByActor } from "@/lib/actorTypeahead";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import {
-  createActorProfile,
+  createActorMerchant,
   listListingRows,
-  putActorProfile,
+  putActorMerchant,
   putListing,
 } from "@/lib/atproto/records";
 import { browserApiUrl } from "@/lib/browserApi";
@@ -19,7 +19,7 @@ import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { pdslsRepoCollectionsUrl } from "@/lib/pdsls";
 import { cn } from "@/lib/utils";
-import type { ActorProfile, Listing } from "@/types/lexicons";
+import type { ActorMerchant, Listing } from "@/types/lexicons";
 import { toast } from "sonner";
 
 export function SettingsPage() {
@@ -61,7 +61,7 @@ export function SettingsPage() {
     void (async () => {
       const res = (await agent.com.atproto.repo.listRecords({
         repo: session.did,
-        collection: BAZAAR_COLLECTION.actorProfile,
+        collection: BAZAAR_COLLECTION.actorMerchant,
         limit: 1,
       })) as {
         data: { records: Array<{ uri: string; cid: string; value: unknown }> };
@@ -70,7 +70,7 @@ export function SettingsPage() {
       if (!row) return;
       setProfileRkey(row.uri.split("/").pop() ?? null);
       setProfileCid(row.cid);
-      const v = row.value as ActorProfile;
+      const v = row.value as ActorMerchant;
       setStorefrontName(v.displayName ?? "");
       setDescription(v.description ?? "");
       setProfileCreatedAt(v.createdAt);
@@ -114,11 +114,11 @@ export function SettingsPage() {
         const pub = createPublicAgent();
         const res = await pub.com.atproto.repo.listRecords({
           repo: session.did,
-          collection: BAZAAR_COLLECTION.actorProfile,
+          collection: BAZAAR_COLLECTION.actorMerchant,
           limit: 1,
         });
         const row = res.data.records[0];
-        const v = row?.value as ActorProfile | undefined;
+        const v = row?.value as ActorMerchant | undefined;
         const cid = v?.avatarCid;
         if (!cid) return;
         const url = await fetchBlobObjectUrl(pub, session.did, cid);
@@ -154,17 +154,17 @@ export function SettingsPage() {
 
   async function saveProfile() {
     if (!agent || !session) return;
-    const record: ActorProfile = {
-      $type: "diamonds.whereditgo.bazaar.actor.profile",
+    const record: ActorMerchant = {
+      $type: "diamonds.whereditgo.bazaar.actor.merchant",
       displayName: storefrontName.trim() || "Storefront",
       description: description || undefined,
       createdAt: profileCreatedAt,
     };
     try {
       if (profileRkey && profileCid) {
-        await putActorProfile(agent, record, profileRkey, profileCid);
+        await putActorMerchant(agent, record, profileRkey, profileCid);
       } else {
-        const created = await createActorProfile(agent, {
+        const created = await createActorMerchant(agent, {
           displayName: storefrontName.trim() || "Storefront",
           description: description || undefined,
         });

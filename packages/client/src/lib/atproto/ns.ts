@@ -8,5 +8,5 @@ export const BAZAAR_COLLECTION = {
   consent: "diamonds.whereditgo.bazaar.purchase.consent",
   recording: "diamonds.whereditgo.bazaar.catalog.recording",
   composition: "diamonds.whereditgo.bazaar.catalog.composition",
-  actorProfile: "diamonds.whereditgo.bazaar.actor.profile",
+  actorMerchant: "diamonds.whereditgo.bazaar.actor.merchant",
 } as const;

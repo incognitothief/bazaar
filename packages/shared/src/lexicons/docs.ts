@@ -1,6 +1,6 @@
 import type { LexiconDoc } from "@atproto/lexicon";
 
-import actorProfile from "./actor.profile.json" with { type: "json" };
+import actorMerchant from "./actor.merchant.json" with { type: "json" };
 import catalogBundle from "./catalog.item.bundle.json" with { type: "json" };
 import catalogCollection from "./catalog.collection.json" with { type: "json" };
 import catalogComposition from "./catalog.composition.json" with { type: "json" };
@@ -29,7 +29,7 @@ const RAW_DOCS = [
   purchaseConsent,
   purchaseStock,
   purchaseFulfillment,
-  actorProfile,
+  actorMerchant,
 ] as const;
 
 export const BAZAAR_LEXICON_DOCS = RAW_DOCS as unknown as readonly LexiconDoc[];
