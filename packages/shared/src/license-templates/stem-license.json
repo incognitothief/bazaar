@@ -1,0 +1,21 @@
+{
+  "$type": "diamonds.whereditgo.bazaar.license.terms",
+  "title": "Stem License",
+  "tier": "stemLicense",
+  "rightsType": "master",
+  "version": "1.0",
+  "territoryCoverage": { "scope": "worldwide" },
+  "checkoutConsentRequired": true,
+  "usageRestrictions": {
+    "allowsStreaming": true,
+    "allowsDownload": true,
+    "allowsCommercialUse": true,
+    "allowsDerivatives": true,
+    "allowsSync": false,
+    "allowsBroadcast": false,
+    "requiresAttribution": true,
+    "requiresMechanicalReporting": false,
+    "requiresShareAlike": false
+  },
+  "summary": "Stems licensed for remixing and commercial production use. Credit the original artist in derivative works."
+}

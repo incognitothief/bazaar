@@ -1,4 +1,10 @@
 import { AtUri } from "@atproto/syntax";
+import {
+  getLicenseTemplateDefinition,
+  licenseRecordMatchesTemplate,
+  stripLicenseTemplateType,
+  type LicenseTemplateId,
+} from "@bazaar/shared";
 import type { ATPRepoClient } from "./session";
 import type {
   ActorProfile,
@@ -10,6 +16,8 @@ import type {
 } from "@/types/lexicons";
 import { BAZAAR_COLLECTION } from "./ns";
 
+export type { LicenseTemplateId } from "@bazaar/shared";
+
 type ListRecordsResponse = {
   data: {
     records: Array<{ uri: string; cid: string; value: unknown }>;
@@ -20,65 +28,17 @@ type GetRecordResponse = {
   data: { cid: string; value: unknown };
 };
 
-const TEMPLATE_BASE = {
-  rightsType: "both" as const,
-  version: "1.0",
-  territoryCoverage: { scope: "worldwide" as const },
-  checkoutConsentRequired: true,
-};
-
-export const LICENSE_TEMPLATES = {
-  personalOnly: {
-    title: "Personal use only",
-    tier: "personal" as const,
-    ...TEMPLATE_BASE,
-    usageRestrictions: {
-      allowsStreaming: true,
-      allowsDownload: true,
-      allowsCommercialUse: false,
-      allowsDerivatives: false,
-      allowsSync: false,
-      requiresAttribution: false,
-    },
-    humanReadableUrl: `${import.meta.env.VITE_APP_URL}/licenses/personal-v1`,
-    summary:
-      "Buyer may download and listen for personal use only. No commercial use, no derivatives, no sync.",
-  },
-  ccByNcNd: {
-    title: "CC BY-NC-ND 4.0 (summary)",
-    tier: "personal" as const,
-    ...TEMPLATE_BASE,
-    usageRestrictions: {
-      allowsStreaming: true,
-      allowsDownload: true,
-      allowsCommercialUse: false,
-      allowsDerivatives: false,
-      allowsSync: false,
-      requiresAttribution: true,
-    },
-    humanReadableUrl: "https://creativecommons.org/licenses/by-nc-nd/4.0/",
-    summary:
-      "Attribution required; non-commercial; no derivatives. See Creative Commons BY-NC-ND 4.0.",
-  },
-  ccByNc: {
-    title: "CC BY-NC 4.0 (summary)",
-    tier: "personal" as const,
-    ...TEMPLATE_BASE,
-    usageRestrictions: {
-      allowsStreaming: true,
-      allowsDownload: true,
-      allowsCommercialUse: false,
-      allowsDerivatives: true,
-      allowsSync: false,
-      requiresAttribution: true,
-    },
-    humanReadableUrl: "https://creativecommons.org/licenses/by-nc/4.0/",
-    summary:
-      "Attribution required; non-commercial; remixes allowed if shared under the same license.",
-  },
-} as const;
-
-export type LicenseTemplateKey = keyof typeof LICENSE_TEMPLATES;
+/** Fields for `createLicenseTerms` derived from a shared template (excludes `$type`, `createdAt`). */
+export function licenseTermsPayloadFromTemplateId(
+  templateId: LicenseTemplateId,
+): Omit<LicenseTerms, "$type" | "createdAt"> | null {
+  const def = getLicenseTemplateDefinition(templateId);
+  if (!def) return null;
+  return stripLicenseTemplateType(def.record) as Omit<
+    LicenseTerms,
+    "$type" | "createdAt"
+  >;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -399,12 +359,13 @@ export async function listTracksForArtist(
   return items.filter((i) => i.itemClass === "track");
 }
 
-export async function findLicenseByTemplateKey(
+export async function findLicenseByTemplateId(
   agent: ATPRepoClient,
   did: string,
-  templateKey: LicenseTemplateKey,
+  templateId: LicenseTemplateId,
 ): Promise<{ uri: string; cid: string } | null> {
-  const template = LICENSE_TEMPLATES[templateKey];
+  const def = getLicenseTemplateDefinition(templateId);
+  if (!def) return null;
   const res = (await agent.com.atproto.repo.listRecords({
     repo: did,
     collection: BAZAAR_COLLECTION.licenseTerms,
@@ -413,7 +374,7 @@ export async function findLicenseByTemplateKey(
   for (const row of res.data.records) {
     const v = row.value;
     if (!isLicenseTerms(v)) continue;
-    if (v.title === template.title && v.version === template.version) {
+    if (licenseRecordMatchesTemplate(v, def)) {
       return { uri: row.uri, cid: row.cid };
     }
   }

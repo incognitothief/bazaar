@@ -1,0 +1,21 @@
+{
+  "$type": "diamonds.whereditgo.bazaar.license.terms",
+  "title": "Sync License — Master Only",
+  "tier": "syncMaster",
+  "rightsType": "master",
+  "version": "1.0",
+  "territoryCoverage": { "scope": "worldwide" },
+  "checkoutConsentRequired": true,
+  "usageRestrictions": {
+    "allowsStreaming": false,
+    "allowsDownload": true,
+    "allowsCommercialUse": true,
+    "allowsDerivatives": false,
+    "allowsSync": true,
+    "allowsBroadcast": false,
+    "requiresAttribution": true,
+    "requiresMechanicalReporting": true,
+    "requiresShareAlike": false
+  },
+  "summary": "Sync rights granted for the master recording only. Buyer must separately clear publishing rights. Mechanical reporting required."
+}

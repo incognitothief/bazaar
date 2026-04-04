@@ -1,0 +1,21 @@
+{
+  "$type": "diamonds.whereditgo.bazaar.license.terms",
+  "title": "Sync License — Publishing Only",
+  "tier": "syncPublishing",
+  "rightsType": "publishing",
+  "version": "1.0",
+  "territoryCoverage": { "scope": "worldwide" },
+  "checkoutConsentRequired": true,
+  "usageRestrictions": {
+    "allowsStreaming": false,
+    "allowsDownload": true,
+    "allowsCommercialUse": true,
+    "allowsDerivatives": false,
+    "allowsSync": true,
+    "allowsBroadcast": false,
+    "requiresAttribution": true,
+    "requiresMechanicalReporting": true,
+    "requiresShareAlike": false
+  },
+  "summary": "Publishing rights cleared for sync use. Master rights not included — buyer must separately license the recording."
+}
