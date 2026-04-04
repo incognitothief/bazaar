@@ -34,6 +34,11 @@ function fmtRetry(ms: number | null): string {
   }
 }
 
+/** pdsls explorer: repo collections for this DID. */
+function buyerDidPdslsUrl(did: string): string {
+  return `https://pdsls.dev/at://${did}#collections`;
+}
+
 function Ellipsis({ text, className }: { text: string; className?: string }) {
   if (!text) return <span className="text-muted-foreground">—</span>;
   return (
@@ -152,7 +157,19 @@ export function MerchantTransactionsPage() {
                     ) : null}
                   </td>
                   <td className="px-3 py-2 align-top">
-                    <Ellipsis text={r.buyerDid ?? ""} />
+                    {r.buyerDid ? (
+                      <a
+                        href={buyerDidPdslsUrl(r.buyerDid)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block max-w-[14rem] truncate font-mono text-xs text-primary underline-offset-2 hover:underline"
+                        title={r.buyerDid}
+                      >
+                        {r.buyerDid}
+                      </a>
+                    ) : (
+                      <Ellipsis text="" />
+                    )}
                   </td>
                   <td className="px-3 py-2 align-top font-mono text-xs">
                     {r.attemptCount}
