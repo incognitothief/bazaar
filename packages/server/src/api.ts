@@ -26,7 +26,7 @@ export function createApiRouter(db: Db, oauthClient: OAuthClient) {
   });
 
   api.route("/atproto", createAtprotoRouter(db, oauthClient));
-  api.route("/stripe", createStripeRouter(db));
+  api.route("/stripe", createStripeRouter(db, oauthClient));
   api.route("/catalog", createCatalogRouter());
 
   api.notFound((c) => c.json({ error: "not_found" }, 404));

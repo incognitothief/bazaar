@@ -37,18 +37,27 @@ export function PurchaseSuccessPage() {
         </p>
       ) : null}
       <p className="text-sm text-muted-foreground">
-        Your download link will arrive shortly.
+        After Stripe confirms payment, the app writes a{" "}
+        <code className="text-xs">purchase.receipt</code> and{" "}
+        <code className="text-xs">purchase.consent</code> to your PDS. That
+        requires you to have signed in with Bazaar before checkout so the server
+        can complete those records on your behalf.
       </p>
-      <p className="text-sm">
-        Your receipt has been saved to your ATProto account when a buyer DID was
-        captured at checkout.
+      <p className="text-sm text-muted-foreground">
+        Download access will show up here once delivery is wired; your purchases
+        also appear on the dashboard when receipts are in your repo.
       </p>
-      <Link
-        to="/"
-        className={cn(buttonVariants({ variant: "outline" }))}
-      >
-        Back to storefront
-      </Link>
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+        <Link
+          to="/dashboard"
+          className={cn(buttonVariants({ variant: "default" }))}
+        >
+          View purchases
+        </Link>
+        <Link to="/" className={cn(buttonVariants({ variant: "outline" }))}>
+          Back to storefront
+        </Link>
+      </div>
     </div>
   );
 }

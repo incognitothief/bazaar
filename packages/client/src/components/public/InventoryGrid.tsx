@@ -8,11 +8,14 @@ export function InventoryGrid({
   artistDid,
   entries,
   listingsByItemUri,
+  previewItemUri,
 }: {
   agent: Agent;
   artistDid: string;
   entries: CatalogEntry[];
   listingsByItemUri: Record<string, Listing>;
+  /** Mark this item’s card as a local preview (see devCatalogDummy). */
+  previewItemUri?: string | null;
 }) {
   const visible = entries.filter((e) => listingsByItemUri[e.uri]);
 
@@ -26,6 +29,7 @@ export function InventoryGrid({
           itemUri={e.uri}
           item={e.item}
           listing={listingsByItemUri[e.uri]!}
+          preview={previewItemUri != null && e.uri === previewItemUri}
         />
       ))}
     </div>

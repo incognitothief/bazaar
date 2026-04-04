@@ -5,6 +5,14 @@ import {
   getRecordValue,
   listListingRows,
 } from "@/lib/atproto/records";
+import {
+  buildDummyDigitalItem,
+  buildDummyListing,
+  buildDummyLicenseTerms,
+  catalogDummyEnabled,
+  DUMMY_LISTING_AT,
+  isDummyStorefrontItem,
+} from "@/lib/devCatalogDummy";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { BuyButton } from "@/components/public/BuyButton";
@@ -44,19 +52,31 @@ export function ItemDetailPage() {
       setLoading(false);
       return;
     }
+    const dummyTarget =
+      catalogDummyEnabled() && isDummyStorefrontItem(itemUri, artistDid);
     let cancelled = false;
     void (async () => {
       setLoading(true);
       try {
-        const v = await getRecordValue<CatalogItem>(agent, itemUri);
+        let v = await getRecordValue<CatalogItem>(agent, itemUri);
         if (cancelled) return;
-        setItem(v);
+        if (!v && dummyTarget) {
+          v = buildDummyDigitalItem(itemUri, artistDid);
+        }
+        setItem(v ?? null);
+
         const rows = await listListingRows(agent, artistDid);
         if (cancelled) return;
         const row = rows.find((r) => r.listing.item.uri === itemUri);
-        const listingRow = row?.listing ?? null;
+        let listingRow: Listing | null = row?.listing ?? null;
+        let listingUriVal: string | null = row?.uri ?? null;
+        if (!listingRow && dummyTarget) {
+          listingRow = buildDummyListing(itemUri);
+          listingUriVal = DUMMY_LISTING_AT;
+        }
         setListing(listingRow);
-        setListingUri(row?.uri ?? null);
+        setListingUri(listingUriVal);
+
         let licUri = listingRow?.licenseUri;
         if (
           !licUri &&
@@ -68,8 +88,13 @@ export function ItemDetailPage() {
         }
         if (licUri) {
           const lt = await getRecordValue<LicenseTerms>(agent, licUri);
-          if (!cancelled) setLicense(lt);
-        } else setLicense(null);
+          if (cancelled) return;
+          setLicense(
+            lt ?? (dummyTarget ? buildDummyLicenseTerms() : null),
+          );
+        } else {
+          setLicense(dummyTarget ? buildDummyLicenseTerms() : null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -106,8 +131,20 @@ export function ItemDetailPage() {
       ? item.artistDid
       : artistDid ?? "";
 
+  const showDummyBanner =
+    catalogDummyEnabled() &&
+    !!artistDid?.startsWith("did:") &&
+    isDummyStorefrontItem(itemUri, artistDid);
+
   return (
     <article className="space-y-10">
+      {showDummyBanner ? (
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+          Preview catalog: listing and license are synthetic. Checkout requires
+          real <code className="text-xs">catalog.listing</code> and{" "}
+          <code className="text-xs">license.terms</code> records on your PDS.
+        </p>
+      ) : null}
       <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
         <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)]">
           <ArtworkImage
