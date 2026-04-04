@@ -6,6 +6,7 @@ import {
   listLicenseTermsRows,
   type LicenseTermsRow,
 } from "@/lib/atproto/records";
+import { pdslsRecordUrl } from "@/lib/pdsls";
 
 function ellipsizeMiddle(s: string, head: number, tail: number): string {
   if (s.length <= head + tail + 1) return s;
@@ -99,12 +100,31 @@ export function LicensePage() {
                       {r.terms.version}
                     </td>
                     <td className="px-3 py-2 align-top">
-                      <code
-                        className="text-[0.7rem] break-all text-muted-foreground"
-                        title={r.uri}
-                      >
-                        {ellipsizeMiddle(r.uri, 28, 12)}
-                      </code>
+                      {(() => {
+                        const href = pdslsRecordUrl(r.uri);
+                        const label = ellipsizeMiddle(r.uri, 28, 12);
+                        if (!href) {
+                          return (
+                            <code
+                              className="text-[0.7rem] break-all text-muted-foreground"
+                              title={r.uri}
+                            >
+                              {label}
+                            </code>
+                          );
+                        }
+                        return (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[0.7rem] break-all font-mono text-primary underline-offset-2 hover:underline"
+                            title={r.uri}
+                          >
+                            {label}
+                          </a>
+                        );
+                      })()}
                     </td>
                     <td className="px-3 py-2 align-top">
                       <code

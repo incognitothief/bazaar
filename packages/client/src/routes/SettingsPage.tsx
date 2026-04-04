@@ -6,6 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
+import { fetchActorAvatarByActor } from "@/lib/actorTypeahead";
+import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import {
   createActorProfile,
   listListingRows,
@@ -14,6 +16,8 @@ import {
 } from "@/lib/atproto/records";
 import { browserApiUrl } from "@/lib/browserApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
+import { createPublicAgent } from "@/lib/atproto/session";
+import { pdslsRepoCollectionsUrl } from "@/lib/pdsls";
 import { cn } from "@/lib/utils";
 import type { ActorProfile, Listing } from "@/types/lexicons";
 import { toast } from "sonner";
@@ -30,6 +34,11 @@ export function SettingsPage() {
   );
   const [stripeConnected, setStripeConnected] = useState(false);
   const [unpub, setUnpub] = useState("");
+  const [relayAvatarUrl, setRelayAvatarUrl] = useState<string | null>(null);
+  const [bazaarAvatarObjectUrl, setBazaarAvatarObjectUrl] = useState<
+    string | null
+  >(null);
+  const [relayAvatarBroken, setRelayAvatarBroken] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -67,6 +76,81 @@ export function SettingsPage() {
       setProfileCreatedAt(v.createdAt);
     })();
   }, [agent, session]);
+
+  useEffect(() => {
+    setRelayAvatarBroken(false);
+  }, [relayAvatarUrl]);
+
+  useEffect(() => {
+    if (!session?.did) {
+      setRelayAvatarUrl(null);
+      setBazaarAvatarObjectUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const ac = new AbortController();
+
+    setRelayAvatarUrl(null);
+    setBazaarAvatarObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+
+    void fetchActorAvatarByActor(session.did, ac.signal)
+      .then((url) => {
+        if (cancelled || !url) return;
+        setRelayAvatarUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setRelayAvatarUrl(null);
+      });
+
+    void (async () => {
+      try {
+        const pub = createPublicAgent();
+        const res = await pub.com.atproto.repo.listRecords({
+          repo: session.did,
+          collection: BAZAAR_COLLECTION.actorProfile,
+          limit: 1,
+        });
+        const row = res.data.records[0];
+        const v = row?.value as ActorProfile | undefined;
+        const cid = v?.avatarCid;
+        if (!cid) return;
+        const url = await fetchBlobObjectUrl(pub, session.did, cid);
+        if (cancelled) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        if (!url) return;
+        setBazaarAvatarObjectUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      } catch {
+        if (!cancelled) {
+          setBazaarAvatarObjectUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      ac.abort();
+      setRelayAvatarUrl(null);
+      setBazaarAvatarObjectUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [session?.did]);
 
   async function saveProfile() {
     if (!agent || !session) return;
@@ -117,6 +201,9 @@ export function SettingsPage() {
 
   if (!session || !agent) return null;
 
+  const accountInitial =
+    session.handle?.trim()?.charAt(0)?.toUpperCase() ?? "?";
+
   return (
     <div className="w-full min-w-0 max-w-xl space-y-12">
       <h1 className="text-2xl font-semibold">Settings</h1>
@@ -161,10 +248,46 @@ export function SettingsPage() {
 
       <section className="space-y-4">
         <h2 className="text-lg font-medium">Connections</h2>
-        <p className="text-sm">
-          ATProto: <span className="font-mono text-xs">{session.did}</span> (
-          {session.handle})
-        </p>
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
+          {relayAvatarUrl && !relayAvatarBroken ? (
+            <img
+              src={relayAvatarUrl}
+              alt=""
+              className="size-12 shrink-0 rounded-full object-cover ring-1 ring-border"
+              onError={() => setRelayAvatarBroken(true)}
+            />
+          ) : bazaarAvatarObjectUrl ? (
+            <img
+              src={bazaarAvatarObjectUrl}
+              alt=""
+              className="size-12 shrink-0 rounded-full object-cover ring-1 ring-border"
+            />
+          ) : (
+            <span
+              className="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground ring-1 ring-border"
+              aria-hidden
+            >
+              {accountInitial}
+            </span>
+          )}
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">ATProto</p>
+            <p className="text-sm">
+              <a
+                href={pdslsRepoCollectionsUrl(session.did)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="break-all font-mono text-xs text-primary underline-offset-2 hover:underline"
+                title="Open repo in pdsls"
+              >
+                {session.did}
+              </a>
+            </p>
+            <p className="truncate text-sm text-muted-foreground">
+              {session.handle}
+            </p>
+          </div>
+        </div>
         <button
           type="button"
           className={cn(buttonVariants({ variant: "outline" }))}
