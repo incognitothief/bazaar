@@ -37,11 +37,14 @@ const oauthClient = await createOAuthClient(db);
 await backfillPaymentFulfillmentFromMeta(db);
 
 const sweepMs = Number(process.env.BAZAAR_FULFILLMENT_SWEEP_MS ?? "45000");
-if (sweepMs > 0 && getStripe()) {
+if (sweepMs > 0) {
   setInterval(() => {
-    void sweepPaymentFulfillment(db, oauthClient).catch((err) =>
-      console.warn("payment fulfillment sweep:", err),
-    );
+    void (async () => {
+      if (!(await getStripe(db))) return;
+      await sweepPaymentFulfillment(db, oauthClient).catch((err) =>
+        console.warn("payment fulfillment sweep:", err),
+      );
+    })();
   }, sweepMs);
 }
 

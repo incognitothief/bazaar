@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CompletenessIndicator } from "@/components/merchant/CompletenessIndicator";
+import {
+  MerchantStripeConnectPanel,
+  type MerchantStripeSettings,
+} from "@/components/merchant/MerchantStripeConnectPanel";
 import { OnboardingChecklist } from "@/components/merchant/OnboardingChecklist";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
@@ -13,9 +17,16 @@ import {
   listListingRows,
 } from "@/lib/atproto/records";
 import { scoreCompleteness } from "@/hooks/useCompletenessScore";
+import {
+  scrollStripeConnectPanelIntoView,
+  STRIPE_CONNECT_PANEL_ID,
+} from "@/lib/stripeConnectScroll";
 import type { DigitalItem } from "@/types/lexicons";
 
+const STRIPE_HASH = `#${STRIPE_CONNECT_PANEL_ID}`;
+
 export function DashboardPage() {
+  const location = useLocation();
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
   const [items, setItems] = useState<
@@ -23,23 +34,64 @@ export function DashboardPage() {
   >([]);
   const [listingCount, setListingCount] = useState(0);
   const [stripeConnected, setStripeConnected] = useState(false);
+  const [stripeSettings, setStripeSettings] = useState<MerchantStripeSettings | null>(null);
+  const [stripeLoading, setStripeLoading] = useState(true);
+  const [stripeSettingsError, setStripeSettingsError] = useState<string | null>(null);
   const [hasLicense, setHasLicense] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const r = await fetch(browserApiUrl("/api/stripe/account-status"), {
-          credentials: "include",
-        });
-        if (r.ok) {
-          const j = (await r.json()) as { connected?: boolean };
-          setStripeConnected(!!j.connected);
-        }
-      } catch {
+  const loadStripeState = useCallback(async () => {
+    setStripeLoading(true);
+    setStripeSettingsError(null);
+    try {
+      const [statusRes, settingsRes] = await Promise.all([
+        fetch(browserApiUrl("/api/stripe/account-status"), { credentials: "include" }),
+        fetch(browserApiUrl("/api/merchant/stripe-settings"), { credentials: "include" }),
+      ]);
+      if (statusRes.ok) {
+        const j = (await statusRes.json()) as { connected?: boolean };
+        setStripeConnected(!!j.connected);
+      } else {
         setStripeConnected(false);
       }
-    })();
+      if (settingsRes.ok) {
+        setStripeSettings((await settingsRes.json()) as MerchantStripeSettings);
+      } else {
+        setStripeSettings(null);
+        const j = (await settingsRes.json().catch(() => null)) as
+          | { error?: string; detail?: string }
+          | null;
+        const parts = [j?.error, j?.detail].filter(
+          (x): x is string => typeof x === "string" && x.length > 0,
+        );
+        setStripeSettingsError(
+          parts.join(": ") ||
+            (settingsRes.status === 401
+              ? "Sign in as the configured store owner to manage Stripe keys."
+              : `Could not load Stripe settings (HTTP ${settingsRes.status}).`),
+        );
+      }
+    } catch {
+      setStripeConnected(false);
+      setStripeSettings(null);
+      setStripeSettingsError("Could not load Stripe settings.");
+    } finally {
+      setStripeLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadStripeState();
+  }, [loadStripeState]);
+
+  /**
+   * Full reload: hash is in URL before React mounts. Client `<Link>`: React Router may restore
+   * scroll after hash-only navigation — use layout effect + shared scroll helper (also used on link click).
+   */
+  useLayoutEffect(() => {
+    if (!session || !agent) return;
+    if (location.hash !== STRIPE_HASH) return;
+    scrollStripeConnectPanelIntoView();
+  }, [session, agent, location.hash, stripeLoading]);
 
   useEffect(() => {
     if (!agent || !session) return;
@@ -65,6 +117,12 @@ export function DashboardPage() {
         stripeConnected={stripeConnected}
         defaultLicenseSet={hasLicense}
         hasItem={items.length > 0}
+      />
+      <MerchantStripeConnectPanel
+        settings={stripeSettings}
+        loading={stripeLoading}
+        loadError={stripeSettingsError}
+        onUpdated={() => void loadStripeState()}
       />
       <div className="grid gap-4 sm:grid-cols-3 mb-8">
         <div className="rounded-lg border border-border p-4">

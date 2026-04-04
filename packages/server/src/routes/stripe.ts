@@ -15,6 +15,9 @@ import type { OAuthClient } from "../lib/atproto/oauth";
 import { storefrontWebOrigin } from "../lib/atproto/oauth-url";
 import { fulfillCheckoutSession } from "../lib/stripe/fulfillCheckoutSession";
 import { getStripe } from "../lib/stripe/getStripe";
+import {
+  resolveStripeWebhookSecret,
+} from "../lib/stripe/stripeCredentials";
 
 /** Same as `bazaar_atp_session` in atproto routes — buyer must match checkout metadata. */
 const SESSION_COOKIE = "bazaar_atp_session";
@@ -63,7 +66,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     if (!listingUri || !itemUri) {
       return c.json({ error: "listingUri and itemUri required" }, 400);
     }
-    const stripe = getStripe();
+    const stripe = await getStripe(db);
     const buyerDidBody = body?.buyerDid ?? "";
     if (stripe && !buyerDidValid(buyerDidBody)) {
       return c.json({ error: "buyerDid required (signed-in ATProto DID)" }, 400);
@@ -187,7 +190,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
    * Requires an httpOnly session cookie whose DID matches `metadata.buyerDid` on the session.
    */
   r.post("/fulfill-session", async (c) => {
-    const stripe = getStripe();
+    const stripe = await getStripe(db);
     if (!stripe) {
       return c.json({ error: "stripe_not_configured" }, 503);
     }
@@ -262,7 +265,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
         paymentStatus: "paid",
       });
     }
-    const stripe = getStripe();
+    const stripe = await getStripe(db);
     if (!stripe) {
       return c.json({ error: "stripe_not_configured" }, 503);
     }
@@ -279,14 +282,25 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     }
   });
 
-  r.get("/account-status", (c) =>
-    c.json({ connected: false, details: "stub" }),
-  );
+  r.get("/account-status", async (c) => {
+    const stripe = await getStripe(db);
+    const whSecret = await resolveStripeWebhookSecret(db);
+    const webhookConfigured = !!(
+      whSecret && !whSecret.includes("PLACEHOLDER")
+    );
+    return c.json({
+      connected: !!stripe,
+      webhookConfigured,
+    });
+  });
 
-  r.get("/connect", () => {
-    const stripe = getStripe();
+  r.get("/connect", async () => {
+    const stripe = await getStripe(db);
     if (!stripe) {
-      return new Response("Stripe is not configured.", { status: 503 });
+      return new Response(
+        "Stripe is not configured. Add STRIPE_SECRET_KEY to the environment or save keys from the merchant dashboard.",
+        { status: 503 },
+      );
     }
     return new Response(
       "Stripe Connect onboarding URL would be generated here (deferred).",
@@ -295,8 +309,8 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
   });
 
   r.post("/webhook", async (c) => {
-    const stripe = getStripe();
-    const whSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const stripe = await getStripe(db);
+    const whSecret = await resolveStripeWebhookSecret(db);
     if (!stripe || !whSecret || whSecret.includes("PLACEHOLDER")) {
       return c.text("Webhook not configured", 503);
     }

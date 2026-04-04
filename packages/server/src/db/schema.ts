@@ -1,5 +1,15 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
+/** Single-row Stripe API keys when not set via environment (see stripeCredentials). */
+export const merchantStripeConfig = sqliteTable("merchant_stripe_config", {
+  singleton: integer("singleton").primaryKey({ autoIncrement: false }).default(1),
+  stripeSecretKey: text("stripe_secret_key"),
+  stripeWebhookSecret: text("stripe_webhook_secret"),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const meta = sqliteTable("meta", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

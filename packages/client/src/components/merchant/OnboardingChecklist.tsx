@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AtpSession } from "@/hooks/useAtpSession";
-import { browserApiUrl } from "@/lib/browserApi";
+import {
+  scrollStripeConnectPanelIntoView,
+  STRIPE_CONNECT_PANEL_ID,
+} from "@/lib/stripeConnectScroll";
 import { merchantSignInUrl } from "@/lib/signInReturn";
 import { cn } from "@/lib/utils";
 
@@ -45,12 +48,13 @@ export function OnboardingChecklist({
     {
       id: "stripe",
       label: "Connect Stripe account",
-      description: "Required to receive payments. Takes 2–10 minutes.",
+      description:
+        "Add your Stripe secret key and webhook signing secret on the dashboard (or set them in server environment).",
       complete: stripeConnected,
       blocking: true,
       action: {
-        label: "Connect Stripe",
-        href: browserApiUrl("/api/stripe/connect"),
+        label: "Set up Stripe",
+        href: `/merchant/dashboard#${STRIPE_CONNECT_PANEL_ID}`,
       },
     },
     {
@@ -123,6 +127,14 @@ export function OnboardingChecklist({
                   <Link
                     to={item.action.href}
                     className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                    preventScrollReset={item.action.href.includes(
+                      `#${STRIPE_CONNECT_PANEL_ID}`,
+                    )}
+                    onClick={
+                      item.action.href.includes(`#${STRIPE_CONNECT_PANEL_ID}`)
+                        ? () => scrollStripeConnectPanelIntoView()
+                        : undefined
+                    }
                   >
                     {item.action.label}
                   </Link>

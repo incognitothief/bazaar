@@ -703,7 +703,7 @@ export async function sweepPaymentFulfillment(
   db: Db,
   oauthClient: OAuthClient,
 ): Promise<void> {
-  const stripe = getStripe();
+  const stripe = await getStripe(db);
   if (!stripe) return;
 
   const now = new Date();
