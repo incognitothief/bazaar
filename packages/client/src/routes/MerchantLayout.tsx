@@ -247,8 +247,8 @@ export function MerchantLayout() {
         </SheetContent>
       </Sheet>
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-y-none p-4 sm:p-6 md:p-8">
-        <div className="mx-auto w-full min-w-0 max-w-6xl flex-1">
+      <main className="flex min-w-0 w-full flex-col p-4 sm:p-6 md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-y-none md:p-8">
+        <div className="mx-auto w-full min-w-0 max-w-6xl md:flex-1">
           <Outlet />
         </div>
       </main>

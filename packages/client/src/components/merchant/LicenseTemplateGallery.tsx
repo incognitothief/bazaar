@@ -118,7 +118,7 @@ export function LicenseTemplateGallery({ agent }: { agent: ATPRepoClient }) {
           selectedId
             ? cn(
                 "fixed bottom-0 left-0 right-0 z-40 border-border bg-background/95 px-4 py-3 shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.15)] backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 sm:px-6 md:left-56 md:px-8 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
-                "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-6 motion-safe:duration-300 motion-safe:ease-out",
+                "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-6 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both",
               )
             : "pt-6",
         )}
