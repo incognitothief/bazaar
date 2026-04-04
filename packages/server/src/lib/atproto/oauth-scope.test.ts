@@ -27,6 +27,9 @@ describe("oauth-scope", () => {
     expect(s).toContain(
       "repo:diamonds.whereditgo.bazaar.purchase.consent?action=create",
     );
+    expect(s).toContain(
+      "repo:diamonds.whereditgo.bazaar.license.terms?action=create",
+    );
   });
 
   test("respects LEXICON_NAMESPACE", () => {
