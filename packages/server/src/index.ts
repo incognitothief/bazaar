@@ -6,6 +6,11 @@ import { serveStatic } from "hono/bun";
 import { createApiRouter } from "./api";
 import { createDb } from "./db";
 import { createOAuthClient } from "./lib/atproto/oauth";
+import {
+  backfillPaymentFulfillmentFromMeta,
+  sweepPaymentFulfillment,
+} from "./lib/stripe/fulfillCheckoutSession";
+import { getStripe } from "./lib/stripe/getStripe";
 import { lexicons } from "@bazaar/shared";
 
 const port = Number(process.env.PORT ?? 3000);
@@ -28,6 +33,18 @@ try {
 }
 
 const oauthClient = await createOAuthClient(db);
+
+await backfillPaymentFulfillmentFromMeta(db);
+
+const sweepMs = Number(process.env.BAZAAR_FULFILLMENT_SWEEP_MS ?? "45000");
+if (sweepMs > 0 && getStripe()) {
+  setInterval(() => {
+    void sweepPaymentFulfillment(db, oauthClient).catch((err) =>
+      console.warn("payment fulfillment sweep:", err),
+    );
+  }, sweepMs);
+}
+
 const api = createApiRouter(db, oauthClient);
 const app = new Hono();
 

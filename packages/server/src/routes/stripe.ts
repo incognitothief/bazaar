@@ -4,28 +4,20 @@ import {
   DEV_STUB_LISTING_CID,
   devCheckoutStubAllowed,
   isDevStubListingUri,
-  tryDevStubListingSnapshot,
 } from "@bazaar/shared";
-import { Agent } from "@atproto/api";
-import { eq } from "drizzle-orm";
+import { getCookie } from "hono/cookie";
 import { Hono } from "hono";
 import Stripe from "stripe";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
-import { meta } from "../db/schema";
 import { getAgent } from "../lib/atproto/client";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { storefrontWebOrigin } from "../lib/atproto/oauth-url";
-import { signConsentPayload, signReceiptPayload } from "../lib/atproto/sign";
+import { fulfillCheckoutSession } from "../lib/stripe/fulfillCheckoutSession";
+import { getStripe } from "../lib/stripe/getStripe";
 
-const COL_RECEIPT = "diamonds.whereditgo.bazaar.purchase.receipt";
-const COL_CONSENT = "diamonds.whereditgo.bazaar.purchase.consent";
-
-function getStripe(): Stripe | null {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || key.includes("PLACEHOLDER")) return null;
-  return new Stripe(key);
-}
+/** Same as `bazaar_atp_session` in atproto routes — buyer must match checkout metadata. */
+const SESSION_COOKIE = "bazaar_atp_session";
 
 function buyerDidValid(did: string): boolean {
   return did.startsWith("did:") && did.length > 8;
@@ -41,30 +33,6 @@ async function getRecordJson(uri: string): Promise<Record<string, unknown> | nul
       rkey: at.rkey,
     });
     return res.data.value as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-async function getListingAtCid(
-  listingUri: string,
-  listingCid: string,
-): Promise<{ listing: Record<string, unknown>; cid: string } | null> {
-  try {
-    const at = new AtUri(listingUri);
-    const agent = getAgent();
-    const res = await agent.com.atproto.repo.getRecord({
-      repo: at.hostname,
-      collection: at.collection,
-      rkey: at.rkey,
-      cid: listingCid,
-    });
-    const cid = res.data.cid;
-    if (!cid) return null;
-    return {
-      listing: res.data.value as Record<string, unknown>,
-      cid,
-    };
   } catch {
     return null;
   }
@@ -96,8 +64,25 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ error: "listingUri and itemUri required" }, 400);
     }
     const stripe = getStripe();
-    if (stripe && !buyerDidValid(body?.buyerDid ?? "")) {
+    const buyerDidBody = body?.buyerDid ?? "";
+    if (stripe && !buyerDidValid(buyerDidBody)) {
       return c.json({ error: "buyerDid required (signed-in ATProto DID)" }, 400);
+    }
+    if (stripe && buyerDidValid(buyerDidBody)) {
+      try {
+        await oauthClient.restore(buyerDidBody);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return c.json(
+          {
+            error: "oauth_session_required",
+            detail:
+              "The server needs a stored ATProto OAuth session for your DID to write receipts after payment. Use Sign in with ATProto (not dev mock sign-in), and use the same host as checkout (prefer http://127.0.0.1:5173 in dev, not localhost).",
+            cause: msg,
+          },
+          401,
+        );
+      }
     }
     let listing: Record<string, unknown>;
     let listingCid: string;
@@ -196,6 +181,75 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     }
   });
 
+  /**
+   * After redirect from Stripe Checkout, the browser can call this so PDS writes run even when
+   * the webhook is misconfigured, delayed, or unreachable (common in local dev).
+   * Requires an httpOnly session cookie whose DID matches `metadata.buyerDid` on the session.
+   */
+  r.post("/fulfill-session", async (c) => {
+    const stripe = getStripe();
+    if (!stripe) {
+      return c.json({ error: "stripe_not_configured" }, 503);
+    }
+    const cookieDid = getCookie(c, SESSION_COOKIE);
+    const body = (await c.req.json().catch(() => null)) as {
+      session_id?: string;
+    } | null;
+    const sessionId = body?.session_id?.trim();
+    if (!sessionId) {
+      return c.json({ error: "session_id required" }, 400);
+    }
+    if (sessionId.startsWith("mock_")) {
+      return c.json(
+        {
+          error: "mock_checkout",
+          detail:
+            "Dev mock checkout does not create Stripe sessions or PDS records; use real Stripe or the webhook path.",
+        },
+        400,
+      );
+    }
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId);
+    } catch {
+      return c.json({ error: "session_not_found" }, 404);
+    }
+    if (session.payment_status !== "paid") {
+      return c.json(
+        {
+          error: "not_paid",
+          payment_status: session.payment_status,
+        },
+        400,
+      );
+    }
+    const buyerDid = session.metadata?.buyerDid ?? "";
+    if (!buyerDidValid(buyerDid)) {
+      return c.json({ error: "checkout_missing_buyer_did" }, 400);
+    }
+    if (cookieDid && cookieDid !== buyerDid) {
+      return c.json({ error: "buyer_mismatch" }, 403);
+    }
+    const skipReason = await fulfillCheckoutSession({
+      db,
+      stripe,
+      oauthClient,
+      session,
+      source: "client",
+    });
+    if (skipReason === "locked") {
+      return c.json(
+        { ok: false, retry_after_ms: 2500, reason: "locked" },
+        409,
+      );
+    }
+    return c.json({
+      ok: true,
+      ...(skipReason ? { note: `claim_skipped:${skipReason}` } : {}),
+    });
+  });
+
   r.get("/session-status", async (c) => {
     const sessionId = c.req.query("session_id");
     if (!sessionId?.length) {
@@ -260,353 +314,15 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ received: true });
     }
     const session = event.data.object as Stripe.Checkout.Session;
-    const md = session.metadata ?? {};
-    const listingUri = md.listingUri;
-    const itemUri = md.itemUri;
-    const listingCidMeta = md.listingCid;
-    const buyerDid = md.buyerDid ?? "";
-    if (!listingUri || !itemUri || !listingCidMeta) {
-      console.warn("checkout.session.completed missing metadata");
-      return c.json({ received: true });
-    }
-
-    const piRef =
-      typeof session.payment_intent === "string"
-        ? session.payment_intent
-        : session.payment_intent?.id;
-    if (!piRef) {
-      console.warn("checkout.session.completed: no payment_intent");
-      return c.json({ received: true });
-    }
-
-    const idemRow = await db
-      .select()
-      .from(meta)
-      .where(eq(meta.key, `purchase_pds:${piRef}`))
-      .get();
-    if (idemRow?.value) {
-      try {
-        const parsed = JSON.parse(idemRow.value) as { receiptUri?: string };
-        if (parsed.receiptUri) {
-          return c.json({ received: true });
-        }
-      } catch {
-        /* continue */
-      }
-    }
-
-    let pi: Stripe.PaymentIntent;
-    try {
-      pi = await stripe.paymentIntents.retrieve(piRef);
-    } catch (e) {
-      console.error("PaymentIntent retrieve failed:", e);
-      return c.json({ received: true });
-    }
-    if (pi.status !== "succeeded") {
-      console.warn("PaymentIntent not succeeded:", pi.id, pi.status);
-      return c.json({ received: true });
-    }
-
-    const paymentRef = pi.id;
-    const purchasedAt = new Date().toISOString();
-
-    const snap =
-      tryDevStubListingSnapshot(listingUri, listingCidMeta, itemUri) ??
-      (await getListingAtCid(listingUri, listingCidMeta));
-    if (!snap) {
-      console.warn("Listing snapshot CID mismatch or missing:", listingUri);
-      return c.json({ received: true });
-    }
-    const { listing, cid: resolvedListingCid } = snap;
-    const listStatus = listing.status as string | undefined;
-    if (listStatus && listStatus !== "active") {
-      console.warn("Listing not active at webhook:", listingUri);
-      return c.json({ received: true });
-    }
-    if (!listingHasV5License(listing)) {
-      console.warn("Listing missing license fields:", listingUri);
-      return c.json({ received: true });
-    }
-    const listPrice = listing.price as { amount?: number; currency?: string };
-    if (
-      listPrice?.amount == null ||
-      !listPrice.currency ||
-      pi.amount_received == null ||
-      !pi.currency
-    ) {
-      console.warn("Missing price data for verification");
-      return c.json({ received: true });
-    }
-    if (
-      pi.amount_received !== listPrice.amount ||
-      pi.currency.toLowerCase() !== listPrice.currency.toLowerCase()
-    ) {
-      console.warn("Payment amount/currency does not match listing:", {
-        pi: pi.amount_received,
-        listing: listPrice.amount,
-      });
-      return c.json({ received: true });
-    }
-
-    const itemRefRaw = listing.item as Record<string, unknown> | undefined;
-    const itemRefUri = itemRefRaw?.uri as string | undefined;
-    const itemRefType = itemRefRaw?.itemType as string | undefined;
-    if (!itemRefRaw || !itemRefUri || !itemRefType) {
-      console.warn("Listing item ref invalid");
-      return c.json({ received: true });
-    }
-    if (itemRefUri !== itemUri) {
-      console.warn("itemUri metadata does not match listing.item.uri");
-      return c.json({ received: true });
-    }
-
-    const licenseGrantUri = listing.licenseUri as string;
-    const licenseGrantCid = listing.licenseGrantCid as string;
-
-    let item = await getRecordJson(itemUri);
-    if (
-      !item &&
-      devCheckoutStubAllowed() &&
-      isDevStubListingUri(listingUri)
-    ) {
-      item = buildDevStubItemJson(itemUri);
-    }
-    const issuerScope =
-      (item?.artistDid as string | undefined) ??
-      process.env.ARTIST_DID ??
-      "";
-
-    const appDid = process.env.APP_DID ?? "";
-    const privateKeyRaw = process.env.APP_SERVICE_PRIVATE_KEY;
-
-    const ref = itemRefRaw;
-    const receiptItem: Record<string, unknown> = {
-      uri: itemRefUri,
-      itemType: itemRefType,
-    };
-    const itemCid = ref.cid as string | undefined;
-    if (typeof itemCid === "string" && itemCid.length > 0) {
-      receiptItem.cid = itemCid;
-    }
-    const variantSku = ref.variantSku as string | undefined;
-    if (typeof variantSku === "string" && variantSku.length > 0) {
-      receiptItem.variantSku = variantSku;
-    }
-
-    let appSigReceipt = "";
-    if (
-      privateKeyRaw &&
-      !privateKeyRaw.includes("PLACEHOLDER") &&
-      buyerDidValid(buyerDid)
-    ) {
-      try {
-        appSigReceipt = signReceiptPayload({
-          purchasedAt,
-          paymentRef,
-          itemUri,
-          listingCid: resolvedListingCid,
-          buyerDid,
-          privateKeyPem: privateKeyRaw,
-        });
-      } catch (e) {
-        console.warn("Receipt signing failed:", e);
-      }
-    }
-
-    const receiptRecord: Record<string, unknown> = {
-      $type: COL_RECEIPT,
-      item: receiptItem,
-      listingUri,
-      listingCid: resolvedListingCid,
-      pricePaid: {
-        amount: pi.amount_received,
-        currency: pi.currency.toUpperCase(),
-      },
-      paymentProcessor: "stripe",
-      paymentRef,
-      licenseGrantUri,
-      licenseGrantCid,
-      buyerDid,
-      appDid,
-      issuerScope,
-      appSig: appSigReceipt,
-      purchasedAt,
-    };
-
-    const receiptPayload = {
-      receiptUri: null as string | null,
-      consentUri: null as string | null,
-      itemUri,
-      listingUri,
-      listingCid: resolvedListingCid,
-      paymentRef,
-      purchasedAt,
-      appSig: appSigReceipt,
-      issuerScope,
-      amountTotal: session.amount_total,
-      currency: session.currency,
-      pdsError: null as string | null,
-    };
-
-    if (!buyerDidValid(buyerDid)) {
-      receiptPayload.pdsError = "buyerDid missing or invalid in metadata";
-      console.info(receiptPayload.pdsError);
-      await db
-        .insert(meta)
-        .values({
-          key: `receipt:${paymentRef}`,
-          value: JSON.stringify(receiptPayload),
-          updatedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: meta.key,
-          set: {
-            value: JSON.stringify(receiptPayload),
-            updatedAt: new Date(),
-          },
-        });
-      return c.json({ received: true });
-    }
-
-    if (!appDid) {
-      receiptPayload.pdsError = "APP_DID not configured";
-      await persistReceiptMeta(db, paymentRef, receiptPayload);
-      return c.json({ received: true });
-    }
-
-    if (!appSigReceipt) {
-      receiptPayload.pdsError =
-        "APP_SERVICE_PRIVATE_KEY missing or receipt signing failed";
-      await persistReceiptMeta(db, paymentRef, receiptPayload);
-      return c.json({ received: true });
-    }
-
-    let buyerSession: Awaited<ReturnType<OAuthClient["restore"]>>;
-    try {
-      buyerSession = await oauthClient.restore(buyerDid);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      receiptPayload.pdsError = `oauth restore failed: ${msg}`;
-      console.warn(receiptPayload.pdsError);
-      await persistReceiptMeta(db, paymentRef, receiptPayload);
-      return c.json({ received: true });
-    }
-
-    const writeAgent = new Agent(buyerSession);
-    let receiptUri = "";
-    let receiptCidStr = "";
-    try {
-      const created = await writeAgent.com.atproto.repo.createRecord({
-        repo: buyerDid,
-        collection: COL_RECEIPT,
-        record: receiptRecord,
-      });
-      receiptUri = created.data.uri;
-      const rcid = created.data.cid;
-      receiptCidStr = typeof rcid === "string" ? rcid : String(rcid);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      receiptPayload.pdsError = `receipt createRecord failed: ${msg}`;
-      console.error(receiptPayload.pdsError);
-      await persistReceiptMeta(db, paymentRef, receiptPayload);
-      return c.json({ received: true });
-    }
-
-    receiptPayload.receiptUri = receiptUri;
-
-    let consentSig = "";
-    if (privateKeyRaw && !privateKeyRaw.includes("PLACEHOLDER")) {
-      try {
-        consentSig = signConsentPayload({
-          buyerDid,
-          licenseGrantCid,
-          receiptCid: receiptCidStr,
-          consentedAt: purchasedAt,
-          privateKeyPem: privateKeyRaw,
-        });
-      } catch (e) {
-        console.warn("Consent signing failed:", e);
-      }
-    }
-
-    const consentRecord: Record<string, unknown> = {
-      $type: COL_CONSENT,
-      receiptUri,
-      receiptCid: receiptCidStr,
-      licenseGrantUri,
-      licenseGrantCid,
-      buyerDid,
-      consentedAt: purchasedAt,
-      appSig: consentSig,
-    };
-
-    let consentUri = "";
-    try {
-      if (!consentSig) throw new Error("consent appSig empty");
-      const createdConsent = await writeAgent.com.atproto.repo.createRecord({
-        repo: buyerDid,
-        collection: COL_CONSENT,
-        record: consentRecord,
-      });
-      consentUri = createdConsent.data.uri;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      receiptPayload.pdsError = `consent createRecord failed: ${msg}`;
-      console.error(receiptPayload.pdsError);
-      await persistReceiptMeta(db, paymentRef, receiptPayload);
-      return c.json({ received: true });
-    }
-
-    receiptPayload.consentUri = consentUri;
-    receiptPayload.pdsError = null;
-
-    await db
-      .insert(meta)
-      .values({
-        key: `purchase_pds:${paymentRef}`,
-        value: JSON.stringify({
-          receiptUri,
-          receiptCid: receiptCidStr,
-          consentUri,
-        }),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: meta.key,
-        set: {
-          value: JSON.stringify({
-            receiptUri,
-            receiptCid: receiptCidStr,
-            consentUri,
-          }),
-          updatedAt: new Date(),
-        },
-      });
-
-    await persistReceiptMeta(db, paymentRef, receiptPayload);
+    await fulfillCheckoutSession({
+      db,
+      stripe,
+      oauthClient,
+      session,
+      source: "webhook",
+    });
     return c.json({ received: true });
   });
 
   return r;
-}
-
-async function persistReceiptMeta(
-  db: Db,
-  paymentRef: string,
-  payload: Record<string, unknown>,
-): Promise<void> {
-  await db
-    .insert(meta)
-    .values({
-      key: `receipt:${paymentRef}`,
-      value: JSON.stringify(payload),
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: meta.key,
-      set: {
-        value: JSON.stringify(payload),
-        updatedAt: new Date(),
-      },
-    });
 }

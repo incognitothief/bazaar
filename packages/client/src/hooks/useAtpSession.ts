@@ -106,6 +106,7 @@ export function useAtpSession(): {
       return;
     }
 
+    // OAuth redirect_uri is built on the server from APP_URL; keep VITE_API_ORIGIN in sync with that.
     const origin = apiServerOrigin();
     if (!origin) {
       window.alert("Set VITE_API_ORIGIN to your API server URL.");

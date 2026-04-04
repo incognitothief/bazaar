@@ -4,6 +4,7 @@ import type { Db } from "./db";
 import { meta } from "./db/schema";
 import { createAtprotoRouter } from "./routes/atproto";
 import { createCatalogRouter } from "./routes/catalog";
+import { createMerchantRouter } from "./routes/merchant";
 import { createStripeRouter } from "./routes/stripe";
 import type { OAuthClient } from "./lib/atproto/oauth";
 
@@ -28,6 +29,7 @@ export function createApiRouter(db: Db, oauthClient: OAuthClient) {
   api.route("/atproto", createAtprotoRouter(db, oauthClient));
   api.route("/stripe", createStripeRouter(db, oauthClient));
   api.route("/catalog", createCatalogRouter());
+  api.route("/merchant", createMerchantRouter(db));
 
   api.notFound((c) => c.json({ error: "not_found" }, 404));
 

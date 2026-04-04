@@ -14,6 +14,8 @@ export default defineConfig({
     // success_url uses 127.0.0.1 (see storefrontWebOrigin), which then gets ERR_CONNECTION_REFUSED.
     host: true,
     port: 5173,
+    // cloudflared quick tunnels use random *.trycloudflare.com Host headers; Vite blocks unknown hosts by default.
+    allowedHosts: [".trycloudflare.com"],
     proxy: {
       "/api": {
         target: "http://127.0.0.1:3000",
@@ -24,5 +26,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+  },
+  preview: {
+    allowedHosts: [".trycloudflare.com"],
   },
 });

@@ -1,3 +1,4 @@
+import { requestLocalLock } from "@atproto/oauth-client";
 import { NodeOAuthClient, JoseKey } from "@atproto/oauth-client-node";
 import type { NodeSavedSession, NodeSavedState } from "@atproto/oauth-client-node";
 import { eq } from "drizzle-orm";
@@ -129,6 +130,7 @@ export async function createOAuthClient(db: Db): Promise<NodeOAuthClient> {
     keyset: [dpopKey],
     stateStore: makeStateStore(db),
     sessionStore: makeSessionStore(db),
+    requestLock: requestLocalLock,
   });
 }
 
