@@ -208,7 +208,7 @@ export function MerchantLayout() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-background md:h-dvh md:flex-row md:overflow-hidden">
-      <header className="fixed top-0 left-0 right-0 z-40 flex shrink-0 items-center justify-between border-b border-border bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_4px_24px_-8px_rgba(0,0,0,0.12)] backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 md:hidden">
+      <header className="fixed top-0 left-0 right-0 z-40 flex shrink-0 items-center justify-between border-b border-border bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_2px_14px_-6px_rgba(0,0,0,0.07)] backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 md:hidden">
         <Link to="/" className="font-semibold">
           bazaar
         </Link>

@@ -19,7 +19,7 @@ export function PublicLayout() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="fixed top-0 left-0 right-0 z-40 border-b border-border bg-card/95 pt-[env(safe-area-inset-top)] shadow-[0_4px_24px_-8px_rgba(0,0,0,0.12)] backdrop-blur-sm supports-[backdrop-filter]:bg-card/80">
+      <header className="fixed top-0 left-0 right-0 z-40 border-b border-border bg-card/95 pt-[env(safe-area-inset-top)] shadow-[0_2px_14px_-6px_rgba(0,0,0,0.07)] backdrop-blur-sm supports-[backdrop-filter]:bg-card/80">
         <div className="mx-auto flex h-[4.25rem] max-w-6xl items-center justify-between gap-4 px-4">
           <Link
             to="/"
