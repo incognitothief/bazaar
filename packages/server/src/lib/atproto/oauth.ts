@@ -1,4 +1,7 @@
-import { requestLocalLock } from "@atproto/oauth-client";
+import {
+  buildAtprotoLoopbackClientMetadata,
+  requestLocalLock,
+} from "@atproto/oauth-client";
 import { NodeOAuthClient, JoseKey } from "@atproto/oauth-client-node";
 import type { NodeSavedSession, NodeSavedState } from "@atproto/oauth-client-node";
 import { eq } from "drizzle-orm";
@@ -9,11 +12,11 @@ import {
   oauthAppBaseUrl,
   oauthRedirectUri,
 } from "./oauth-url";
+import { buildOAuthScopeString } from "./oauth-scope";
 
 const DPOP_KEY = "oauth:dpop_key";
 const STATE_PREFIX = "oauth:state:";
 const SESSION_PREFIX = "oauth:session:";
-export const OAUTH_SCOPE = "atproto";
 
 async function loadOrCreateDpopKey(db: Db): Promise<JoseKey> {
   const row = await db.select().from(meta).where(eq(meta.key, DPOP_KEY)).get();
@@ -87,32 +90,21 @@ export async function createOAuthClient(db: Db): Promise<NodeOAuthClient> {
 
   const dpopKey = await loadOrCreateDpopKey(db);
 
-  const clientId = isLoopbackDev
-    ? "http://localhost"
-    : `${appUrl}/api/atproto/client-metadata.json`;
+  const scope = buildOAuthScopeString();
 
-  // Loopback dev: minimal client_id "http://localhost" (ATProto). redirect_uris must use
-  // 127.0.0.1, not "localhost", or @atproto/oauth-client metadata validation fails (RFC 8252).
+  // Loopback: auth servers derive declared scopes from the client_id URL query string, not from
+  // a separate document — use buildAtprotoLoopbackClientMetadata so ?scope=... is embedded.
   const clientMetadata = isLoopbackDev
-    ? ({
-        client_id: "http://localhost" as const,
-        redirect_uris: [redirectUri] as [string, ...string[]],
-        scope: OAUTH_SCOPE,
-        grant_types: ["authorization_code", "refresh_token"] as [
-          string,
-          ...string[],
-        ],
-        response_types: ["code"] as [string, ...string[]],
-        token_endpoint_auth_method: "none" as const,
-        application_type: "web" as const,
-        dpop_bound_access_tokens: true,
-      } as const)
+    ? buildAtprotoLoopbackClientMetadata({
+        scope,
+        redirect_uris: [redirectUri],
+      })
     : {
-        client_id: clientId,
+        client_id: `${appUrl}/api/atproto/client-metadata.json`,
         client_name: "Bazaar",
         client_uri: appUrl,
         redirect_uris: [redirectUri] as [string, ...string[]],
-        scope: OAUTH_SCOPE,
+        scope,
         grant_types: ["authorization_code", "refresh_token"] as [
           string,
           ...string[],
