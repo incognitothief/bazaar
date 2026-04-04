@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import {
+  normalizeAppServicePrivateKey,
   signConsentPayload,
   signReceiptPayload,
   verifyConsentPayload,
@@ -30,6 +31,72 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
     const appSig = signReceiptPayload({
       ...params,
       privateKeyPem,
+    });
+    expect(
+      verifyReceiptPayload({
+        ...params,
+        appSig,
+        publicKeyPem,
+      }),
+    ).toBe(true);
+  });
+
+  test("round-trip with P-256 EC key (typical ATProto PEM shape)", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", {
+      namedCurve: "prime256v1",
+    });
+    const privateKeyPem = privateKey.export({
+      type: "pkcs8",
+      format: "pem",
+    }) as string;
+    const publicKeyPem = publicKey.export({
+      type: "spki",
+      format: "pem",
+    }) as string;
+    const params = {
+      purchasedAt: new Date().toISOString(),
+      paymentRef: "pi_test_ec",
+      itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
+      listingCid: "bafyrei",
+      buyerDid: "did:plc:buyer",
+    };
+    const appSig = signReceiptPayload({
+      ...params,
+      privateKeyPem,
+    });
+    expect(
+      verifyReceiptPayload({
+        ...params,
+        appSig,
+        publicKeyPem,
+      }),
+    ).toBe(true);
+  });
+
+  test("SEC1 EC PRIVATE KEY collapsed to one line (typical .env)", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", {
+      namedCurve: "prime256v1",
+    });
+    const pemMulti = privateKey.export({
+      type: "sec1",
+      format: "pem",
+    }) as string;
+    const oneLine = pemMulti.replace(/\n/g, " ").trim();
+    const publicKeyPem = publicKey.export({
+      type: "spki",
+      format: "pem",
+    }) as string;
+    expect(normalizeAppServicePrivateKey(oneLine)).toContain("\n");
+    const params = {
+      purchasedAt: new Date().toISOString(),
+      paymentRef: "pi_test_sec1",
+      itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
+      listingCid: "bafyrei",
+      buyerDid: "did:plc:buyer",
+    };
+    const appSig = signReceiptPayload({
+      ...params,
+      privateKeyPem: oneLine,
     });
     expect(
       verifyReceiptPayload({

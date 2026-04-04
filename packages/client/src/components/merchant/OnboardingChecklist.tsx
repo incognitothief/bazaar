@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AtpSession } from "@/hooks/useAtpSession";
+import { browserApiUrl } from "@/lib/browserApi";
 import { merchantSignInUrl } from "@/lib/signInReturn";
 import { cn } from "@/lib/utils";
 
@@ -12,13 +13,6 @@ export type OnboardingItem = {
   complete: boolean;
   action: { label: string; href: string };
   blocking: boolean;
-};
-
-const apiOrigin = () => {
-  const raw = (import.meta.env.VITE_API_ORIGIN ?? "").trim();
-  if (!raw) return "";
-  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
-  return `https://${raw}`;
 };
 
 export function OnboardingChecklist({
@@ -56,7 +50,7 @@ export function OnboardingChecklist({
       blocking: true,
       action: {
         label: "Connect Stripe",
-        href: `${apiOrigin()}/api/stripe/connect`,
+        href: browserApiUrl("/api/stripe/connect"),
       },
     },
     {

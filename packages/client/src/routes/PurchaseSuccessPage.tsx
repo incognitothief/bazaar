@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/button";
+import { browserApiUrl } from "@/lib/browserApi";
 import { cn } from "@/lib/utils";
 
 export function PurchaseSuccessPage() {
@@ -13,7 +14,7 @@ export function PurchaseSuccessPage() {
     void (async () => {
       try {
         const res = await fetch(
-          `/api/stripe/session-status?session_id=${encodeURIComponent(sessionId)}`,
+          `${browserApiUrl("/api/stripe/session-status")}?session_id=${encodeURIComponent(sessionId)}`,
         );
         if (!res.ok) return;
         const j = (await res.json()) as { paymentStatus?: string };

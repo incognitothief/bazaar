@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAtpSession } from "@/hooks/useAtpSession";
+import { stripeCheckoutPostUrl } from "@/lib/checkoutApi";
 import { merchantSignInUrl } from "@/lib/signInReturn";
 import type { CatalogItem, LicenseTerms, Listing } from "@/types/lexicons";
 import { cn } from "@/lib/utils";
@@ -39,9 +40,10 @@ export function BuyButton({
     setErr(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/stripe/checkout", {
+      const res = await fetch(stripeCheckoutPostUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           listingUri,
           itemUri: listing.item.uri,
@@ -49,8 +51,14 @@ export function BuyButton({
         }),
       });
       if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        const j = (await res.json().catch(() => null)) as {
+          error?: string;
+          detail?: string;
+        } | null;
+        const parts = [j?.error, j?.detail].filter(
+          (x): x is string => typeof x === "string" && x.length > 0,
+        );
+        throw new Error(parts.length ? parts.join(": ") : `HTTP ${res.status}`);
       }
       const data = (await res.json()) as { url?: string };
       if (!data.url) throw new Error("No checkout URL");

@@ -6,6 +6,7 @@ import { CompletenessIndicator } from "@/components/merchant/CompletenessIndicat
 import { OnboardingChecklist } from "@/components/merchant/OnboardingChecklist";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
+import { browserApiUrl } from "@/lib/browserApi";
 import {
   listDigitalItemRows,
   listLicenseTerms,
@@ -27,10 +28,9 @@ export function DashboardPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const r = await fetch(
-          `${import.meta.env.VITE_API_ORIGIN}/api/stripe/account-status`,
-          { credentials: "include" },
-        );
+        const r = await fetch(browserApiUrl("/api/stripe/account-status"), {
+          credentials: "include",
+        });
         if (r.ok) {
           const j = (await r.json()) as { connected?: boolean };
           setStripeConnected(!!j.connected);

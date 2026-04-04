@@ -82,9 +82,11 @@ export function HomePage() {
         <>
           {showStorefrontDummy ? (
             <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
-              Preview-only item: not on your PDS. Stripe checkout will fail until
-              you publish a real item, license, and listing. Override the item URI
-              with <code className="text-xs">VITE_DEV_DUMMY_ITEM_URI</code> if needed.
+              Preview-only item: not on your PDS. For test checkout without real
+              listings, set{" "}
+              <code className="text-xs">BAZAAR_DEV_CHECKOUT_STUB=true</code> on the
+              server; otherwise publish real catalog records. Optional:{" "}
+              <code className="text-xs">VITE_DEV_DUMMY_ITEM_URI</code>.
             </p>
           ) : null}
           <InventoryGrid

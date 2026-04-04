@@ -1,11 +1,11 @@
+import { DEV_STUB_LISTING_AT } from "@bazaar/shared";
 import type { DigitalItem, LicenseTerms, Listing } from "@/types/lexicons";
 
 /** Placeholder rkey — usually no record; storefront still shows a card in dev. */
 export const DUMMY_ITEM_RKEY = "3l7j6vooln2f2";
 
-/** Synthetic listing AT-URI (not on a PDS). Used for BuyButton + Listings table row identity. */
-export const DUMMY_LISTING_AT =
-  "at://dev.bazaar.invalid/diamonds.whereditgo.bazaar.catalog.listing/dummy";
+/** Same URI as server stub (`@bazaar/shared`); not on a PDS unless you enable `BAZAAR_DEV_CHECKOUT_STUB`). */
+export const DUMMY_LISTING_AT = DEV_STUB_LISTING_AT;
 
 export function catalogDummyEnabled(): boolean {
   return (
@@ -93,5 +93,5 @@ export function buildDummyLicenseTerms(): LicenseTerms {
 }
 
 export function isDummyListingRowUri(listingUri: string): boolean {
-  return listingUri === DUMMY_LISTING_AT;
+  return listingUri === DEV_STUB_LISTING_AT;
 }

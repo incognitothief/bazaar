@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import Markdown from "react-markdown";
 import {
   getRecordValue,
@@ -13,6 +13,7 @@ import {
   DUMMY_LISTING_AT,
   isDummyStorefrontItem,
 } from "@/lib/devCatalogDummy";
+import { resolveStorefrontArtistDid } from "@/lib/atUri";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { BuyButton } from "@/components/public/BuyButton";
@@ -37,7 +38,7 @@ function formatMoney(m: { amount: number; currency: string }): string {
 export function ItemDetailPage() {
   const { uri: uriParam } = useParams<{ uri: string }>();
   const itemUri = uriParam ? decodeURIComponent(uriParam) : "";
-  const artistDid = import.meta.env.VITE_ARTIST_DID;
+  const artistDid = resolveStorefrontArtistDid(itemUri);
   const agent = useMemo(() => createPublicAgent(), []);
 
   const [item, setItem] = useState<CatalogItem | null>(null);
@@ -48,7 +49,11 @@ export function ItemDetailPage() {
   const [legalOpen, setLegalOpen] = useState(false);
 
   useEffect(() => {
-    if (!itemUri || !artistDid?.startsWith("did:")) {
+    if (!itemUri) {
+      setLoading(false);
+      return;
+    }
+    if (!artistDid.startsWith("did:")) {
       setLoading(false);
       return;
     }
@@ -108,6 +113,17 @@ export function ItemDetailPage() {
     return <p className="text-muted-foreground">Missing item.</p>;
   }
 
+  if (!artistDid.startsWith("did:")) {
+    return (
+      <p className="text-muted-foreground">
+        Invalid item URL. Use an AT-URI such as{" "}
+        <code className="text-xs">at://did:plc:…/diamonds.whereditgo.bazaar.catalog.item.digital/…</code>
+        , or set <code className="text-xs">VITE_ARTIST_DID</code> in{" "}
+        <code className="text-xs">.env</code>.
+      </p>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse" aria-busy>
@@ -132,17 +148,18 @@ export function ItemDetailPage() {
       : artistDid ?? "";
 
   const showDummyBanner =
-    catalogDummyEnabled() &&
-    !!artistDid?.startsWith("did:") &&
-    isDummyStorefrontItem(itemUri, artistDid);
+    catalogDummyEnabled() && isDummyStorefrontItem(itemUri, artistDid);
 
   return (
     <article className="space-y-10">
       {showDummyBanner ? (
         <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
-          Preview catalog: listing and license are synthetic. Checkout requires
-          real <code className="text-xs">catalog.listing</code> and{" "}
-          <code className="text-xs">license.terms</code> records on your PDS.
+          Preview catalog: listing and license are synthetic. For Stripe without
+          publishing to your PDS, set{" "}
+          <code className="text-xs">BAZAAR_DEV_CHECKOUT_STUB=true</code> on the
+          API server; otherwise create real{" "}
+          <code className="text-xs">catalog.listing</code> /{" "}
+          <code className="text-xs">license.terms</code> records.
         </p>
       ) : null}
       <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
@@ -165,7 +182,22 @@ export function ItemDetailPage() {
               {formatMoney(listing.price)}
             </p>
           ) : (
-            <p className="text-muted-foreground">Not currently for sale.</p>
+            <div className="space-y-2 text-muted-foreground">
+              <p>Not currently for sale.</p>
+              <p className="text-sm">
+                Publish an active <code className="text-xs">catalog.listing</code>{" "}
+                (with <code className="text-xs">licenseUri</code> and{" "}
+                <code className="text-xs">licenseGrantCid</code>) on the artist
+                repo, or use{" "}
+                <Link
+                  to="/merchant/upload/digital"
+                  className="text-primary underline underline-offset-2"
+                >
+                  Upload
+                </Link>{" "}
+                as the merchant.
+              </p>
+            </div>
           )}
           {"formats" in item && item.formats?.length ? (
             <div className="flex flex-wrap gap-2">

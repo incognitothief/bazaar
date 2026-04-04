@@ -1,0 +1,50 @@
+/**
+ * Browser → Bazaar API URLs.
+ *
+ * In Vite dev the SPA is on :5173 and `/api` is proxied to Bun (:3000). Using relative
+ * `/api/...` avoids cross-origin requests and CORS failures ("Failed to fetch") when
+ * `VITE_API_ORIGIN` is `http://127.0.0.1:3000` but the page is `http://localhost:5173`.
+ */
+
+export function apiServerOrigin(): string {
+  const raw = (import.meta.env.VITE_API_ORIGIN ?? "").trim();
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    return raw.replace(/\/$/, "");
+  }
+  if (raw.length > 0) {
+    return `https://${raw.replace(/\/$/, "")}`;
+  }
+  if (import.meta.env.DEV) {
+    return "http://127.0.0.1:3000";
+  }
+  return "";
+}
+
+/**
+ * Use for `fetch()` / `uploadBlob` to this app's API. In `import.meta.env.DEV`, always
+ * same-origin relative paths so the Vite proxy is used.
+ */
+export function browserApiUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (import.meta.env.DEV) {
+    return p;
+  }
+  const raw = import.meta.env.VITE_API_ORIGIN?.trim() ?? "";
+  if (!raw) {
+    return p;
+  }
+  const base =
+    raw.startsWith("http://") || raw.startsWith("https://")
+      ? raw.replace(/\/$/, "")
+      : `https://${raw.replace(/\/$/, "")}`;
+  if (typeof window !== "undefined") {
+    try {
+      if (new URL(base).origin === window.location.origin) {
+        return p;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return `${base}${p}`;
+}

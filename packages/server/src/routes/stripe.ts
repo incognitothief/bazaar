@@ -1,3 +1,11 @@
+import {
+  buildDevStubItemJson,
+  buildDevStubListingJson,
+  DEV_STUB_LISTING_CID,
+  devCheckoutStubAllowed,
+  isDevStubListingUri,
+  tryDevStubListingSnapshot,
+} from "@bazaar/shared";
 import { Agent } from "@atproto/api";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
@@ -7,7 +15,7 @@ import type { Db } from "../db";
 import { meta } from "../db/schema";
 import { getAgent } from "../lib/atproto/client";
 import type { OAuthClient } from "../lib/atproto/oauth";
-import { oauthAppBaseUrl } from "../lib/atproto/oauth-url";
+import { storefrontWebOrigin } from "../lib/atproto/oauth-url";
 import { signConsentPayload, signReceiptPayload } from "../lib/atproto/sign";
 
 const COL_RECEIPT = "diamonds.whereditgo.bazaar.purchase.receipt";
@@ -21,11 +29,6 @@ function getStripe(): Stripe | null {
 
 function buyerDidValid(did: string): boolean {
   return did.startsWith("did:") && did.length > 8;
-}
-
-function normalizePrivateKeyPem(raw: string): string {
-  if (raw.includes("BEGIN")) return raw;
-  return `-----BEGIN RSA PRIVATE KEY-----\n${raw}\n-----END RSA PRIVATE KEY-----`;
 }
 
 async function getRecordJson(uri: string): Promise<Record<string, unknown> | null> {
@@ -96,19 +99,31 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     if (stripe && !buyerDidValid(body?.buyerDid ?? "")) {
       return c.json({ error: "buyerDid required (signed-in ATProto DID)" }, 400);
     }
-    const listingAt = new AtUri(listingUri);
-    const agent = getAgent();
-    let listingRes;
-    try {
-      listingRes = await agent.com.atproto.repo.getRecord({
-        repo: listingAt.hostname,
-        collection: listingAt.collection,
-        rkey: listingAt.rkey,
-      });
-    } catch {
-      return c.json({ error: "Could not resolve listing" }, 404);
+    let listing: Record<string, unknown>;
+    let listingCid: string;
+    if (devCheckoutStubAllowed() && isDevStubListingUri(listingUri)) {
+      listing = buildDevStubListingJson(itemUri);
+      listingCid = DEV_STUB_LISTING_CID;
+    } else {
+      const listingAt = new AtUri(listingUri);
+      const agent = getAgent();
+      let listingRes;
+      try {
+        listingRes = await agent.com.atproto.repo.getRecord({
+          repo: listingAt.hostname,
+          collection: listingAt.collection,
+          rkey: listingAt.rkey,
+        });
+      } catch {
+        return c.json({ error: "Could not resolve listing" }, 404);
+      }
+      const cid = listingRes.data.cid;
+      if (!cid) {
+        return c.json({ error: "Listing has no CID" }, 500);
+      }
+      listing = listingRes.data.value as Record<string, unknown>;
+      listingCid = cid;
     }
-    const listing = listingRes.data.value as Record<string, unknown>;
     if (!listingHasV5License(listing)) {
       return c.json(
         { error: "Listing must include licenseUri and licenseGrantCid" },
@@ -119,7 +134,14 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     if (st && st !== "active") {
       return c.json({ error: "Listing is not active" }, 400);
     }
-    const item = await getRecordJson(itemUri);
+    let item = await getRecordJson(itemUri);
+    if (
+      !item &&
+      devCheckoutStubAllowed() &&
+      isDevStubListingUri(listingUri)
+    ) {
+      item = buildDevStubItemJson(itemUri);
+    }
     if (!item) {
       return c.json({ error: "Could not resolve item" }, 404);
     }
@@ -128,11 +150,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ error: "Invalid listing price" }, 400);
     }
     const title = (item.title as string | undefined) ?? "Bazaar item";
-    const appUrl = oauthAppBaseUrl();
-    const listingCid = listingRes.data.cid;
-    if (!listingCid) {
-      return c.json({ error: "Listing has no CID" }, 500);
-    }
+    const webOrigin = storefrontWebOrigin();
     const metadata: Record<string, string> = {
       listingUri,
       itemUri,
@@ -142,7 +160,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     };
     if (!stripe) {
       return c.json({
-        url: `${appUrl}/purchase/success?session_id=mock_${Date.now()}`,
+        url: `${webOrigin}/purchase/success?session_id=mock_${Date.now()}`,
         mock: true,
       });
     }
@@ -159,8 +177,8 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
             quantity: 1,
           },
         ],
-        success_url: `${appUrl}/purchase/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appUrl}/item/${encodeURIComponent(itemUri)}`,
+        success_url: `${webOrigin}/purchase/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${webOrigin}/item/${encodeURIComponent(itemUri)}`,
         metadata,
       });
       const url = session.url;
@@ -168,7 +186,13 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ url });
     } catch (e) {
       console.error("Stripe checkout error:", e);
-      return c.json({ error: "checkout_failed" }, 502);
+      const detail =
+        e && typeof e === "object" && "message" in e
+          ? String((e as { message: unknown }).message)
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      return c.json({ error: "checkout_failed", detail }, 502);
     }
   });
 
@@ -227,7 +251,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     if (!sig) return c.text("Missing signature", 400);
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(rawBody, sig, whSecret);
+      event = await stripe.webhooks.constructEventAsync(rawBody, sig, whSecret);
     } catch (err) {
       console.error("Stripe webhook signature error:", err);
       return c.text("Invalid signature", 400);
@@ -286,7 +310,9 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     const paymentRef = pi.id;
     const purchasedAt = new Date().toISOString();
 
-    const snap = await getListingAtCid(listingUri, listingCidMeta);
+    const snap =
+      tryDevStubListingSnapshot(listingUri, listingCidMeta, itemUri) ??
+      (await getListingAtCid(listingUri, listingCidMeta));
     if (!snap) {
       console.warn("Listing snapshot CID mismatch or missing:", listingUri);
       return c.json({ received: true });
@@ -337,7 +363,14 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     const licenseGrantUri = listing.licenseUri as string;
     const licenseGrantCid = listing.licenseGrantCid as string;
 
-    const item = await getRecordJson(itemUri);
+    let item = await getRecordJson(itemUri);
+    if (
+      !item &&
+      devCheckoutStubAllowed() &&
+      isDevStubListingUri(listingUri)
+    ) {
+      item = buildDevStubItemJson(itemUri);
+    }
     const issuerScope =
       (item?.artistDid as string | undefined) ??
       process.env.ARTIST_DID ??
@@ -373,7 +406,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
           itemUri,
           listingCid: resolvedListingCid,
           buyerDid,
-          privateKeyPem: normalizePrivateKeyPem(privateKeyRaw),
+          privateKeyPem: privateKeyRaw,
         });
       } catch (e) {
         console.warn("Receipt signing failed:", e);
@@ -489,7 +522,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
           licenseGrantCid,
           receiptCid: receiptCidStr,
           consentedAt: purchasedAt,
-          privateKeyPem: normalizePrivateKeyPem(privateKeyRaw),
+          privateKeyPem: privateKeyRaw,
         });
       } catch (e) {
         console.warn("Consent signing failed:", e);
