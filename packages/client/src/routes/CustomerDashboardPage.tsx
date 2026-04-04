@@ -135,7 +135,7 @@ export function CustomerDashboardPage() {
   if (loading) {
     return (
       <div className="px-4 py-8 text-center text-muted-foreground sm:px-6">
-        Loading…
+        Pulling data from pds...
       </div>
     );
   }
@@ -210,9 +210,7 @@ export function CustomerDashboardPage() {
                 <p className="text-lg font-semibold">Not active</p>
               )}
             </div>
-            <Badge
-              variant={result.listingActive ? "default" : "secondary"}
-            >
+            <Badge variant={result.listingActive ? "default" : "secondary"}>
               {result.listingStatus ?? "unknown"}
             </Badge>
           </div>
@@ -236,9 +234,7 @@ export function CustomerDashboardPage() {
               {result.listingItemType ? (
                 <p className="text-muted-foreground">
                   Item type:{" "}
-                  <span className="font-medium">
-                    {result.listingItemType}
-                  </span>
+                  <span className="font-medium">{result.listingItemType}</span>
                 </p>
               ) : null}
               {result.listingItemUri ? (
@@ -253,11 +249,12 @@ export function CustomerDashboardPage() {
               ) : null}
             </div>
           ) : (
-            <p className="text-sm text-destructive">{result.error ?? "Invalid receipt"}</p>
+            <p className="text-sm text-destructive">
+              {result.error ?? "Invalid receipt"}
+            </p>
           )}
         </div>
       ) : null}
     </div>
   );
 }
-

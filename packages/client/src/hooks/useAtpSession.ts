@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAuthRole } from "@/lib/auth";
+import { apiServerOrigin, browserApiUrl } from "@/lib/browserApi";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { safeReturnPath } from "@/lib/signInReturn";
 
@@ -20,14 +21,6 @@ function devMockSignInEnabled(): boolean {
 function artistDid(): string {
   const d = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
   return d.startsWith("did:") ? d : "";
-}
-
-function apiOrigin(): string {
-  const raw = (import.meta.env.VITE_API_ORIGIN ?? "").trim();
-  if (!raw) return "";
-  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
-  // Be forgiving in production if env is set as "example.com" without protocol.
-  return `https://${raw}`;
 }
 
 function postSignInDestination(did: string): string {
@@ -60,12 +53,7 @@ export function useAtpSession(): {
           }
         }
       }
-      const origin = apiOrigin();
-      if (!origin) {
-        setSession(null);
-        return;
-      }
-      const res = await fetch(`${origin}/api/atproto/session`, {
+      const res = await fetch(browserApiUrl("/api/atproto/session"), {
         credentials: "include",
       });
       if (!res.ok) {
@@ -118,7 +106,8 @@ export function useAtpSession(): {
       return;
     }
 
-    const origin = apiOrigin();
+    // OAuth redirect_uri is built on the server from APP_URL; keep VITE_API_ORIGIN in sync with that.
+    const origin = apiServerOrigin();
     if (!origin) {
       window.alert("Set VITE_API_ORIGIN to your API server URL.");
       return;
@@ -134,10 +123,8 @@ export function useAtpSession(): {
   const signOut = useCallback(async () => {
     if (import.meta.env.DEV) localStorage.removeItem(MOCK_KEY);
     setSession(null);
-    const origin = apiOrigin();
-    if (!origin) return;
     try {
-      await fetch(`${origin}/api/atproto/signout`, {
+      await fetch(browserApiUrl("/api/atproto/signout"), {
         method: "POST",
         credentials: "include",
       });

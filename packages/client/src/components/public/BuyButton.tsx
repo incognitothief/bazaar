@@ -1,6 +1,10 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Link, useLocation } from "react-router-dom";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { useAtpSession } from "@/hooks/useAtpSession";
+import { stripeCheckoutPostUrl } from "@/lib/checkoutApi";
+import { merchantSignInUrl } from "@/lib/signInReturn";
 import type { CatalogItem, LicenseTerms, Listing } from "@/types/lexicons";
 import { cn } from "@/lib/utils";
 
@@ -17,32 +21,44 @@ export function BuyButton({
   licenseTerms?: LicenseTerms | null;
   className?: string;
 }) {
+  const location = useLocation();
+  const { session, loading: sessionLoading } = useAtpSession();
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const needsConsent =
     !licenseTerms || licenseTerms.checkoutConsentRequired === true;
-  const disabled = needsConsent ? !agreed : false;
+  const consentOk = !needsConsent || agreed;
+  const disabled = !consentOk || loading;
 
   const href =
     licenseTerms?.humanReadableUrl ?? "https://creativecommons.org/licenses/";
 
   async function onBuy() {
+    if (!session?.did) return;
     setErr(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/stripe/checkout", {
+      const res = await fetch(stripeCheckoutPostUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           listingUri,
           itemUri: listing.item.uri,
+          buyerDid: session.did,
         }),
       });
       if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        const j = (await res.json().catch(() => null)) as {
+          error?: string;
+          detail?: string;
+        } | null;
+        const parts = [j?.error, j?.detail].filter(
+          (x): x is string => typeof x === "string" && x.length > 0,
+        );
+        throw new Error(parts.length ? parts.join(": ") : `HTTP ${res.status}`);
       }
       const data = (await res.json()) as { url?: string };
       if (!data.url) throw new Error("No checkout URL");
@@ -60,44 +76,74 @@ export function BuyButton({
 
   return (
     <div className={cn("space-y-4", className)}>
-      {needsConsent ? (
-        <div className="flex items-start gap-2">
-          <input
-            id="license-consent"
-            type="checkbox"
-            checked={agreed}
-            onChange={(e) => setAgreed(e.target.checked)}
-            className="mt-1 h-4 w-4 rounded border-input"
-            aria-describedby="license-consent-desc"
-          />
-          <div className="space-y-1">
-            <Label htmlFor="license-consent" className="font-normal leading-snug">
-              I agree to the{" "}
-              <a
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                className="text-primary underline underline-offset-2"
-              >
-                license terms
-              </a>{" "}
-              for this purchase.
-            </Label>
-            <p id="license-consent-desc" className="text-xs text-muted-foreground">
-              {item.title}
-            </p>
-          </div>
+      {sessionLoading ? (
+        <Button size="lg" className="w-full sm:w-auto" disabled>
+          Checking account…
+        </Button>
+      ) : !session ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Sign in with your ATProto account so your receipt and license
+            consent can be saved to your PDS after payment.
+          </p>
+          <Link
+            to={merchantSignInUrl(location.pathname, location.search)}
+            className={cn(
+              buttonVariants({ size: "lg" }),
+              "inline-flex w-full sm:w-auto",
+            )}
+          >
+            Sign in to purchase
+          </Link>
         </div>
-      ) : null}
-      <Button
-        size="lg"
-        className="w-full sm:w-auto"
-        disabled={disabled || loading}
-        onClick={() => void onBuy()}
-        aria-busy={loading}
-      >
-        {loading ? "Redirecting…" : "Buy now"}
-      </Button>
+      ) : (
+        <>
+          {needsConsent ? (
+            <div className="flex items-start gap-2">
+              <input
+                id="license-consent"
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-input"
+                aria-describedby="license-consent-desc"
+              />
+              <div className="space-y-1">
+                <Label
+                  htmlFor="license-consent"
+                  className="font-normal leading-snug"
+                >
+                  I agree to the{" "}
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary underline underline-offset-2"
+                  >
+                    license terms
+                  </a>{" "}
+                  for this purchase.
+                </Label>
+                <p
+                  id="license-consent-desc"
+                  className="text-xs text-muted-foreground"
+                >
+                  {item.title}
+                </p>
+              </div>
+            </div>
+          ) : null}
+          <Button
+            size="lg"
+            className="w-full sm:w-auto"
+            disabled={disabled}
+            onClick={() => void onBuy()}
+            aria-busy={loading}
+          >
+            {loading ? "Redirecting…" : "Buy now"}
+          </Button>
+        </>
+      )}
       {err ? (
         <p className="text-sm text-destructive" role="alert">
           Payment unavailable — please try again ({err})

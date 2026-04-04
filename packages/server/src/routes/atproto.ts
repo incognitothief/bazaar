@@ -3,9 +3,13 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { Agent } from "@atproto/api";
 import { eq } from "drizzle-orm";
-import { OAUTH_SCOPE } from "../lib/atproto/oauth";
 import type { OAuthClient } from "../lib/atproto/oauth";
+import { buildOAuthScopeString } from "../lib/atproto/oauth-scope";
 import { oauthAppBaseUrl, oauthRedirectUri } from "../lib/atproto/oauth-url";
+
+function clientScope(oauthClient: OAuthClient): string {
+  return oauthClient.clientMetadata.scope ?? buildOAuthScopeString();
+}
 import type { Db } from "../db";
 import { meta } from "../db/schema";
 
@@ -51,7 +55,7 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       client_name: "Bazaar",
       client_uri: appUrl,
       redirect_uris: [redirectUri],
-      scope: OAUTH_SCOPE,
+      scope: clientScope(oauthClient),
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
@@ -74,9 +78,8 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       deleteCookie(c, RETURN_COOKIE, { path: "/" });
     }
     try {
-      const url = await oauthClient.authorize(handle, {
-        scope: OAUTH_SCOPE,
-      });
+      // Use clientMetadata.scope only (PAR + fetched metadata stay identical).
+      const url = await oauthClient.authorize(handle, {});
       return c.redirect(url.toString());
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

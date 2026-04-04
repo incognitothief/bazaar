@@ -1,16 +1,29 @@
+import {
+  buildDevStubItemJson,
+  buildDevStubListingJson,
+  DEV_STUB_LISTING_CID,
+  devCheckoutStubAllowed,
+  isDevStubListingUri,
+} from "@bazaar/shared";
+import { getCookie } from "hono/cookie";
 import { Hono } from "hono";
 import Stripe from "stripe";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
-import { meta } from "../db/schema";
 import { getAgent } from "../lib/atproto/client";
-import { signReceiptPayload } from "../lib/atproto/sign";
-import { oauthAppBaseUrl } from "../lib/atproto/oauth-url";
+import type { OAuthClient } from "../lib/atproto/oauth";
+import { storefrontWebOrigin } from "../lib/atproto/oauth-url";
+import { fulfillCheckoutSession } from "../lib/stripe/fulfillCheckoutSession";
+import { getStripe } from "../lib/stripe/getStripe";
+import {
+  resolveStripeWebhookSecret,
+} from "../lib/stripe/stripeCredentials";
 
-function getStripe(): Stripe | null {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || key.includes("PLACEHOLDER")) return null;
-  return new Stripe(key);
+/** Same as `bazaar_atp_session` in atproto routes — buyer must match checkout metadata. */
+const SESSION_COOKIE = "bazaar_atp_session";
+
+function buyerDidValid(did: string): boolean {
+  return did.startsWith("did:") && did.length > 8;
 }
 
 async function getRecordJson(uri: string): Promise<Record<string, unknown> | null> {
@@ -28,7 +41,18 @@ async function getRecordJson(uri: string): Promise<Record<string, unknown> | nul
   }
 }
 
-export function createStripeRouter(db: Db) {
+function listingHasV5License(listing: Record<string, unknown>): boolean {
+  const licUri = listing.licenseUri;
+  const licCid = listing.licenseGrantCid;
+  return (
+    typeof licUri === "string" &&
+    licUri.length > 0 &&
+    typeof licCid === "string" &&
+    licCid.length > 0
+  );
+}
+
+export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
   const r = new Hono();
 
   r.post("/checkout", async (c) => {
@@ -42,20 +66,70 @@ export function createStripeRouter(db: Db) {
     if (!listingUri || !itemUri) {
       return c.json({ error: "listingUri and itemUri required" }, 400);
     }
-    const listingAt = new AtUri(listingUri);
-    const agent = getAgent();
-    let listingRes;
-    try {
-      listingRes = await agent.com.atproto.repo.getRecord({
-        repo: listingAt.hostname,
-        collection: listingAt.collection,
-        rkey: listingAt.rkey,
-      });
-    } catch {
-      return c.json({ error: "Could not resolve listing" }, 404);
+    const stripe = await getStripe(db);
+    const buyerDidBody = body?.buyerDid ?? "";
+    if (stripe && !buyerDidValid(buyerDidBody)) {
+      return c.json({ error: "buyerDid required (signed-in ATProto DID)" }, 400);
     }
-    const listing = listingRes.data.value as Record<string, unknown>;
-    const item = await getRecordJson(itemUri);
+    if (stripe && buyerDidValid(buyerDidBody)) {
+      try {
+        await oauthClient.restore(buyerDidBody);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return c.json(
+          {
+            error: "oauth_session_required",
+            detail:
+              "The server needs a stored ATProto OAuth session for your DID to write receipts after payment. Use Sign in with ATProto (not dev mock sign-in), and use the same host as checkout (prefer http://127.0.0.1:5173 in dev, not localhost).",
+            cause: msg,
+          },
+          401,
+        );
+      }
+    }
+    let listing: Record<string, unknown>;
+    let listingCid: string;
+    if (devCheckoutStubAllowed() && isDevStubListingUri(listingUri)) {
+      listing = buildDevStubListingJson(itemUri);
+      listingCid = DEV_STUB_LISTING_CID;
+    } else {
+      const listingAt = new AtUri(listingUri);
+      const agent = getAgent();
+      let listingRes;
+      try {
+        listingRes = await agent.com.atproto.repo.getRecord({
+          repo: listingAt.hostname,
+          collection: listingAt.collection,
+          rkey: listingAt.rkey,
+        });
+      } catch {
+        return c.json({ error: "Could not resolve listing" }, 404);
+      }
+      const cid = listingRes.data.cid;
+      if (!cid) {
+        return c.json({ error: "Listing has no CID" }, 500);
+      }
+      listing = listingRes.data.value as Record<string, unknown>;
+      listingCid = cid;
+    }
+    if (!listingHasV5License(listing)) {
+      return c.json(
+        { error: "Listing must include licenseUri and licenseGrantCid" },
+        400,
+      );
+    }
+    const st = listing.status as string | undefined;
+    if (st && st !== "active") {
+      return c.json({ error: "Listing is not active" }, 400);
+    }
+    let item = await getRecordJson(itemUri);
+    if (
+      !item &&
+      devCheckoutStubAllowed() &&
+      isDevStubListingUri(listingUri)
+    ) {
+      item = buildDevStubItemJson(itemUri);
+    }
     if (!item) {
       return c.json({ error: "Could not resolve item" }, 404);
     }
@@ -64,19 +138,17 @@ export function createStripeRouter(db: Db) {
       return c.json({ error: "Invalid listing price" }, 400);
     }
     const title = (item.title as string | undefined) ?? "Bazaar item";
-    const appUrl = oauthAppBaseUrl();
-    const listingCid = listingRes.data.cid;
+    const webOrigin = storefrontWebOrigin();
     const metadata: Record<string, string> = {
       listingUri,
       itemUri,
-      listingCid: listingCid ?? "",
+      listingCid,
       appDid: process.env.APP_DID ?? "",
       buyerDid: body?.buyerDid ?? "",
     };
-    const stripe = getStripe();
     if (!stripe) {
       return c.json({
-        url: `${appUrl}/purchase/success?session_id=mock_${Date.now()}`,
+        url: `${webOrigin}/purchase/success?session_id=mock_${Date.now()}`,
         mock: true,
       });
     }
@@ -93,8 +165,8 @@ export function createStripeRouter(db: Db) {
             quantity: 1,
           },
         ],
-        success_url: `${appUrl}/purchase/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appUrl}/item/${encodeURIComponent(itemUri)}`,
+        success_url: `${webOrigin}/purchase/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${webOrigin}/item/${encodeURIComponent(itemUri)}`,
         metadata,
       });
       const url = session.url;
@@ -102,8 +174,83 @@ export function createStripeRouter(db: Db) {
       return c.json({ url });
     } catch (e) {
       console.error("Stripe checkout error:", e);
-      return c.json({ error: "checkout_failed" }, 502);
+      const detail =
+        e && typeof e === "object" && "message" in e
+          ? String((e as { message: unknown }).message)
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      return c.json({ error: "checkout_failed", detail }, 502);
     }
+  });
+
+  /**
+   * After redirect from Stripe Checkout, the browser can call this so PDS writes run even when
+   * the webhook is misconfigured, delayed, or unreachable (common in local dev).
+   * Requires an httpOnly session cookie whose DID matches `metadata.buyerDid` on the session.
+   */
+  r.post("/fulfill-session", async (c) => {
+    const stripe = await getStripe(db);
+    if (!stripe) {
+      return c.json({ error: "stripe_not_configured" }, 503);
+    }
+    const cookieDid = getCookie(c, SESSION_COOKIE);
+    const body = (await c.req.json().catch(() => null)) as {
+      session_id?: string;
+    } | null;
+    const sessionId = body?.session_id?.trim();
+    if (!sessionId) {
+      return c.json({ error: "session_id required" }, 400);
+    }
+    if (sessionId.startsWith("mock_")) {
+      return c.json(
+        {
+          error: "mock_checkout",
+          detail:
+            "Dev mock checkout does not create Stripe sessions or PDS records; use real Stripe or the webhook path.",
+        },
+        400,
+      );
+    }
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId);
+    } catch {
+      return c.json({ error: "session_not_found" }, 404);
+    }
+    if (session.payment_status !== "paid") {
+      return c.json(
+        {
+          error: "not_paid",
+          payment_status: session.payment_status,
+        },
+        400,
+      );
+    }
+    const buyerDid = session.metadata?.buyerDid ?? "";
+    if (!buyerDidValid(buyerDid)) {
+      return c.json({ error: "checkout_missing_buyer_did" }, 400);
+    }
+    if (cookieDid && cookieDid !== buyerDid) {
+      return c.json({ error: "buyer_mismatch" }, 403);
+    }
+    const skipReason = await fulfillCheckoutSession({
+      db,
+      stripe,
+      oauthClient,
+      session,
+      source: "client",
+    });
+    if (skipReason === "locked") {
+      return c.json(
+        { ok: false, retry_after_ms: 2500, reason: "locked" },
+        409,
+      );
+    }
+    return c.json({
+      ok: true,
+      ...(skipReason ? { note: `claim_skipped:${skipReason}` } : {}),
+    });
   });
 
   r.get("/session-status", async (c) => {
@@ -118,7 +265,7 @@ export function createStripeRouter(db: Db) {
         paymentStatus: "paid",
       });
     }
-    const stripe = getStripe();
+    const stripe = await getStripe(db);
     if (!stripe) {
       return c.json({ error: "stripe_not_configured" }, 503);
     }
@@ -135,14 +282,25 @@ export function createStripeRouter(db: Db) {
     }
   });
 
-  r.get("/account-status", (c) =>
-    c.json({ connected: false, details: "stub" }),
-  );
+  r.get("/account-status", async (c) => {
+    const stripe = await getStripe(db);
+    const whSecret = await resolveStripeWebhookSecret(db);
+    const webhookConfigured = !!(
+      whSecret && !whSecret.includes("PLACEHOLDER")
+    );
+    return c.json({
+      connected: !!stripe,
+      webhookConfigured,
+    });
+  });
 
-  r.get("/connect", () => {
-    const stripe = getStripe();
+  r.get("/connect", async () => {
+    const stripe = await getStripe(db);
     if (!stripe) {
-      return new Response("Stripe is not configured.", { status: 503 });
+      return new Response(
+        "Stripe is not configured. Add STRIPE_SECRET_KEY to the environment or save keys from the merchant dashboard.",
+        { status: 503 },
+      );
     }
     return new Response(
       "Stripe Connect onboarding URL would be generated here (deferred).",
@@ -151,8 +309,8 @@ export function createStripeRouter(db: Db) {
   });
 
   r.post("/webhook", async (c) => {
-    const stripe = getStripe();
-    const whSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const stripe = await getStripe(db);
+    const whSecret = await resolveStripeWebhookSecret(db);
     if (!stripe || !whSecret || whSecret.includes("PLACEHOLDER")) {
       return c.text("Webhook not configured", 503);
     }
@@ -161,7 +319,7 @@ export function createStripeRouter(db: Db) {
     if (!sig) return c.text("Missing signature", 400);
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(rawBody, sig, whSecret);
+      event = await stripe.webhooks.constructEventAsync(rawBody, sig, whSecret);
     } catch (err) {
       console.error("Stripe webhook signature error:", err);
       return c.text("Invalid signature", 400);
@@ -170,81 +328,13 @@ export function createStripeRouter(db: Db) {
       return c.json({ received: true });
     }
     const session = event.data.object as Stripe.Checkout.Session;
-    const md = session.metadata ?? {};
-    const listingUri = md.listingUri;
-    const itemUri = md.itemUri;
-    const listingCid = md.listingCid;
-    const buyerDid = md.buyerDid ?? "";
-    if (!listingUri || !itemUri || !listingCid) {
-      console.warn("checkout.session.completed missing metadata");
-      return c.json({ received: true });
-    }
-    const listing = await getRecordJson(listingUri);
-    if (listing) {
-      const st = listing.status as string | undefined;
-      if (st && st !== "active") {
-        console.warn("Listing no longer active:", listingUri);
-      }
-    }
-    const privateKey = process.env.APP_SERVICE_PRIVATE_KEY;
-    const purchasedAt = new Date().toISOString();
-    const paymentRef =
-      typeof session.payment_intent === "string"
-        ? session.payment_intent
-        : session.payment_intent?.id ?? session.id;
-    let appSig = "";
-    if (privateKey && !privateKey.includes("PLACEHOLDER") && buyerDid) {
-      try {
-        const pem = privateKey.includes("BEGIN")
-          ? privateKey
-          : `-----BEGIN RSA PRIVATE KEY-----\n${privateKey}\n-----END RSA PRIVATE KEY-----`;
-        appSig = signReceiptPayload({
-          purchasedAt,
-          paymentRef,
-          itemUri,
-          listingCid,
-          buyerDid,
-          privateKeyPem: pem,
-        });
-      } catch (e) {
-        console.warn("Receipt signing failed:", e);
-      }
-    } else if (!buyerDid) {
-      console.info("buyerDid absent; receipt signing / PDS write skipped");
-    }
-    const item = await getRecordJson(itemUri);
-    const issuerScope =
-      (item?.artistDid as string | undefined) ??
-      process.env.ARTIST_DID ??
-      "";
-    const receiptPayload = {
-      receiptUri: null as string | null,
-      itemUri,
-      listingUri,
-      listingCid,
-      paymentRef,
-      purchasedAt,
-      appSig,
-      issuerScope,
-      amountTotal: session.amount_total,
-      currency: session.currency,
-    };
-    // Buyer PDS receipt write requires buyer credentials (deferred); persist server-side only.
-    await db
-      .insert(meta)
-      .values({
-        key: `receipt:${paymentRef}`,
-        value: JSON.stringify(receiptPayload),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: meta.key,
-        set: {
-          value: JSON.stringify(receiptPayload),
-          updatedAt: new Date(),
-        },
-      });
-    console.info("Would generate download link for", itemUri);
+    await fulfillCheckoutSession({
+      db,
+      stripe,
+      oauthClient,
+      session,
+      source: "webhook",
+    });
     return c.json({ received: true });
   });
 

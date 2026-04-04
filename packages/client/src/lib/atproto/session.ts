@@ -1,11 +1,8 @@
 import { Agent } from "@atproto/api";
+import { browserApiUrl } from "@/lib/browserApi";
 
 export function createPublicAgent(): Agent {
   return new Agent({ service: import.meta.env.VITE_ATPROTO_SERVICE });
-}
-
-function apiOrigin(): string {
-  return import.meta.env.VITE_API_ORIGIN ?? "";
 }
 
 /**
@@ -65,10 +62,9 @@ export interface ATPRepoClient {
  */
 export function createProxyAgent(did: string): ATPRepoClient {
   const publicAgent = createPublicAgent();
-  const origin = apiOrigin();
 
   async function proxyPost<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(`${origin}/api/atproto${path}`, {
+    const res = await fetch(browserApiUrl(`/api/atproto${path}`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -121,7 +117,7 @@ export function createProxyAgent(did: string): ATPRepoClient {
         "file",
         blob instanceof File ? blob : new File([blob], "upload"),
       );
-      const res = await fetch(`${origin}/api/atproto/blob`, {
+      const res = await fetch(browserApiUrl("/api/atproto/blob"), {
         method: "POST",
         credentials: "include",
         body: formData,

@@ -12,6 +12,7 @@ import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
 import { ListingsPage } from "@/routes/ListingsPage";
 import { LicensePage } from "@/routes/LicensePage";
 import { SettingsPage } from "@/routes/SettingsPage";
+import { MerchantTransactionsPage } from "@/routes/MerchantTransactionsPage";
 import { MerchantSignInPage } from "@/routes/MerchantSignInPage";
 
 export function App() {
@@ -34,6 +35,7 @@ export function App() {
           <Route path="listings" element={<ListingsPage />} />
           <Route path="license" element={<LicensePage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="transactions" element={<MerchantTransactionsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

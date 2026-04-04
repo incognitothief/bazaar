@@ -20,9 +20,31 @@ import {
   putListing,
   type ListingRow,
 } from "@/lib/atproto/records";
+import {
+  buildDummyListing,
+  catalogDummyEnabled,
+  DUMMY_LISTING_AT,
+  isDummyListingRowUri,
+  resolveDummyItemAtUri,
+} from "@/lib/devCatalogDummy";
 import { cn } from "@/lib/utils";
 import type { CatalogItem, Listing } from "@/types/lexicons";
 import { toast } from "sonner";
+
+function isDummyListingRow(row: ListingRow): boolean {
+  return isDummyListingRowUri(row.uri);
+}
+
+function devDummyListingRow(merchantDid: string | undefined): ListingRow | null {
+  if (!catalogDummyEnabled() || !merchantDid?.startsWith("did:")) return null;
+  const itemUri = resolveDummyItemAtUri(merchantDid);
+  if (!itemUri) return null;
+  return {
+    uri: DUMMY_LISTING_AT,
+    cid: "bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    listing: buildDummyListing(itemUri),
+  };
+}
 
 function formatMoney(m: { amount: number; currency: string }): string {
   return new Intl.NumberFormat(undefined, {
@@ -45,12 +67,16 @@ export function ListingsPage() {
       const list = await listListingRows(agent, session.did);
       setRows(list);
       const t: Record<string, string> = {};
-      for (const r of list) {
+      const dummyRow = devDummyListingRow(session.did);
+      const forTitles = list.length > 0 ? list : dummyRow ? [dummyRow] : [];
+      for (const r of forTitles) {
         const item = await getRecordValue<CatalogItem>(
           agent,
           r.listing.item.uri,
         );
-        t[r.uri] = item?.title ?? r.listing.item.uri;
+        t[r.uri] =
+          item?.title ??
+          (isDummyListingRow(r) ? "Sample listing (dev)" : r.listing.item.uri);
       }
       setTitles(t);
     })();
@@ -101,12 +127,30 @@ export function ListingsPage() {
 
   if (!session || !agent) return null;
 
+  const dummy = devDummyListingRow(session.did);
+  const displayRows = rows.length > 0 ? rows : dummy ? [dummy] : [];
+  const showingListingsDummy = rows.length === 0 && dummy != null;
+
   return (
     <div className="w-full min-w-0">
       <h1 className="text-2xl font-semibold mb-6">Listings</h1>
-      {rows.length === 0 ? (
+      {showingListingsDummy ? (
+        <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+          Preview row only (not stored in your repo). Uses your signed-in DID for the
+          sample item URI unless <code className="text-xs">VITE_DEV_DUMMY_ITEM_URI</code>{" "}
+          or <code className="text-xs">VITE_ARTIST_DID</code> is set. Publish a real
+          listing from Upload to replace this.
+        </p>
+      ) : null}
+      {displayRows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
           <p>No listings yet.</p>
+          <p className="mt-2 text-xs">
+            Run <code className="text-foreground">npm run dev</code> (Vite dev mode) to
+            see a dummy row here, or set{" "}
+            <code className="text-foreground">VITE_SHOW_LISTINGS_DUMMY=true</code> for
+            preview/production builds.
+          </p>
           <Link
             to="/merchant/upload/digital"
             className={cn(buttonVariants(), "mt-4 inline-flex")}
@@ -128,9 +172,18 @@ export function ListingsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {displayRows.map((row) => (
                 <tr key={row.uri} className="border-b border-border">
-                  <td className="p-3">{titles[row.uri] ?? "…"}</td>
+                  <td className="p-3">
+                    {isDummyListingRow(row)
+                      ? (titles[row.uri] ?? "Sample listing (dev)")
+                      : (titles[row.uri] ?? "…")}
+                    {isDummyListingRow(row) ? (
+                      <Badge variant="secondary" className="ml-2 align-middle text-[10px]">
+                        dev
+                      </Badge>
+                    ) : null}
+                  </td>
                   <td className="p-3">
                     <Badge variant="outline">{row.listing.item.itemType}</Badge>
                   </td>
@@ -155,25 +208,29 @@ export function ListingsPage() {
                     />
                   </td>
                   <td className="p-3 text-right space-x-2">
-                    <button
-                      type="button"
-                      className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
-                      onClick={() => {
-                        setEditRow(row);
-                        setEditDollars(
-                          (row.listing.price.amount / 100).toFixed(2),
-                        );
-                      }}
-                    >
-                      Edit price
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(buttonVariants({ size: "sm", variant: "secondary" }))}
-                      onClick={() => void toggleStatus(row)}
-                    >
-                      {row.listing.status === "active" ? "Pause" : "Activate"}
-                    </button>
+                    {isDummyListingRow(row) ? null : (
+                      <>
+                        <button
+                          type="button"
+                          className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+                          onClick={() => {
+                            setEditRow(row);
+                            setEditDollars(
+                              (row.listing.price.amount / 100).toFixed(2),
+                            );
+                          }}
+                        >
+                          Edit price
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(buttonVariants({ size: "sm", variant: "secondary" }))}
+                          onClick={() => void toggleStatus(row)}
+                        >
+                          {row.listing.status === "active" ? "Pause" : "Activate"}
+                        </button>
+                      </>
+                    )}
                     <Link
                       to={`/item/${encodeURIComponent(row.listing.item.uri)}`}
                       className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "inline-flex")}

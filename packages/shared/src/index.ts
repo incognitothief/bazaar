@@ -1,4 +1,13 @@
 export {
+  buildDevStubItemJson,
+  buildDevStubListingJson,
+  DEV_STUB_LISTING_AT,
+  DEV_STUB_LISTING_CID,
+  devCheckoutStubAllowed,
+  isDevStubListingUri,
+  tryDevStubListingSnapshot,
+} from "./dev-checkout-stub.js";
+export {
   BAZAAR_LEXICON_DOCS,
   BAZAAR_LEXICON_IDS,
   lexicons,

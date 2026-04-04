@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { Agent } from "@atproto/api";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import type { CatalogItem, Listing } from "@/types/lexicons";
@@ -18,12 +19,15 @@ export function ItemCard({
   itemUri,
   item,
   listing,
+  preview,
 }: {
   agent: Agent;
   artistDid: string;
   itemUri: string;
   item: CatalogItem;
   listing: Listing;
+  /** Local-only catalog preview (not on PDS). */
+  preview?: boolean;
 }) {
   const title = item.title;
   const artistName =
@@ -51,7 +55,17 @@ export function ItemCard({
         </div>
         <CardContent className="p-4 space-y-2">
           <div>
-            <h3 className="font-semibold leading-tight line-clamp-2">{title}</h3>
+            <h3 className="font-semibold leading-tight line-clamp-2">
+              {title}
+              {preview ? (
+                <Badge
+                  variant="secondary"
+                  className="ml-2 align-middle text-[10px] font-normal"
+                >
+                  Preview
+                </Badge>
+              ) : null}
+            </h3>
             <p className="text-sm text-muted-foreground line-clamp-1">
               {artistName}
             </p>

@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, Menu } from "lucide-react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-} from "@/components/ui/sheet";
+  Link,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { cn } from "@/lib/utils";
 import { getAuthRole } from "@/lib/auth";
@@ -23,6 +26,10 @@ const inventoryLinks: { to: string; label: string; albumMode: boolean }[] = [
     label: "Upload collection",
     albumMode: true,
   },
+];
+
+const salesLinks: { to: string; label: string }[] = [
+  { to: "/merchant/transactions", label: "Payment activity" },
 ];
 
 function UploadDigitalNavLink({
@@ -59,17 +66,22 @@ function UploadDigitalNavLink({
 function MerchantNavPanel({
   inventoryOpen,
   setInventoryOpen,
+  salesOpen,
+  setSalesOpen,
   onNavigate,
   signOut,
   sheetVariant,
 }: {
   inventoryOpen: boolean;
   setInventoryOpen: (v: boolean | ((b: boolean) => boolean)) => void;
+  salesOpen: boolean;
+  setSalesOpen: (v: boolean | ((b: boolean) => boolean)) => void;
   onNavigate?: () => void;
   signOut: () => void | Promise<void>;
   /** Extra top padding so nav clears the sheet close control. */
   sheetVariant?: boolean;
 }) {
+  const location = useLocation();
   const navCls = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-md px-2 py-1.5 text-sm hover:bg-muted",
@@ -83,11 +95,7 @@ function MerchantNavPanel({
         sheetVariant && "pt-14",
       )}
     >
-      <Link
-        to="/"
-        className="shrink-0 font-semibold"
-        onClick={onNavigate}
-      >
+      <Link to="/" className="shrink-0 font-semibold" onClick={onNavigate}>
         bazaar
       </Link>
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain">
@@ -129,13 +137,42 @@ function MerchantNavPanel({
           ) : null}
         </div>
 
-        {mainNav.map((n) => (
-          <NavLink
-            key={n.to}
-            to={n.to}
-            className={navCls}
-            onClick={onNavigate}
+        <div className="shrink-0 rounded-md">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-left"
+            onClick={() => setSalesOpen((o) => !o)}
+            aria-expanded={salesOpen}
           >
+            <span className="font-medium">Sales</span>
+            <ChevronDown
+              className={cn(
+                "size-4 shrink-0 text-muted-foreground transition-transform",
+                salesOpen && "rotate-180",
+              )}
+            />
+          </button>
+          {salesOpen ? (
+            <div className="mt-1 flex flex-col gap-0.5 border-l border-border ml-2 pl-2">
+              {salesLinks.map((l) => (
+                <Link
+                  key={l.to}
+                  to={l.to}
+                  className={cn(
+                    "rounded-md px-2 py-1.5 text-sm hover:bg-muted block",
+                    location.pathname === l.to && "bg-muted font-medium",
+                  )}
+                  onClick={onNavigate}
+                >
+                  {l.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {mainNav.map((n) => (
+          <NavLink key={n.to} to={n.to} className={navCls} onClick={onNavigate}>
             {n.label}
           </NavLink>
         ))}
@@ -161,8 +198,12 @@ export function MerchantLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const inventoryPathPrefix = "/merchant/upload";
+  const salesPathPrefix = "/merchant/transactions";
   const [inventoryOpen, setInventoryOpen] = useState(() =>
     location.pathname.startsWith(inventoryPathPrefix),
+  );
+  const [salesOpen, setSalesOpen] = useState(() =>
+    location.pathname.startsWith(salesPathPrefix),
   );
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -171,6 +212,12 @@ export function MerchantLayout() {
       setInventoryOpen(true);
     }
   }, [location.pathname, inventoryPathPrefix]);
+
+  useEffect(() => {
+    if (location.pathname.startsWith(salesPathPrefix)) {
+      setSalesOpen(true);
+    }
+  }, [location.pathname, salesPathPrefix]);
 
   useEffect(() => {
     if (!loading && !session) {
@@ -186,23 +233,21 @@ export function MerchantLayout() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-muted-foreground">Loading…</div>
+      <div className="p-8 text-center text-muted-foreground">
+        Pulling data from pds...
+      </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="p-8 text-center text-muted-foreground">
-        Redirecting…
-      </div>
+      <div className="p-8 text-center text-muted-foreground">Redirecting…</div>
     );
   }
 
   if (getAuthRole(session.did) !== "merchant") {
     return (
-      <div className="p-8 text-center text-muted-foreground">
-        Redirecting…
-      </div>
+      <div className="p-8 text-center text-muted-foreground">Redirecting…</div>
     );
   }
 
@@ -227,6 +272,8 @@ export function MerchantLayout() {
         <MerchantNavPanel
           inventoryOpen={inventoryOpen}
           setInventoryOpen={setInventoryOpen}
+          salesOpen={salesOpen}
+          setSalesOpen={setSalesOpen}
           signOut={signOut}
         />
       </aside>
@@ -241,6 +288,8 @@ export function MerchantLayout() {
             sheetVariant
             inventoryOpen={inventoryOpen}
             setInventoryOpen={setInventoryOpen}
+            salesOpen={salesOpen}
+            setSalesOpen={setSalesOpen}
             onNavigate={() => setMobileNavOpen(false)}
             signOut={signOut}
           />
