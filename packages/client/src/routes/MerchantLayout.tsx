@@ -174,7 +174,7 @@ export function MerchantLayout() {
 
   useEffect(() => {
     if (!loading && !session) {
-      navigate("/?login=required", { replace: true });
+      navigate("/", { replace: true });
     }
     if (!loading && session) {
       const role = getAuthRole(session.did);
