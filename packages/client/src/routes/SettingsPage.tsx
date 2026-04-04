@@ -72,7 +72,7 @@ export function SettingsPage() {
     if (!agent || !session) return;
     const record: ActorProfile = {
       $type: "diamonds.whereditgo.bazaar.actor.profile",
-      displayName: storefrontName || undefined,
+      displayName: storefrontName.trim() || "Storefront",
       description: description || undefined,
       createdAt: profileCreatedAt,
     };
@@ -81,7 +81,7 @@ export function SettingsPage() {
         await putActorProfile(agent, record, profileRkey, profileCid);
       } else {
         const created = await createActorProfile(agent, {
-          displayName: storefrontName || undefined,
+          displayName: storefrontName.trim() || "Storefront",
           description: description || undefined,
         });
         setProfileRkey(created.uri.split("/").pop() ?? null);

@@ -1,0 +1,42 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.actor.profile",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": [
+          "displayName"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "storefrontUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "avatarCid": {
+            "type": "string",
+            "format": "cid"
+          },
+          "bannerCid": {
+            "type": "string",
+            "format": "cid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

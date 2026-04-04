@@ -110,7 +110,7 @@ export async function createCollection(
   const did = agent.session?.did;
   if (!did) throw new Error("Not authenticated");
   const full: Collection = {
-    $type: "diamonds.whereditgo.bazaar.collection",
+    $type: "diamonds.whereditgo.bazaar.catalog.collection",
     ...record,
     createdAt: nowIso(),
   };
@@ -191,7 +191,8 @@ function isCollection(v: unknown): v is Collection {
   return (
     typeof v === "object" &&
     v !== null &&
-    (v as Collection).$type === "diamonds.whereditgo.bazaar.collection"
+    (v as Collection).$type ===
+      "diamonds.whereditgo.bazaar.catalog.collection"
   );
 }
 

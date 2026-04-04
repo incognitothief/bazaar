@@ -1,0 +1,101 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.purchase.fulfillment",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "receiptUri",
+          "receiptCid",
+          "status",
+          "createdAt"
+        ],
+        "properties": {
+          "receiptUri": {
+            "type": "string",
+            "format": "at-uri"
+          },
+          "receiptCid": {
+            "type": "string",
+            "format": "cid"
+          },
+          "status": {
+            "type": "string",
+            "knownValues": [
+              "pending",
+              "processing",
+              "shipped",
+              "inTransit",
+              "delivered",
+              "returned",
+              "cancelled"
+            ]
+          },
+          "carrier": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "trackingNumber": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "trackingUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "estimatedDelivery": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "shippedAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "deliveredAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "status",
+                "timestamp"
+              ],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "location": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "timestamp": {
+                  "type": "string",
+                  "format": "datetime"
+                },
+                "note": {
+                  "type": "string",
+                  "maxLength": 512
+                }
+              }
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

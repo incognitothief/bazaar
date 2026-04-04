@@ -1,0 +1,73 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.catalog.listing",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "item",
+          "price",
+          "status",
+          "licenseUri",
+          "licenseGrantCid",
+          "createdAt"
+        ],
+        "properties": {
+          "item": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
+          },
+          "price": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#money"
+          },
+          "compareAtPrice": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#money"
+          },
+          "status": {
+            "type": "string",
+            "knownValues": [
+              "active",
+              "paused",
+              "soldOut",
+              "scheduled",
+              "archived",
+              "superseded"
+            ]
+          },
+          "licenseUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the license.terms record governing this listing. Required. Takes precedence over defaultLicenseUri on the item or collection. Different listings for the same item may reference different license.terms records, enabling per-tier pricing (e.g. personal vs. commercial)."
+          },
+          "licenseGrantCid": {
+            "type": "string",
+            "format": "cid",
+            "description": "CID of the license.terms record at time of listing creation. Anchors the offered terms so that receipt and consent record resolution is consistent even if the license.terms record is later updated."
+          },
+          "supersededBy": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the listing record that replaced this one following a material change. Set when status is superseded."
+          },
+          "availableFrom": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "availableUntil": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "maxPurchasesPerBuyer": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

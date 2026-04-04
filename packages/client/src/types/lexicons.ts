@@ -1,4 +1,4 @@
-/** Types aligned with diamonds.whereditgo.bazaar.* lexicons */
+/** Types aligned with diamonds.whereditgo.bazaar.* lexicons (v5). */
 
 export type Money = { amount: number; currency: string };
 
@@ -13,18 +13,24 @@ export type Weight = { value: number; unit: "g" | "kg" | "oz" | "lb" };
 
 export type Variant = {
   sku: string;
-  attributes: Record<string, string>;
+  attributes?: Record<string, string>;
   weight?: Weight;
   dimensions?: Dimensions;
   additionalPrice?: Money;
   artworkCid?: string;
 };
 
+export type BazaarItemType =
+  | "diamonds.whereditgo.bazaar.catalog.item.digital"
+  | "diamonds.whereditgo.bazaar.catalog.item.physical"
+  | "diamonds.whereditgo.bazaar.catalog.item.bundle"
+  | "diamonds.whereditgo.bazaar.catalog.collection";
+
 export type ItemRef = {
   uri: string;
   cid?: string;
   variantSku?: string;
-  itemType: string;
+  itemType: BazaarItemType;
 };
 
 export type Address = {
@@ -34,6 +40,29 @@ export type Address = {
   region?: string;
   postalCode?: string;
   countryCode: string;
+};
+
+export type TerritoryCoverage = {
+  scope: "worldwide" | "excluding" | "only";
+  territories?: string[];
+};
+
+export type CollectionItemRole =
+  | "track"
+  | "video"
+  | "document"
+  | "artwork"
+  | "bonus"
+  | "other";
+
+export type CollectionItemEntry = {
+  uri: string;
+  cid?: string;
+  role: CollectionItemRole;
+  essential?: boolean;
+  trackNumber?: number;
+  discNumber?: number;
+  title?: string;
 };
 
 export type DigitalItem = {
@@ -47,38 +76,39 @@ export type DigitalItem = {
     | "preset"
     | "stems"
     | "video"
+    | "document"
     | "ebook"
     | "other";
   description?: string;
   formats: string[];
+  fileChecksum: string;
+  fileCid: string;
+  fileFormat?: string;
   durationMs?: number;
   releaseDate?: string;
   artworkCid?: string;
   genre?: string[];
   isrc?: string;
-  iswc?: string;
   defaultLicenseUri?: string;
+  bazaarRid?: unknown;
+  collectionUri?: string;
+  supersedes?: string;
   createdAt: string;
 };
 
 export type Collection = {
-  $type: "diamonds.whereditgo.bazaar.collection";
+  $type: "diamonds.whereditgo.bazaar.catalog.collection";
   title: string;
-  artistName: string;
+  artistDid: string;
+  collectionType?: "album" | "ep" | "single" | "compilation" | "other";
   description?: string;
-  formats?: string[];
-  collectionType?: "album" | "ep" | "single" | "bundle" | "compilation";
   releaseDate: string;
-  tracks: Array<{
-    uri: string;
-    cid?: string;
-    trackNumber?: number;
-    discNumber?: number;
-  }>;
+  items: CollectionItemEntry[];
+  defaultLicenseUri?: string;
   artworkCid?: string;
   genre?: string[];
   upc?: string;
-  price?: Money;
+  bazaarPid?: unknown;
   createdAt: string;
 };
 
@@ -92,16 +122,15 @@ export type Listing = {
     | "paused"
     | "soldOut"
     | "scheduled"
-    | "archived";
+    | "archived"
+    | "superseded";
+  licenseUri: string;
+  licenseGrantCid: string;
+  supersededBy?: string;
   availableFrom?: string;
   availableUntil?: string;
   maxPurchasesPerBuyer?: number;
   createdAt: string;
-};
-
-export type TerritoryCoverage = {
-  scope: "worldwide" | "excluding" | "only";
-  territories?: string[];
 };
 
 export type LicenseTerms = {
@@ -129,6 +158,7 @@ export type LicenseTerms = {
     allowsBroadcast?: boolean;
     requiresAttribution?: boolean;
     requiresMechanicalReporting?: boolean;
+    requiresShareAlike?: boolean;
   };
   proNotice?: {
     compositionPro?: string;
@@ -157,6 +187,8 @@ export type PurchaseReceipt = {
   pricePaid: Money;
   paymentProcessor: string;
   paymentRef: string;
+  /** Required for v5 records; may be absent on legacy receipts. */
+  buyerDid?: string;
   licenseGrantUri?: string;
   licenseGrantCid?: string;
   shippingAddress?: Address;
@@ -168,37 +200,85 @@ export type PurchaseReceipt = {
   note?: string;
 };
 
-/** Master recording reference (lexicon stub for future use) */
+export type PurchaseConsent = {
+  $type: "diamonds.whereditgo.bazaar.purchase.consent";
+  receiptUri: string;
+  receiptCid: string;
+  licenseGrantUri: string;
+  licenseGrantCid: string;
+  buyerDid: string;
+  consentedAt: string;
+  appSig: string;
+  usageTier?: "personal" | "commercial" | "sync";
+  syncProject?: string;
+};
+
 export type Recording = {
   $type: "diamonds.whereditgo.bazaar.catalog.recording";
-  title: string;
-  artistDid: string;
+  itemUri: string;
+  itemCid: string;
   isrc?: string;
+  iswc?: string;
+  recordingMetaUri?: string;
+  songMetaUri?: string;
+  masterOwnerDid?: string;
+  publishingOwnerDid?: string;
+  publishingOwnerIpi?: string;
+  masterLicenseTermsUri?: string;
+  publishingLicenseTermsUri?: string;
+  bazaarRid?: unknown;
+  bazaarWid?: unknown;
   createdAt: string;
 };
 
 export type Stock = {
   $type: "diamonds.whereditgo.bazaar.purchase.stock";
-  item: ItemRef;
-  quantity: number;
-  sku?: string;
-  createdAt: string;
+  itemUri: string;
+  itemCid: string;
+  variantSku: string;
+  quantityAvailable: number;
+  quantityReserved?: number;
+  quantitySold?: number;
+  isUnlimited?: boolean;
+  lowStockThreshold?: number;
+  updatedAt: string;
 };
 
 export type Fulfillment = {
   $type: "diamonds.whereditgo.bazaar.purchase.fulfillment";
   receiptUri: string;
-  status: "pending" | "shipped" | "delivered" | "cancelled";
+  receiptCid: string;
+  status:
+    | "pending"
+    | "processing"
+    | "shipped"
+    | "inTransit"
+    | "delivered"
+    | "returned"
+    | "cancelled";
   carrier?: string;
   trackingNumber?: string;
+  trackingUrl?: string;
+  estimatedDelivery?: string;
+  shippedAt?: string;
+  deliveredAt?: string;
+  events?: Array<{
+    status: string;
+    location?: string;
+    timestamp: string;
+    note?: string;
+  }>;
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type ActorProfile = {
   $type: "diamonds.whereditgo.bazaar.actor.profile";
-  displayName?: string;
+  displayName: string;
   description?: string;
+  storefrontUrl?: string;
   avatarCid?: string;
+  bannerCid?: string;
   createdAt: string;
 };
 

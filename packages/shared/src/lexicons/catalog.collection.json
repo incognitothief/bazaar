@@ -1,0 +1,127 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.catalog.collection",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "title",
+          "artistDid",
+          "releaseDate",
+          "items",
+          "createdAt"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "artistDid": {
+            "type": "string",
+            "format": "did"
+          },
+          "collectionType": {
+            "type": "string",
+            "knownValues": [
+              "album",
+              "ep",
+              "single",
+              "compilation",
+              "other"
+            ]
+          },
+          "releaseDate": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "items": {
+            "type": "array",
+            "minLength": 1,
+            "description": "All content belonging to this release, in display order.",
+            "items": {
+              "type": "object",
+              "required": [
+                "uri",
+                "role"
+              ],
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "format": "at-uri",
+                  "description": "AT-URI of the catalog.item.digital record for this content."
+                },
+                "cid": {
+                  "type": "string",
+                  "format": "cid",
+                  "description": "Optional CID of the item record at time of collection authoring. Informational only."
+                },
+                "role": {
+                  "type": "string",
+                  "knownValues": [
+                    "track",
+                    "video",
+                    "document",
+                    "artwork",
+                    "bonus",
+                    "other"
+                  ],
+                  "description": "The function of this item within the release. track = music recording. document = liner notes, lyrics, zine, PDF. video = music video or visual album component. artwork = supplementary visual asset. bonus = promotional or discretionary extra."
+                },
+                "essential": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "If true, this item is a core component of the release — included in the collection zip and per-item download entitlement. If false, the item is supplementary and delivery is at the backend's discretion."
+                },
+                "trackNumber": {
+                  "type": "integer",
+                  "description": "Position in the tracklist. Meaningful only for role: track."
+                },
+                "discNumber": {
+                  "type": "integer",
+                  "description": "Disc number for multi-disc releases. Meaningful only for role: track."
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 512,
+                  "description": "Display title override for this item's role in the collection. Falls back to the item record's own title if absent."
+                }
+              }
+            }
+          },
+          "defaultLicenseUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the default license.terms record for this collection. Used to pre-populate the listing form. Not the authoritative license at point of sale — the listing's licenseUri field is authoritative."
+          },
+          "upc": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Universal Product Code. Optional — may be absent if not yet registered. See bazaarPid for self-issued alternative."
+          },
+          "bazaarPid": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#bazaarIdentifier",
+            "description": "Self-issued Product Identifier. Generated as base32(SHA-256(artistDid + collectionUri + releaseDate)). Shadows UPC. supersededByUpc populated when a proper UPC is obtained."
+          },
+          "artworkCid": {
+            "type": "string",
+            "format": "cid"
+          },
+          "genre": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

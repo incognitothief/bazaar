@@ -1,0 +1,76 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.catalog.item.physical",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "title",
+          "artistDid",
+          "itemClass",
+          "variants",
+          "createdAt"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "artistDid": {
+            "type": "string",
+            "format": "did"
+          },
+          "itemClass": {
+            "type": "string",
+            "knownValues": [
+              "clothing",
+              "vinyl",
+              "cd",
+              "cassette",
+              "poster",
+              "print",
+              "accessory",
+              "hardGood",
+              "other"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "diamonds.whereditgo.bazaar.defs#variant"
+            },
+            "minLength": 1
+          },
+          "artworkCid": {
+            "type": "string",
+            "format": "cid"
+          },
+          "countryOfOrigin": {
+            "type": "string",
+            "maxLength": 2
+          },
+          "harmonizedCode": {
+            "type": "string",
+            "maxLength": 16,
+            "description": "HS tariff code."
+          },
+          "requiresShipping": {
+            "type": "boolean",
+            "default": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

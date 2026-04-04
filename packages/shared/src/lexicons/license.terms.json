@@ -1,0 +1,167 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.license.terms",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "title",
+          "tier",
+          "rightsType",
+          "version",
+          "territoryCoverage",
+          "checkoutConsentRequired",
+          "createdAt"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "tier": {
+            "type": "string",
+            "knownValues": [
+              "personal",
+              "commercial",
+              "syncMaster",
+              "syncPublishing",
+              "syncFull",
+              "mechanical",
+              "broadcast",
+              "stemLicense"
+            ]
+          },
+          "rightsType": {
+            "type": "string",
+            "knownValues": [
+              "master",
+              "publishing",
+              "both"
+            ],
+            "description": "Which rights stack this license covers. Master = the recording. Publishing = the composition. Both = full clearance."
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "territoryCoverage": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#territoryCoverage"
+          },
+          "term": {
+            "type": "object",
+            "description": "Duration of the license. Absent = perpetual.",
+            "properties": {
+              "durationMonths": {
+                "type": "integer"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "datetime"
+              }
+            }
+          },
+          "usageRestrictions": {
+            "type": "object",
+            "properties": {
+              "allowsStreaming": {
+                "type": "boolean"
+              },
+              "allowsDownload": {
+                "type": "boolean"
+              },
+              "allowsCommercialUse": {
+                "type": "boolean"
+              },
+              "allowsDerivatives": {
+                "type": "boolean"
+              },
+              "allowsSync": {
+                "type": "boolean"
+              },
+              "allowsBroadcast": {
+                "type": "boolean"
+              },
+              "requiresAttribution": {
+                "type": "boolean"
+              },
+              "requiresMechanicalReporting": {
+                "type": "boolean"
+              },
+              "requiresShareAlike": {
+                "type": "boolean",
+                "description": "If true, derivative works must be released under the same license terms as this work. Required for Creative Commons ShareAlike variants (CC BY-SA, CC BY-NC-SA). Absent or false means no share-alike obligation."
+              }
+            }
+          },
+          "proNotice": {
+            "type": "object",
+            "description": "Identifies PRO(s) administering composition rights so buyers know where to direct royalty payments.",
+            "properties": {
+              "compositionPro": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "publishingOwnerIpi": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "masterOwnerDid": {
+                "type": "string",
+                "format": "did"
+              }
+            }
+          },
+          "legalMetadata": {
+            "type": "object",
+            "properties": {
+              "governingLaw": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "disputeVenue": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "copyrightRegistrationId": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "copyrightYear": {
+                "type": "integer"
+              },
+              "proMembership": {
+                "type": "string",
+                "maxLength": 64
+              }
+            }
+          },
+          "humanReadableUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Canonical URL of the full license text. For Creative Commons licenses, this should be the canonical CC deed URL."
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "editionSize": {
+            "type": "integer",
+            "description": "For limited editions. Absent = open edition."
+          },
+          "checkoutConsentRequired": {
+            "type": "boolean",
+            "default": true,
+            "description": "If true, the purchasing application MUST obtain affirmative clickwrap consent before completing the transaction. Set to false for Creative Commons licenses where the grant is public and non-transactional."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

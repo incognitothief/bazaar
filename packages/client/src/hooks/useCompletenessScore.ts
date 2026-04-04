@@ -12,7 +12,7 @@ export type CompletenessSubject = Partial<DigitalItem | Collection> & {
 function isCollectionShape(
   x: CompletenessSubject,
 ): x is Partial<Collection> & CompletenessSubject {
-  return x.$type === "diamonds.whereditgo.bazaar.collection";
+  return x.$type === "diamonds.whereditgo.bazaar.catalog.collection";
 }
 
 export function scoreCompleteness(item: CompletenessSubject): CompletenessScore {
@@ -22,15 +22,15 @@ export function scoreCompleteness(item: CompletenessSubject): CompletenessScore 
 
   if (isCollectionShape(item)) {
     if (!item.title) reqKeys.push("title");
-    if (!item.artistName) reqKeys.push("artistName");
+    if (!item.artistDid) reqKeys.push("artistDid");
     if (!item.releaseDate) reqKeys.push("releaseDate");
-    if (!item.tracks?.length) reqKeys.push("tracks");
+    if (!item.items?.length) reqKeys.push("items");
     if (!item.artworkCid) recKeys.push("artwork");
     if (!("description" in item) || !item.description)
       recKeys.push("description");
     if (!item.genre?.length) recKeys.push("genre");
     if (!item.upc) optKeys.push("upc");
-    if (!item.price) optKeys.push("price");
+    if (!item.defaultLicenseUri) optKeys.push("defaultLicenseUri");
 
     const nReq = 4;
     const nRec = 3;
@@ -59,20 +59,20 @@ export function scoreCompleteness(item: CompletenessSubject): CompletenessScore 
   if (!item.itemClass) reqKeys.push("itemClass");
   if (!item.formats?.length) reqKeys.push("formats");
   if (!item.hasAudioFile) reqKeys.push("audioFile");
+  if (!item.fileChecksum || !item.fileCid) reqKeys.push("fileIntegrity");
   if (!item.artworkCid) recKeys.push("artwork");
   if (!("description" in item) || !item.description)
     recKeys.push("description");
   if (!item.genre?.length) recKeys.push("genre");
   if (!item.releaseDate) recKeys.push("releaseDate");
   if (!item.isrc) optKeys.push("isrc");
-  if (!item.iswc) optKeys.push("iswc");
   if (!item.defaultLicenseUri) optKeys.push("defaultLicenseUri");
   const pro = (
     item as { legalMetadata?: { proMembership?: string } }
   ).legalMetadata?.proMembership;
   if (!pro) optKeys.push("proMembership");
 
-  const nReq = 5;
+  const nReq = 6;
   const nRec = 4;
   const nOpt = 4;
   const perReq = 60 / nReq;

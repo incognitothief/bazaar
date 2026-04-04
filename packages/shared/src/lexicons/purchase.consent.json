@@ -1,0 +1,72 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.purchase.consent",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "receiptUri",
+          "receiptCid",
+          "licenseGrantUri",
+          "licenseGrantCid",
+          "buyerDid",
+          "consentedAt",
+          "appSig"
+        ],
+        "properties": {
+          "receiptUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the purchase.receipt this consent record accompanies."
+          },
+          "receiptCid": {
+            "type": "string",
+            "format": "cid",
+            "description": "CID of the receipt at time of consent. Links consent to a specific, immutable receipt state."
+          },
+          "licenseGrantUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the license.terms record the buyer consented to."
+          },
+          "licenseGrantCid": {
+            "type": "string",
+            "format": "cid",
+            "description": "CID of the license.terms record at time of consent. The buyer agreed to these exact terms — not a future or past version."
+          },
+          "buyerDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the buyer. Names the consenting party explicitly, making this a buyer-addressed instrument rather than an anonymous terms snapshot."
+          },
+          "consentedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp of affirmative consent. Combined with the PDS record's creation timestamp forms a tamper-evident assertion of when consent was given."
+          },
+          "appSig": {
+            "type": "string",
+            "description": "Base64url signature by the app service keypair over SHA-256(buyerDid:licenseGrantCid:receiptCid:consentedAt). Prevents consent records being fabricated outside the app's trust boundary."
+          },
+          "usageTier": {
+            "type": "string",
+            "knownValues": [
+              "personal",
+              "commercial",
+              "sync"
+            ],
+            "description": "The license tier the buyer selected at checkout. Surfaces the buyer's affirmative acknowledgment of which tier applies — redundant with the license.terms tier field but records the buyer's explicit selection."
+          },
+          "syncProject": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "For sync tier only. Human-readable description of the project this license covers, e.g. 'Short film: The Last Train, dir. A. Smith, 2026'. Optional but strongly recommended for sync purchases."
+          }
+        }
+      }
+    }
+  }
+}
