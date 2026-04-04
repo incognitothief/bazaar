@@ -16,7 +16,13 @@ import type { ATPRepoClient } from "@/lib/atproto/session";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-export function LicenseTemplateGallery({ agent }: { agent: ATPRepoClient }) {
+export function LicenseTemplateGallery({
+  agent,
+  onLicensesChanged,
+}: {
+  agent: ATPRepoClient;
+  onLicensesChanged?: () => void;
+}) {
   const [selectedId, setSelectedId] = useState<LicenseTemplateId | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -32,8 +38,9 @@ export function LicenseTemplateGallery({ agent }: { agent: ATPRepoClient }) {
       const existing = await findLicenseByTemplateId(agent, did, selectedId);
       if (existing) {
         toast.message("Already on your PDS", {
-          description: existing.uri,
+          description: `${existing.uri}\nCID: ${existing.cid}`,
         });
+        onLicensesChanged?.();
         return;
       }
       const payload = licenseTermsPayloadFromTemplateId(selectedId);
@@ -41,8 +48,11 @@ export function LicenseTemplateGallery({ agent }: { agent: ATPRepoClient }) {
         toast.error("Unknown template");
         return;
       }
-      await createLicenseTerms(agent, payload);
-      toast.success("License terms saved to your repo");
+      const created = await createLicenseTerms(agent, payload);
+      toast.success("License terms saved to your repo", {
+        description: `${created.uri}\nCID: ${created.cid}`,
+      });
+      onLicensesChanged?.();
     } catch (e) {
       toast.error("Failed to save license", {
         description: e instanceof Error ? e.message : undefined,

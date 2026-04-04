@@ -295,16 +295,36 @@ export async function createActorProfile(
   return { uri: res.data.uri, cid: res.data.cid };
 }
 
-export async function listLicenseTerms(
+export type LicenseTermsRow = {
+  uri: string;
+  cid: string;
+  terms: LicenseTerms;
+};
+
+export async function listLicenseTermsRows(
   agent: ATPRepoClient,
   did: string,
-): Promise<LicenseTerms[]> {
+): Promise<LicenseTermsRow[]> {
   const res = (await agent.com.atproto.repo.listRecords({
     repo: did,
     collection: BAZAAR_COLLECTION.licenseTerms,
     limit: 100,
   })) as ListRecordsResponse;
-  return res.data.records.map((r) => r.value).filter(isLicenseTerms);
+  return res.data.records
+    .filter((r) => isLicenseTerms(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      terms: r.value as LicenseTerms,
+    }));
+}
+
+export async function listLicenseTerms(
+  agent: ATPRepoClient,
+  did: string,
+): Promise<LicenseTerms[]> {
+  const rows = await listLicenseTermsRows(agent, did);
+  return rows.map((r) => r.terms);
 }
 
 export async function getRecordValue<T>(

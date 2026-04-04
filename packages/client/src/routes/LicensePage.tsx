@@ -1,10 +1,38 @@
+import { useCallback, useEffect, useState } from "react";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { LicenseTemplateGallery } from "@/components/merchant/LicenseTemplateGallery";
+import {
+  listLicenseTermsRows,
+  type LicenseTermsRow,
+} from "@/lib/atproto/records";
+import { pdslsRecordUrl } from "@/lib/pdsls";
+
+function ellipsizeMiddle(s: string, head: number, tail: number): string {
+  if (s.length <= head + tail + 1) return s;
+  return `${s.slice(0, head)}…${s.slice(-tail)}`;
+}
 
 export function LicensePage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
+  const [rows, setRows] = useState<LicenseTermsRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refreshLicenses = useCallback(async () => {
+    if (!agent || !session?.did) return;
+    setLoading(true);
+    try {
+      const list = await listLicenseTermsRows(agent, session.did);
+      setRows(list);
+    } finally {
+      setLoading(false);
+    }
+  }, [agent, session?.did]);
+
+  useEffect(() => {
+    void refreshLicenses();
+  }, [refreshLicenses]);
 
   if (!session || !agent) return null;
 
@@ -27,7 +55,100 @@ export function LicensePage() {
           tier, and rights type), we reuse it instead of creating a duplicate.
         </p>
       </div>
-      <LicenseTemplateGallery agent={agent} />
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Saved on your PDS
+        </h2>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-4 py-6">
+            No <code className="text-xs">license.terms</code> records yet.
+            Pick a template below and save it to your repo.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium text-muted-foreground">
+                  <th className="px-3 py-2 font-medium">Title</th>
+                  <th className="px-3 py-2 font-medium">Tier</th>
+                  <th className="px-3 py-2 font-medium">Rights</th>
+                  <th className="px-3 py-2 font-medium">Version</th>
+                  <th className="px-3 py-2 font-medium">Record URI</th>
+                  <th className="px-3 py-2 font-medium">CID</th>
+                  <th className="px-3 py-2 font-medium">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr
+                    key={r.uri}
+                    className="border-b border-border last:border-0"
+                  >
+                    <td className="px-3 py-2 align-top font-medium">
+                      {r.terms.title}
+                    </td>
+                    <td className="px-3 py-2 align-top text-muted-foreground">
+                      {r.terms.tier}
+                    </td>
+                    <td className="px-3 py-2 align-top text-muted-foreground">
+                      {r.terms.rightsType}
+                    </td>
+                    <td className="px-3 py-2 align-top text-muted-foreground">
+                      {r.terms.version}
+                    </td>
+                    <td className="px-3 py-2 align-top">
+                      {(() => {
+                        const href = pdslsRecordUrl(r.uri);
+                        const label = ellipsizeMiddle(r.uri, 28, 12);
+                        if (!href) {
+                          return (
+                            <code
+                              className="text-[0.7rem] break-all text-muted-foreground"
+                              title={r.uri}
+                            >
+                              {label}
+                            </code>
+                          );
+                        }
+                        return (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[0.7rem] break-all font-mono text-primary underline-offset-2 hover:underline"
+                            title={r.uri}
+                          >
+                            {label}
+                          </a>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-3 py-2 align-top">
+                      <code
+                        className="text-[0.7rem] break-all text-muted-foreground"
+                        title={r.cid}
+                      >
+                        {ellipsizeMiddle(r.cid, 10, 8)}
+                      </code>
+                    </td>
+                    <td className="px-3 py-2 align-top text-muted-foreground whitespace-nowrap">
+                      {r.terms.createdAt?.slice(0, 10) ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <LicenseTemplateGallery
+        agent={agent}
+        onLicensesChanged={() => void refreshLicenses()}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -38,10 +38,13 @@ import {
   createListing,
   findLicenseByTemplateId,
   licenseTermsPayloadFromTemplateId,
+  listLicenseTermsRows,
+  type LicenseTermsRow,
 } from "@/lib/atproto/records";
 import { sha256HexOfFile } from "@/lib/crypto/sha256File";
 import { uploadBlob } from "@/lib/atproto/upload";
 import type { CompletenessSubject } from "@/hooks/useCompletenessScore";
+import { cn } from "@/lib/utils";
 import type { BazaarItemType } from "@/types/lexicons";
 
 const ITEM_CLASSES = [
@@ -81,9 +84,15 @@ export function UploadDigitalPage() {
   const [genre, setGenre] = useState("");
   const [releaseDate, setReleaseDate] = useState("");
 
-  const [licenseMode, setLicenseMode] = useState<"template" | "custom">(
+  const [licensePickMode, setLicensePickMode] = useState<"saved" | "template">(
     "template",
   );
+  const [savedLicense, setSavedLicense] = useState<{
+    uri: string;
+    cid: string;
+  } | null>(null);
+  const [licenseRows, setLicenseRows] = useState<LicenseTermsRow[]>([]);
+  const [licenseRowsLoading, setLicenseRowsLoading] = useState(false);
   const [licenseTemplateId, setLicenseTemplateId] =
     useState<LicenseTemplateId | null>("personal-use");
 
@@ -158,6 +167,25 @@ export function UploadDigitalPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (step !== 3 || !agent || !session?.did) return;
+    let cancelled = false;
+    setLicenseRowsLoading(true);
+    void listLicenseTermsRows(agent, session.did)
+      .then((rows) => {
+        if (!cancelled) setLicenseRows(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setLicenseRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLicenseRowsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, agent, session?.did]);
+
   if (!session || !agent) return null;
 
   const step1Valid =
@@ -167,8 +195,13 @@ export function UploadDigitalPage() {
       ? albumTracks.length > 0 || batchStaged.length > 0
       : !!audioFile && !!parsedMeta);
 
+  const step3LicenseOk =
+    licensePickMode === "saved"
+      ? !!savedLicense
+      : !!licenseTemplateId && !!buildLicenseTermsPayload();
+
   function buildLicenseTermsPayload() {
-    if (licenseMode !== "template" || !licenseTemplateId) return null;
+    if (!licenseTemplateId) return null;
     return licenseTermsPayloadFromTemplateId(licenseTemplateId);
   }
 
@@ -185,15 +218,22 @@ export function UploadDigitalPage() {
       });
       return;
     }
-    const licensePayload = buildLicenseTermsPayload();
-    if (!licensePayload) {
-      toast.error("Select a license template");
-      return;
-    }
     const cents = Math.round(parseFloat(priceAmount || "0") * 100);
     if (!Number.isFinite(cents) || cents < 0) {
       toast.error("Invalid price");
       return;
+    }
+    if (licensePickMode === "saved") {
+      if (!savedLicense) {
+        toast.error("Select a license from your PDS");
+        return;
+      }
+    } else {
+      const prePayload = buildLicenseTermsPayload();
+      if (!prePayload || !licenseTemplateId) {
+        toast.error("Select a license template");
+        return;
+      }
     }
     setSubmitting(true);
     try {
@@ -202,21 +242,27 @@ export function UploadDigitalPage() {
       if (artworkFile) {
         artworkCid = await uploadBlob(agent, artworkFile);
       }
-      setSubmitStep("Uploading audio…");
+      setSubmitStep("Resolving license…");
       let licenseUri: string;
       let licenseGrantCid: string;
-      const existing = await findLicenseByTemplateId(
-        agent,
-        session.did,
-        licenseTemplateId!,
-      );
-      if (existing) {
-        licenseUri = existing.uri;
-        licenseGrantCid = existing.cid;
+      if (licensePickMode === "saved") {
+        licenseUri = savedLicense!.uri;
+        licenseGrantCid = savedLicense!.cid;
       } else {
-        const lic = await createLicenseTerms(agent, licensePayload);
-        licenseUri = lic.uri;
-        licenseGrantCid = lic.cid;
+        const licensePayload = buildLicenseTermsPayload()!;
+        const existing = await findLicenseByTemplateId(
+          agent,
+          session.did,
+          licenseTemplateId!,
+        );
+        if (existing) {
+          licenseUri = existing.uri;
+          licenseGrantCid = existing.cid;
+        } else {
+          const lic = await createLicenseTerms(agent, licensePayload);
+          licenseUri = lic.uri;
+          licenseGrantCid = lic.cid;
+        }
       }
       setSubmitStep("Creating catalog record…");
       let itemUri: string;
@@ -500,25 +546,92 @@ export function UploadDigitalPage() {
 
       {step === 3 ? (
         <div className="space-y-6">
-          <div className="flex gap-2">
+          <p className="text-sm text-muted-foreground">
+            Listings must reference a{" "}
+            <code className="text-xs rounded bg-muted px-1 py-0.5">
+              license.terms
+            </code>{" "}
+            record on your PDS (URI + CID at publish time). Use a license you
+            already saved, or pick a template — we create the record when you
+            publish if needed.
+          </p>
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              variant={licenseMode === "template" ? "default" : "outline"}
+              variant={licensePickMode === "saved" ? "default" : "outline"}
               size="sm"
-              onClick={() => setLicenseMode("template")}
+              onClick={() => {
+                setLicensePickMode("saved");
+              }}
+            >
+              Saved on my PDS
+            </Button>
+            <Button
+              type="button"
+              variant={licensePickMode === "template" ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setLicensePickMode("template");
+                setSavedLicense(null);
+              }}
             >
               Templates
             </Button>
-            <Button
-              type="button"
-              variant={licenseMode === "custom" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setLicenseMode("custom")}
-            >
-              Customize further
-            </Button>
           </div>
-          {licenseMode === "template" ? (
+          {licensePickMode === "saved" ? (
+            <div className="space-y-3">
+              {licenseRowsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : licenseRows.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground space-y-3">
+                  <p>
+                    No <code className="text-xs">license.terms</code> in your
+                    repo yet. Save templates on the license page, then return
+                    here.
+                  </p>
+                  <Link
+                    to="/merchant/license"
+                    className={cn(buttonVariants({ variant: "secondary" }))}
+                  >
+                    Open license templates
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[min(70vh,520px)] overflow-y-auto pr-1">
+                  <p className="text-xs text-muted-foreground">
+                    CID is taken from your PDS index for the selected record —
+                    no extra write at publish.
+                  </p>
+                  <div className="grid gap-2">
+                    {licenseRows.map((row) => {
+                      const picked =
+                        savedLicense?.uri === row.uri &&
+                        savedLicense?.cid === row.cid;
+                      return (
+                        <button
+                          key={row.uri}
+                          type="button"
+                          onClick={() =>
+                            setSavedLicense({ uri: row.uri, cid: row.cid })
+                          }
+                          className={cn(
+                            "rounded-lg border p-3 text-left transition-colors",
+                            picked && "ring-2 ring-ring bg-muted/30",
+                          )}
+                        >
+                          <p className="text-sm font-medium">{row.terms.title}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {row.terms.tier} · {row.terms.rightsType} · v
+                            {row.terms.version}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
             <div className="space-y-8 max-h-[min(70vh,520px)] overflow-y-auto pr-1">
               {LICENSE_TEMPLATE_COMPLEXITY_ORDER.map(
                 (complexity: LicenseTemplateComplexity) => {
@@ -537,12 +650,14 @@ export function UploadDigitalPage() {
                           <button
                             key={def.id}
                             type="button"
-                            onClick={() => setLicenseTemplateId(def.id)}
-                            className={`rounded-lg border p-3 text-left ${
-                              licenseTemplateId === def.id
-                                ? "ring-2 ring-ring"
-                                : ""
-                            }`}
+                            onClick={() => {
+                              setLicenseTemplateId(def.id);
+                              setSavedLicense(null);
+                            }}
+                            className={cn(
+                              "rounded-lg border p-3 text-left",
+                              licenseTemplateId === def.id && "ring-2 ring-ring",
+                            )}
                           >
                             <p className="text-sm font-medium">
                               {def.record.title}
@@ -558,21 +673,12 @@ export function UploadDigitalPage() {
                 },
               )}
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Full license form is available on the License templates page;
-              template selection is required here — switch back to templates or
-              pick one above.
-            </p>
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(2)}>
               Back
             </Button>
-            <Button
-              disabled={!licenseTemplateId}
-              onClick={() => setStep(4)}
-            >
+            <Button disabled={!step3LicenseOk} onClick={() => setStep(4)}>
               Continue
             </Button>
           </div>

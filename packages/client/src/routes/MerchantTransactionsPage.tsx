@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { browserApiUrl } from "@/lib/browserApi";
+import { pdslsRecordUrl, pdslsRepoCollectionsUrl } from "@/lib/pdsls";
 import { cn } from "@/lib/utils";
 
 export type PaymentFulfillmentRow = {
@@ -32,11 +33,6 @@ function fmtRetry(ms: number | null): string {
   } catch {
     return String(ms);
   }
-}
-
-/** pdsls explorer: repo collections for this DID. */
-function buyerDidPdslsUrl(did: string): string {
-  return `https://pdsls.dev/at://${did}#collections`;
 }
 
 function Ellipsis({ text, className }: { text: string; className?: string }) {
@@ -159,7 +155,7 @@ export function MerchantTransactionsPage() {
                   <td className="px-3 py-2 align-top">
                     {r.buyerDid ? (
                       <a
-                        href={buyerDidPdslsUrl(r.buyerDid)}
+                        href={pdslsRepoCollectionsUrl(r.buyerDid)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block max-w-[14rem] truncate font-mono text-xs text-primary underline-offset-2 hover:underline"
@@ -183,10 +179,40 @@ export function MerchantTransactionsPage() {
                     {fmtTs(r.updatedAt)}
                   </td>
                   <td className="px-3 py-2 align-top">
-                    <Ellipsis text={r.receiptUri ?? ""} />
+                    {(() => {
+                      if (!r.receiptUri) return <Ellipsis text="" />;
+                      const href = pdslsRecordUrl(r.receiptUri);
+                      if (!href) return <Ellipsis text={r.receiptUri} />;
+                      return (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block max-w-[14rem] truncate font-mono text-xs text-primary underline-offset-2 hover:underline"
+                          title={r.receiptUri}
+                        >
+                          {r.receiptUri}
+                        </a>
+                      );
+                    })()}
                   </td>
                   <td className="px-3 py-2 align-top">
-                    <Ellipsis text={r.consentUri ?? ""} />
+                    {(() => {
+                      if (!r.consentUri) return <Ellipsis text="" />;
+                      const href = pdslsRecordUrl(r.consentUri);
+                      if (!href) return <Ellipsis text={r.consentUri} />;
+                      return (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block max-w-[14rem] truncate font-mono text-xs text-primary underline-offset-2 hover:underline"
+                          title={r.consentUri}
+                        >
+                          {r.consentUri}
+                        </a>
+                      );
+                    })()}
                   </td>
                   <td className="px-3 py-2 align-top max-w-[12rem]">
                     {r.lastError ? (
