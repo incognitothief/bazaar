@@ -26,11 +26,12 @@ export function TrackList({
     let cancelled = false;
     void (async () => {
       const out: { uri: string; title: string; durationMs?: number }[] = [];
-      for (const t of collection.tracks) {
-        const v = await getRecordValue<DigitalItem>(agent, t.uri);
+      for (const entry of collection.items) {
+        if (entry.role !== "track") continue;
+        const v = await getRecordValue<DigitalItem>(agent, entry.uri);
         out.push({
-          uri: t.uri,
-          title: v?.title ?? "Track",
+          uri: entry.uri,
+          title: entry.title ?? v?.title ?? "Track",
           durationMs: v?.durationMs,
         });
       }

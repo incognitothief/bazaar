@@ -11,6 +11,7 @@
     "test": "npx --yes bun@1.2.0 test"
   },
   "dependencies": {
+    "@bazaar/shared": "*",
     "@atproto/api": "^0.19.5",
     "@atproto/oauth-client-node": "^0.3.17",
     "@atproto/syntax": "^0.5.2",

@@ -6,6 +6,7 @@ import { serveStatic } from "hono/bun";
 import { createApiRouter } from "./api";
 import { createDb } from "./db";
 import { createOAuthClient } from "./lib/atproto/oauth";
+import { lexicons } from "@bazaar/shared";
 
 const port = Number(process.env.PORT ?? 3000);
 const databasePath = process.env.DATABASE_PATH ?? "./data/app.db";
@@ -29,6 +30,14 @@ try {
 const oauthClient = await createOAuthClient(db);
 const api = createApiRouter(db, oauthClient);
 const app = new Hono();
+
+app.get("/xrpc/com.atproto.lexicon.get", (c) => {
+  const id = c.req.query("lexicon");
+  if (!id) return c.json({ error: "LexiconNotFound" }, 404);
+  const lex = lexicons[id];
+  if (!lex) return c.json({ error: "LexiconNotFound" }, 404);
+  return c.json(lex);
+});
 
 app.route("/api", api);
 

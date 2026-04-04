@@ -1,0 +1,25 @@
+{
+  "name": "@bazaar/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./lexicons": {
+      "types": "./dist/lexicons/docs.d.ts",
+      "import": "./dist/lexicons/docs.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc && cp src/lexicons/*.json dist/lexicons/",
+    "validate-lexicons": "node ./scripts/validate-lexicons.mjs"
+  },
+  "dependencies": {
+    "@atproto/lexicon": "^0.6.2"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.2"
+  }
+}

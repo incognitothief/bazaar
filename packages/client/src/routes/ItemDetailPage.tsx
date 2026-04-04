@@ -12,7 +12,12 @@ import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { TrackList } from "@/components/public/TrackList";
 import { Button } from "@/components/ui/button";
-import type { CatalogItem, LicenseTerms, Listing } from "@/types/lexicons";
+import type {
+  CatalogItem,
+  DigitalItem,
+  LicenseTerms,
+  Listing,
+} from "@/types/lexicons";
 
 function formatMoney(m: { amount: number; currency: string }): string {
   return new Intl.NumberFormat(undefined, {
@@ -49,12 +54,18 @@ export function ItemDetailPage() {
         const rows = await listListingRows(agent, artistDid);
         if (cancelled) return;
         const row = rows.find((r) => r.listing.item.uri === itemUri);
-        setListing(row?.listing ?? null);
+        const listingRow = row?.listing ?? null;
+        setListing(listingRow);
         setListingUri(row?.uri ?? null);
-        const licUri =
-          v && "$type" in v && v.$type.includes("digital")
-            ? (v as { defaultLicenseUri?: string }).defaultLicenseUri
-            : undefined;
+        let licUri = listingRow?.licenseUri;
+        if (
+          !licUri &&
+          v &&
+          "$type" in v &&
+          v.$type === "diamonds.whereditgo.bazaar.catalog.item.digital"
+        ) {
+          licUri = (v as DigitalItem).defaultLicenseUri;
+        }
         if (licUri) {
           const lt = await getRecordValue<LicenseTerms>(agent, licUri);
           if (!cancelled) setLicense(lt);
@@ -87,12 +98,9 @@ export function ItemDetailPage() {
   }
 
   const title = item.title;
-  const artistName =
-    item.$type === "diamonds.whereditgo.bazaar.collection"
-      ? item.artistName
-      : item.artistDid;
+  const artistName = item.artistDid;
   const isCollection =
-    item.$type === "diamonds.whereditgo.bazaar.collection";
+    item.$type === "diamonds.whereditgo.bazaar.catalog.collection";
   const blobDid =
     item.$type === "diamonds.whereditgo.bazaar.catalog.item.digital"
       ? item.artistDid
@@ -142,7 +150,9 @@ export function ItemDetailPage() {
           </MetadataChip>
         ) : null}
         {isCollection ? (
-          <MetadataChip>{item.tracks.length} tracks</MetadataChip>
+          <MetadataChip>
+            {item.items.filter((i) => i.role === "track").length} tracks
+          </MetadataChip>
         ) : null}
         {item.genre?.map((g) => (
           <MetadataChip key={g}>{g}</MetadataChip>
@@ -171,7 +181,7 @@ export function ItemDetailPage() {
         </p>
       </section>
 
-      {"isrc" in item && (item.isrc || item.iswc) ? (
+      {"isrc" in item && item.isrc ? (
         <section>
           <Button
             type="button"
@@ -186,7 +196,6 @@ export function ItemDetailPage() {
           {legalOpen ? (
             <ul className="text-sm text-muted-foreground space-y-1">
               {item.isrc ? <li>ISRC: {item.isrc}</li> : null}
-              {item.iswc ? <li>ISWC: {item.iswc}</li> : null}
             </ul>
           ) : null}
         </section>

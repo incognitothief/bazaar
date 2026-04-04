@@ -33,8 +33,10 @@ import {
   LICENSE_TEMPLATES,
   type LicenseTemplateKey,
 } from "@/lib/atproto/records";
+import { sha256HexOfFile } from "@/lib/crypto/sha256File";
 import { uploadBlob } from "@/lib/atproto/upload";
-import type { DigitalItem } from "@/types/lexicons";
+import type { CompletenessSubject } from "@/hooks/useCompletenessScore";
+import type { BazaarItemType } from "@/types/lexicons";
 
 const ITEM_CLASSES = [
   "track",
@@ -87,12 +89,35 @@ export function UploadDigitalPage() {
   const [submitStep, setSubmitStep] = useState<string | null>(null);
 
   const completenessPreview = useMemo(() => {
-    const base: Partial<DigitalItem> & { hasAudioFile?: boolean } = {
+    if (itemClass === "album") {
+      const base: CompletenessSubject = {
+        $type: "diamonds.whereditgo.bazaar.catalog.collection",
+        title,
+        artistDid: session?.did ?? "",
+        releaseDate: releaseDate || new Date().toISOString(),
+        items: albumTracks.map((t) => ({
+          uri: t.uri,
+          cid: t.cid,
+          role: "track" as const,
+          essential: true,
+          trackNumber: t.trackNumber,
+        })),
+        description: description || undefined,
+        genre: genre
+          ? genre.split(",").map((g) => g.trim()).filter(Boolean)
+          : undefined,
+        artworkCid: artworkFile ? "pending" : undefined,
+      };
+      return scoreCompleteness(base);
+    }
+    const base: CompletenessSubject = {
       title,
       artistDid: session?.did ?? "",
       itemClass,
       formats: parsedMeta ? [parsedMeta.format] : [],
-      hasAudioFile: !!audioFile || itemClass === "album",
+      hasAudioFile: !!audioFile,
+      fileChecksum: audioFile ? "pending" : undefined,
+      fileCid: audioFile ? "pending" : undefined,
       description: description || undefined,
       genre: genre
         ? genre.split(",").map((g) => g.trim()).filter(Boolean)
@@ -111,6 +136,7 @@ export function UploadDigitalPage() {
     genre,
     releaseDate,
     artworkFile,
+    albumTracks,
   ]);
 
   const appendBatch = useCallback((entries: BatchAudioEntry[]) => {
@@ -184,11 +210,8 @@ export function UploadDigitalPage() {
         artworkCid = await uploadBlob(agent, artworkFile);
       }
       setSubmitStep("Uploading audio…");
-      if (audioFile) {
-        await uploadBlob(agent, audioFile);
-      }
-      setSubmitStep("License…");
       let licenseUri: string;
+      let licenseGrantCid: string;
       const existing = await findLicenseByTemplateKey(
         agent,
         session.did,
@@ -196,25 +219,30 @@ export function UploadDigitalPage() {
       );
       if (existing) {
         licenseUri = existing.uri;
+        licenseGrantCid = existing.cid;
       } else {
         const lic = await createLicenseTerms(agent, licensePayload);
         licenseUri = lic.uri;
+        licenseGrantCid = lic.cid;
       }
       setSubmitStep("Creating catalog record…");
       let itemUri: string;
       let itemCid: string;
-      let itemType: string;
+      let itemType: BazaarItemType;
       if (itemClass === "album") {
         const rel = releaseDate || new Date().toISOString();
         const col = await createCollection(agent, {
           title,
-          artistName,
+          artistDid: session.did,
           releaseDate: rel,
-          tracks: albumTracks.map((t) => ({
+          items: albumTracks.map((t) => ({
             uri: t.uri,
             cid: t.cid,
+            role: "track" as const,
+            essential: true,
             trackNumber: t.trackNumber,
           })),
+          defaultLicenseUri: licenseUri,
           artworkCid,
           description: description || undefined,
           genre: genre
@@ -223,14 +251,26 @@ export function UploadDigitalPage() {
         });
         itemUri = col.uri;
         itemCid = col.cid;
-        itemType = "diamonds.whereditgo.bazaar.collection";
+        itemType = "diamonds.whereditgo.bazaar.catalog.collection";
       } else {
         if (!audioFile || !parsedMeta) throw new Error("Missing audio");
+        const fileCid = await uploadBlob(agent, audioFile);
+        const fileChecksum = await sha256HexOfFile(audioFile);
+        const fileFormat =
+          audioFile.type ||
+          (parsedMeta.format === "flac"
+            ? "audio/flac"
+            : parsedMeta.format === "mp3"
+              ? "audio/mpeg"
+              : `audio/${parsedMeta.format}`);
         const dig = await createDigitalItem(agent, {
           title,
           artistDid: session.did,
           itemClass,
           formats: [parsedMeta.format],
+          fileChecksum,
+          fileCid,
+          fileFormat,
           durationMs: parsedMeta.durationMs,
           releaseDate: releaseDate || undefined,
           artworkCid,
@@ -250,8 +290,10 @@ export function UploadDigitalPage() {
         item: {
           uri: itemUri,
           cid: itemCid,
-          itemType,
+          itemType: itemType as BazaarItemType,
         },
+        licenseUri,
+        licenseGrantCid,
         price: { amount: cents, currency: "USD" },
         status:
           listingStatus === "paused"

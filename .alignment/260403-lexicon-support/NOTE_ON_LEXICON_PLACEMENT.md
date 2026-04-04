@@ -9,8 +9,10 @@ packages/shared/src/lexicons/
   catalog.collection.json
   catalog.listing.json
   catalog.recording.json
+  catalog.composition.json
   license.terms.json
   purchase.receipt.json
+  purchase.consent.json
   purchase.stock.json
   purchase.fulfillment.json
   actor.profile.json
@@ -18,22 +20,20 @@ One file per lexicon, named by the trailing segment of the NSID. The full NSID i
 
 Alongside them
 packages/shared/src/lexicons/
-  index.ts          ← re-exports all lexicons as a typed map keyed by NSID
-  validate.ts       ← thin wrapper around your ATProto SDK's lexicon validator
-The index.ts gives both client and server a single import point:
-tsimport { lexicons } from '@bazaar/shared/lexicons'
-// lexicons['diamonds.whereditgo.bazaar.purchase.receipt'] → the JSON
+  docs.ts          ← imports all JSON; exports `lexicons` map keyed by NSID and `BAZAAR_LEXICON_DOCS`
+  validate.ts      ← `validateBazaarRecord` via `@atproto/lexicon` Lexicons
 
-The Hono route
-Once the domain is configured, your server exposes:
-ts// packages/server/src/routes/lexicon.ts
-app.get('/xrpc/com.atproto.lexicon.get', (c) => {
-  const id = c.req.query('lexicon')
-  const lex = lexicons[id]
-  if (!lex) return c.json({ error: 'LexiconNotFound' }, 404)
-  return c.json(lex)
-})
-That's the only server-side concern. Client-side, the lexicons are just imported directly from shared — no fetch needed at runtime since they're bundled at build time.
+Package exports:
+- `@bazaar/shared` — `lexicons`, `validateBazaarRecord`, etc.
+- `@bazaar/shared/lexicons` — same map (`docs` module) for consumers that want a lexicon-only entry
+
+The Hono route is mounted on the main app in `packages/server/src/index.ts`:
+
+```
+GET /xrpc/com.atproto.lexicon.get?lexicon=<nsid>
+```
+
+Client-side, lexicons can be imported from `@bazaar/shared` when needed — no fetch required at runtime if bundled at build time.
 
 What not to do
 Don't put them in packages/client or packages/server directly. They need to be the single source of truth for both. Don't generate TypeScript types from them manually — if you want typed record shapes, use the ATProto lexicon codegen tooling (lex gen) pointed at this directory, and emit the output into packages/shared/src/types/. That way the JSON is canonical and the types are derived, never the other way around.

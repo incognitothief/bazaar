@@ -1,0 +1,178 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.catalog.composition",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "title",
+          "artistDid",
+          "createdAt"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Title of the composition. May differ from the recording title."
+          },
+          "artistDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the artist publishing this record. Not necessarily the sole writer."
+          },
+          "iswc": {
+            "type": "string",
+            "maxLength": 16,
+            "description": "International Standard Musical Work Code. Assigned by a PRO. Optional — see bazaarWid for self-issued alternative."
+          },
+          "bazaarWid": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#bazaarIdentifier",
+            "description": "Self-issued Work Identifier. Generated as base32(SHA-256(artistDid + compositionTitle + writers[] + createdAt)). Writers array canonicalized before hashing. Shadows ISWC. supersededByIswc populated when a proper ISWC is obtained."
+          },
+          "writers": {
+            "type": "array",
+            "description": "Co-writers and their share splits. Optional — single-writer compositions may omit.",
+            "items": {
+              "type": "object",
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "ipi": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "description": "Interested Parties Information number. Assigned by a PRO."
+                },
+                "did": {
+                  "type": "string",
+                  "format": "did",
+                  "description": "ATProto DID of this writer if they have one. Optional."
+                },
+                "share": {
+                  "type": "number",
+                  "description": "Percentage of the composition. All shares should sum to 100."
+                },
+                "role": {
+                  "type": "string",
+                  "knownValues": [
+                    "composer",
+                    "lyricist",
+                    "composerLyricist",
+                    "arranger",
+                    "adapter"
+                  ]
+                }
+              }
+            }
+          },
+          "publishers": {
+            "type": "array",
+            "description": "Publishing administrators for this composition.",
+            "items": {
+              "type": "object",
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "ipi": {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                "did": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "pro": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "description": "PRO administering this publisher's share, e.g. ASCAP, BMI, SESAC, PRS."
+                },
+                "share": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "proRegistrations": {
+            "type": "array",
+            "description": "PRO registrations for this composition across territories.",
+            "items": {
+              "type": "object",
+              "required": [
+                "pro"
+              ],
+              "properties": {
+                "pro": {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                "registrationId": {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                "territory": {
+                  "type": "string",
+                  "maxLength": 2,
+                  "description": "ISO 3166-1 alpha-2. Omit for worldwide registration."
+                }
+              }
+            }
+          },
+          "publishingLicenseTermsUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the license.terms record governing publishing rights for this composition."
+          },
+          "songMetaUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Optional AT-URI of a song record in an external namespace (e.g. ch.indiemusi.alpha.song)."
+          },
+          "recordings": {
+            "type": "array",
+            "description": "AT-URIs of catalog.item.digital records that are recordings of this composition. Informational only — the authoritative link direction is catalog.recording → catalog.composition via songMetaUri.",
+            "items": {
+              "type": "object",
+              "required": [
+                "uri"
+              ],
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "format": "at-uri"
+                },
+                "cid": {
+                  "type": "string",
+                  "format": "cid"
+                }
+              }
+            }
+          },
+          "copyrightYear": {
+            "type": "integer"
+          },
+          "copyrightRegistrationId": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Copyright office registration ID if registered, e.g. US Copyright Office PA number."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

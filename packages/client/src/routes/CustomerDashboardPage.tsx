@@ -83,6 +83,9 @@ export function CustomerDashboardPage() {
       if (!receiptListingCid || !receiptListingUri) {
         throw new Error("Receipt is missing listing information.");
       }
+      if (receipt.buyerDid && receipt.buyerDid !== session.did) {
+        throw new Error("Receipt buyerDid does not match your account.");
+      }
 
       const listingAt = new AtUri(receiptListingUri);
       if (listingAt.collection !== BAZAAR_COLLECTION.listing) {

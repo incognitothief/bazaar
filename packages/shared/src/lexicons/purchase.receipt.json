@@ -1,0 +1,96 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.purchase.receipt",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "item",
+          "listingUri",
+          "listingCid",
+          "pricePaid",
+          "paymentProcessor",
+          "paymentRef",
+          "buyerDid",
+          "appDid",
+          "issuerScope",
+          "appSig",
+          "purchasedAt"
+        ],
+        "properties": {
+          "item": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
+          },
+          "listingUri": {
+            "type": "string",
+            "format": "at-uri"
+          },
+          "listingCid": {
+            "type": "string",
+            "format": "cid",
+            "description": "CID of the listing at time of purchase — immutable price anchor."
+          },
+          "pricePaid": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#money"
+          },
+          "paymentProcessor": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "paymentRef": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Stripe PaymentIntent ID or equivalent. Independently verifiable via payment processor."
+          },
+          "licenseGrantUri": {
+            "type": "string",
+            "format": "at-uri"
+          },
+          "licenseGrantCid": {
+            "type": "string",
+            "format": "cid",
+            "description": "CID of the license.terms record at time of purchase. Resolved from the listing's licenseGrantCid."
+          },
+          "buyerDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the buyer. Explicit field — previously only implied by appSig payload. Makes receipt queryable by buyer identity and consistent with purchase.consent record."
+          },
+          "shippingAddress": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#address",
+            "description": "For physical items. Lives in buyer's own PDS — they control this data."
+          },
+          "fulfillmentUri": {
+            "type": "string",
+            "format": "at-uri"
+          },
+          "appDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the Bazaar app that issued this receipt. Verifiers resolve this to get the public key for appSig verification."
+          },
+          "issuerScope": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the artist/storefront this receipt was issued under."
+          },
+          "appSig": {
+            "type": "string",
+            "description": "Base64url signature by the app service keypair over SHA-256(purchasedAt:paymentRef:itemUri:listingCid:buyerDid)."
+          },
+          "purchasedAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 512
+          }
+        }
+      }
+    }
+  }
+}

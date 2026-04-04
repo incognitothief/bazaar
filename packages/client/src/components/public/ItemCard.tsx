@@ -27,13 +27,13 @@ export function ItemCard({
 }) {
   const title = item.title;
   const artistName =
-    item.$type === "diamonds.whereditgo.bazaar.collection"
-      ? item.artistName
+    item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
+      ? item.artistDid
       : item.artistDid;
   const artworkCid = item.artworkCid;
   const trackCount =
-    item.$type === "diamonds.whereditgo.bazaar.collection"
-      ? item.tracks.length
+    item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
+      ? item.items.filter((i) => i.role === "track").length
       : undefined;
   const to = `/item/${encodeURIComponent(itemUri)}`;
 

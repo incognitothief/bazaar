@@ -8,7 +8,8 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "db:generate": "turbo db:generate",
-    "db:migrate": "turbo db:migrate"
+    "db:migrate": "turbo db:migrate",
+    "lexicons:validate": "npm run validate-lexicons -w @bazaar/shared"
   },
   "devDependencies": {
     "@atproto/crypto": "^0.4.5",
