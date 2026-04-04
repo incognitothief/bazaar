@@ -133,14 +133,17 @@ export function useAtpSession(): {
 
   const signOut = useCallback(async () => {
     if (import.meta.env.DEV) localStorage.removeItem(MOCK_KEY);
+    setSession(null);
     const origin = apiOrigin();
-    if (origin) {
+    if (!origin) return;
+    try {
       await fetch(`${origin}/api/atproto/signout`, {
         method: "POST",
         credentials: "include",
       });
+    } catch {
+      // Local session is already cleared; server cookie may persist until refresh.
     }
-    setSession(null);
   }, []);
 
   return { session, loading, signIn, signOut };

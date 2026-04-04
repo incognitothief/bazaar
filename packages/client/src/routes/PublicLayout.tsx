@@ -18,24 +18,24 @@ export function PublicLayout() {
   }, [search]);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+    <div className="flex min-h-dvh flex-col">
+      <header className="fixed top-0 left-0 right-0 z-40 border-b border-border bg-card/95 pt-[env(safe-area-inset-top)] shadow-[0_2px_14px_-6px_rgba(0,0,0,0.07)] backdrop-blur-sm supports-[backdrop-filter]:bg-card/80">
+        <div className="mx-auto flex h-[4.25rem] max-w-6xl items-center justify-between gap-4 px-4">
           <Link
             to="/"
-            className="text-lg font-semibold tracking-tight"
+            className="shrink-0 text-lg font-semibold tracking-tight"
           >
             bazaar
           </Link>
-          <nav className="flex items-center">
+          <nav className="flex min-w-0 shrink items-center justify-end">
             <PublicHeaderAccount />
           </nav>
         </div>
       </header>
-      <main className="flex-1 mx-auto w-full max-w-6xl px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl grow px-4 pb-8 pt-[calc(4.25rem+env(safe-area-inset-top)+2rem)]">
         <Outlet />
       </main>
-      <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground">
+      <footer className="shrink-0 border-t border-border py-6 text-center text-sm text-muted-foreground">
         <p>
           bazaar ·{" "}
           <a
