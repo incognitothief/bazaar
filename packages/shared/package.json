@@ -4,16 +4,19 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
     "./lexicons": {
-      "types": "./dist/lexicons/docs.d.ts",
-      "import": "./dist/lexicons/docs.js"
+      "types": "./src/lexicons/docs.ts",
+      "import": "./src/lexicons/docs.ts",
+      "default": "./src/lexicons/docs.ts"
     },
     "./license-templates": {
-      "types": "./dist/license-templates/registry.d.ts",
-      "import": "./dist/license-templates/registry.js"
+      "types": "./src/license-templates/registry.ts",
+      "import": "./src/license-templates/registry.ts",
+      "default": "./src/license-templates/registry.ts"
     }
   },
   "scripts": {

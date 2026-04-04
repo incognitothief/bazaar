@@ -53,7 +53,7 @@ export function LicenseTemplateGallery({ agent }: { agent: ATPRepoClient }) {
   }
 
   return (
-    <div className="space-y-10">
+    <div className={cn("space-y-10", selectedId && "pb-24 sm:pb-28")}>
       {LICENSE_TEMPLATE_COMPLEXITY_ORDER.map((complexity: LicenseTemplateComplexity) => {
         const meta = LICENSE_TEMPLATE_COMPLEXITY_META[complexity];
         const templates = licenseTemplatesForComplexity(complexity);
@@ -74,7 +74,10 @@ export function LicenseTemplateGallery({ agent }: { agent: ATPRepoClient }) {
                   <li key={def.id}>
                     <button
                       type="button"
-                      onClick={() => setSelectedId(def.id)}
+                      aria-pressed={selected}
+                      onClick={() =>
+                        setSelectedId((cur) => (cur === def.id ? null : def.id))
+                      }
                       className={cn(
                         "flex h-full w-full flex-col rounded-lg border p-4 text-left transition-colors",
                         "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -104,18 +107,43 @@ export function LicenseTemplateGallery({ agent }: { agent: ATPRepoClient }) {
         );
       })}
 
-      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-6">
-        <Button disabled={saving || !selectedId} onClick={() => void saveSelected()}>
-          {saving ? "Saving…" : "Save selected template to PDS"}
-        </Button>
-        {selectedId ? (
-          <p className="text-xs text-muted-foreground">
-            Selected:{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">
-              {selectedId}
-            </code>
-          </p>
-        ) : null}
+      <div
+        key={selectedId ? "footer-dock" : "footer-inline"}
+        className={cn(
+          "flex flex-wrap items-center gap-3 border-t border-border",
+          selectedId
+            ? cn(
+                "fixed bottom-0 left-0 right-0 z-40 border-border bg-background/95 px-4 py-3 shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.15)] backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 sm:px-6 md:left-56 md:px-8 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+                "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-6 motion-safe:duration-300 motion-safe:ease-out",
+              )
+            : "pt-6",
+        )}
+      >
+        <div className="mx-auto flex w-full max-w-5xl min-w-0 flex-wrap items-center gap-3">
+          <Button disabled={saving || !selectedId} onClick={() => void saveSelected()}>
+            {saving ? "Saving…" : "Save selected template to PDS"}
+          </Button>
+          {selectedId ? (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Selected:{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">
+                  {selectedId}
+                </code>
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 text-muted-foreground hover:text-foreground"
+                aria-label="Clear license selection"
+                onClick={() => setSelectedId(null)}
+              >
+                Clear
+              </Button>
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );
