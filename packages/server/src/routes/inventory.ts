@@ -34,6 +34,13 @@ import {
   r2AccessDeniedHints,
 } from "../lib/r2/diagnostics";
 import { getR2S3Client } from "../lib/r2/s3Client";
+import {
+  buildBazaarPid,
+  buildBazaarRid,
+  buildBazaarWid,
+  identifiersSigningConfigured,
+  type WidWriterInput,
+} from "../lib/bazaarIdentifiers";
 
 const MULTIPART_MIN_BYTES = Number(
   process.env.BAZAAR_INVENTORY_MULTIPART_MIN_BYTES ?? `${8 * 1024 * 1024}`,
@@ -414,6 +421,66 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     return c.json({ url, partNumber });
   });
 
+  /**
+   * Browser-friendly multipart part upload: body is raw bytes (same as S3 UploadPart).
+   * Avoids CORS on R2 presigned PUT from the web app origin.
+   */
+  r.post("/objects/:objectId/multipart/upload-part", async (c) => {
+    const sess = await getSessionAgent(c, oauthClient);
+    if (!sess) return c.json({ error: "Unauthorized" }, 401);
+    const r2 = loadR2();
+    if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
+    const { cfg, client } = r2;
+
+    const objectId = c.req.param("objectId");
+    const partNumberRaw = c.req.header("x-inventory-part-number");
+    const partNumber = parseInt(partNumberRaw ?? "", 10);
+    if (!Number.isInteger(partNumber) || partNumber < 1)
+      return c.json({ error: "invalid_part", detail: "Set X-Inventory-Part-Number" }, 400);
+
+    const [obj] = await db
+      .select()
+      .from(inventoryUploadObject)
+      .where(eq(inventoryUploadObject.id, objectId));
+    if (!obj) return c.json({ error: "not_found" }, 404);
+    const [session] = await db
+      .select()
+      .from(inventoryUploadSession)
+      .where(eq(inventoryUploadSession.id, obj.sessionId));
+    if (!session || session.merchantDid !== sess.did)
+      return c.json({ error: "forbidden" }, 403);
+    if (!obj.s3UploadId) return c.json({ error: "multipart_not_init" }, 400);
+
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(await c.req.arrayBuffer());
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return c.json({ error: "read_failed", message: msg }, 400);
+    }
+    if (buf.length === 0) return c.json({ error: "empty_body" }, 400);
+
+    try {
+      const out = await client.send(
+        new UploadPartCommand({
+          Bucket: cfg.bucket,
+          Key: obj.r2Key,
+          UploadId: obj.s3UploadId,
+          PartNumber: partNumber,
+          Body: buf,
+        }),
+      );
+      const etag = out.ETag?.replaceAll('"', "") ?? "";
+      if (!etag) return c.json({ error: "missing_etag" }, 500);
+      return c.json({ partNumber, etag });
+    } catch (e) {
+      const name = e instanceof Error ? e.name : "Error";
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("inventory multipart upload-part:", name, msg);
+      return c.json({ error: "upload_part_failed", name, message: msg }, 502);
+    }
+  });
+
   r.post("/objects/:objectId/multipart/complete", async (c) => {
     const sess = await getSessionAgent(c, oauthClient);
     if (!sess) return c.json({ error: "Unauthorized" }, 401);
@@ -547,12 +614,22 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ error: "invalid_draft" }, 400);
     }
 
-    if (!draft.licenseUri || !draft.licenseGrantCid)
-      return c.json({ error: "license_required" }, 400);
+    if (
+      (draft.licenseUri && !draft.licenseGrantCid) ||
+      (!draft.licenseUri && draft.licenseGrantCid)
+    ) {
+      return c.json({ error: "invalid_license_fields" }, 400);
+    }
     if (!draft.tracks?.length) return c.json({ error: "tracks_required" }, 400);
 
-    if (draft.tracks.length > 1 && !draft.collection) {
-      return c.json({ error: "multiple_tracks_require_collection" }, 400);
+    if (!draft.collection) {
+      return c.json({ error: "collection_required" }, 400);
+    }
+    if (!draft.licenseUri || !draft.licenseGrantCid) {
+      return c.json({ error: "license_required" }, 400);
+    }
+    if (!identifiersSigningConfigured()) {
+      return c.json({ error: "identifiers_unconfigured" }, 503);
     }
 
     const masterByObjectId = new Map(masters.map((m) => [m.id, m]));
@@ -561,14 +638,69 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
 
     const digitalType = col("catalog.item.digital");
     const collectionType = col("catalog.collection");
+    const compositionType = col("catalog.composition");
+    const recordingType = col("catalog.recording");
+
+    const rel = draft.collection!;
+    let collectionArtworkCid: string | undefined;
+    if (rel.artworkObjectId) {
+      const ao = objects.find(
+        (o) => o.id === rel.artworkObjectId && o.role === "artwork",
+      );
+      if (!ao || ao.status !== "completed" || !ao.fileCid) {
+        return c.json(
+          {
+            error: "invalid_collection_artwork",
+            objectId: rel.artworkObjectId,
+          },
+          400,
+        );
+      }
+      collectionArtworkCid = ao.fileCid;
+    }
+    const collectionReleaseIso = rel.releaseDate ?? new Date().toISOString();
+
+    const WRITER_ROLES = new Set([
+      "composer",
+      "lyricist",
+      "composerLyricist",
+      "arranger",
+      "adapter",
+    ]);
 
     for (const t of draft.tracks) {
       const mo = masterByObjectId.get(t.objectId);
-      if (!mo) return c.json({ error: "unknown_track_object", objectId: t.objectId }, 400);
-      const formats = t.formats?.length ? t.formats : inferFormats(mo.fileName, mo.contentType);
+      if (!mo)
+        return c.json(
+          { error: "unknown_track_object", objectId: t.objectId },
+          400,
+        );
+      if (!t.title?.trim()) {
+        return c.json(
+          { error: "track_title_required", objectId: t.objectId },
+          400,
+        );
+      }
+      const formats = t.formats?.length
+        ? t.formats
+        : inferFormats(mo.fileName, mo.contentType);
+      const createdAt = new Date().toISOString();
+      let bazaarRid: ReturnType<typeof buildBazaarRid>;
+      try {
+        bazaarRid = buildBazaarRid({
+          artistDid: sess.did,
+          fileCid: mo.fileCid!,
+          fileChecksum: mo.fileChecksum!,
+          createdAt,
+        });
+      } catch (e) {
+        console.error("buildBazaarRid:", e);
+        return c.json({ error: "identifier_sign_failed" }, 500);
+      }
+
       const record: Record<string, unknown> = {
         $type: digitalType,
-        title: t.title,
+        title: t.title.trim(),
         artistDid: sess.did,
         itemClass: t.itemClass,
         formats,
@@ -578,16 +710,28 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         durationMs: t.durationMs ?? mo.durationMs ?? undefined,
         description: t.description,
         genre: t.genre,
-        releaseDate: t.releaseDate,
-        defaultLicenseUri: draft.licenseUri,
-        createdAt: new Date().toISOString(),
+        releaseDate: collectionReleaseIso,
+        createdAt,
+        bazaarRid,
       };
+      if (t.isrc?.trim()) record.isrc = t.isrc.trim();
+      record.defaultLicenseUri = draft.licenseUri;
 
       if (t.artworkObjectId) {
-        const art = objects.find((o) => o.id === t.artworkObjectId && o.role === "artwork");
+        const art = objects.find(
+          (o) => o.id === t.artworkObjectId && o.role === "artwork",
+        );
         if (!art || art.status !== "completed" || !art.fileCid)
-          return c.json({ error: "invalid_artwork", objectId: t.artworkObjectId }, 400);
+          return c.json(
+            { error: "invalid_artwork", objectId: t.artworkObjectId },
+            400,
+          );
         record.artworkCid = art.fileCid;
+      } else if (
+        collectionArtworkCid &&
+        AUDIO_DIGITAL_ITEM_CLASSES.has(t.itemClass)
+      ) {
+        record.artworkCid = collectionArtworkCid;
       }
 
       const res = await sess.agent.com.atproto.repo.createRecord({
@@ -598,46 +742,171 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       });
       uriByObjectId.set(t.objectId, { uri: res.data.uri, cid: res.data.cid });
       createdItems.push({ uri: res.data.uri, cid: res.data.cid, rkey: mo.rkey });
+
+      if (t.itemClass !== "track") continue;
+
+      const rights = t.rights;
+      const masterDid = rights?.masterOwnerDid?.trim() || sess.did;
+      const pubDid = rights?.publishingOwnerDid?.trim() || sess.did;
+      const pubIpi = rights?.publishingOwnerIpi?.trim();
+
+      let songMetaUri: string | undefined;
+      let compositionBazaarWid: Record<string, unknown> | null = null;
+
+      const pathExisting =
+        rights?.compositionPath === "existing" &&
+        !!rights.existingCompositionUri?.trim();
+
+      if (pathExisting) {
+        songMetaUri = rights!.existingCompositionUri!.trim();
+        const snap = parseBazaarIdentifierFromDraft(rights?.existingBazaarWid);
+        if (snap) compositionBazaarWid = snap as unknown as Record<string, unknown>;
+      } else {
+        const compTitle =
+          rights?.compositionTitle?.trim() || t.title.trim();
+        const compCreatedAt = new Date().toISOString();
+        let bazaarWid: ReturnType<typeof buildBazaarWid>;
+        try {
+          bazaarWid = buildBazaarWid({
+            artistDid: sess.did,
+            compositionTitle: compTitle,
+            writers: widInputsFromDraftWriters(rights?.writers),
+            createdAt: compCreatedAt,
+          });
+        } catch (e) {
+          console.error("buildBazaarWid:", e);
+          return c.json({ error: "identifier_sign_failed" }, 500);
+        }
+        compositionBazaarWid = bazaarWid as unknown as Record<string, unknown>;
+
+        const compRecord: Record<string, unknown> = {
+          $type: compositionType,
+          title: compTitle,
+          artistDid: sess.did,
+          createdAt: compCreatedAt,
+          bazaarWid,
+        };
+        if (rights?.iswc?.trim()) compRecord.iswc = rights.iswc.trim();
+        const ws = (rights?.writers ?? [])
+          .filter((w) => w.name?.trim())
+          .map((w) => {
+            const row: Record<string, unknown> = { name: w.name!.trim() };
+            if (w.ipi?.trim()) row.ipi = w.ipi.trim();
+            if (w.did?.trim()) row.did = w.did.trim();
+            if (typeof w.share === "number" && Number.isFinite(w.share))
+              row.share = w.share;
+            const role = w.role?.trim();
+            if (role && WRITER_ROLES.has(role)) row.role = role;
+            return row;
+          });
+        if (ws.length) compRecord.writers = ws;
+        const pubs = (rights?.publishers ?? [])
+          .filter((p) => p.name?.trim())
+          .map((p) => {
+            const row: Record<string, unknown> = { name: p.name!.trim() };
+            if (p.ipi?.trim()) row.ipi = p.ipi.trim();
+            if (p.did?.trim()) row.did = p.did.trim();
+            if (p.pro?.trim()) row.pro = p.pro.trim();
+            if (typeof p.share === "number" && Number.isFinite(p.share))
+              row.share = p.share;
+            return row;
+          });
+        if (pubs.length) compRecord.publishers = pubs;
+        const prs = (rights?.proRegistrations ?? [])
+          .filter((r) => r.pro?.trim())
+          .map((r) => {
+            const row: Record<string, unknown> = { pro: r.pro!.trim() };
+            if (r.registrationId?.trim())
+              row.registrationId = r.registrationId.trim();
+            if (r.territory?.trim()) row.territory = r.territory.trim();
+            return row;
+          });
+        if (prs.length) compRecord.proRegistrations = prs;
+        if (
+          typeof rights?.copyrightYear === "number" &&
+          Number.isFinite(rights.copyrightYear)
+        ) {
+          compRecord.copyrightYear = rights.copyrightYear;
+        }
+        if (rights?.copyrightRegistrationId?.trim()) {
+          compRecord.copyrightRegistrationId =
+            rights.copyrightRegistrationId.trim();
+        }
+
+        const compRes = await sess.agent.com.atproto.repo.createRecord({
+          repo: sess.did,
+          collection: compositionType,
+          record: compRecord,
+        });
+        songMetaUri = compRes.data.uri;
+      }
+
+      const recCreatedAt = new Date().toISOString();
+      const recRecord: Record<string, unknown> = {
+        $type: recordingType,
+        itemUri: res.data.uri,
+        itemCid: res.data.cid,
+        createdAt: recCreatedAt,
+        bazaarRid,
+        masterOwnerDid: masterDid,
+        publishingOwnerDid: pubDid,
+      };
+      if (songMetaUri) recRecord.songMetaUri = songMetaUri;
+      if (compositionBazaarWid) recRecord.bazaarWid = compositionBazaarWid;
+      if (t.isrc?.trim()) recRecord.isrc = t.isrc.trim();
+      if (rights?.iswc?.trim()) recRecord.iswc = rights.iswc.trim();
+      if (pubIpi) recRecord.publishingOwnerIpi = pubIpi;
+
+      await sess.agent.com.atproto.repo.createRecord({
+        repo: sess.did,
+        collection: recordingType,
+        record: recRecord,
+      });
     }
 
     let primaryItemUri = createdItems[0]!.uri;
 
-    if (draft.collection) {
-      for (const oid of draft.collection.trackObjectIds) {
-        if (!uriByObjectId.has(oid))
-          return c.json({ error: "collection_unknown_track", objectId: oid }, 400);
+    {
+      const slots: CollectionItemSlotV1[] =
+        rel.itemSlots?.length
+          ? rel.itemSlots
+          : buildLegacyTrackSlots(rel.trackObjectIds);
+      if (!slots.length) {
+        return c.json({ error: "collection_items_required" }, 400);
       }
-      const items = draft.collection.trackObjectIds.map((oid, i) => {
-        const u = uriByObjectId.get(oid)!;
-        return {
-          uri: u.uri,
-          cid: u.cid,
-          role: "track" as const,
-          essential: true,
-          trackNumber: i + 1,
-        };
-      });
-      let collectionArtworkCid: string | undefined;
-      if (draft.collection.artworkObjectId) {
-        const ao = objects.find(
-          (o) => o.id === draft.collection!.artworkObjectId && o.role === "artwork",
-        );
-        if (!ao || ao.status !== "completed" || !ao.fileCid)
+      for (const slot of slots) {
+        if (!uriByObjectId.has(slot.objectId)) {
           return c.json(
-            { error: "invalid_collection_artwork", objectId: draft.collection.artworkObjectId },
+            { error: "collection_unknown_object", objectId: slot.objectId },
             400,
           );
-        collectionArtworkCid = ao.fileCid;
+        }
       }
+      const items = slots.map((slot) => {
+        const u = uriByObjectId.get(slot.objectId)!;
+        const entry: Record<string, unknown> = {
+          uri: u.uri,
+          cid: u.cid,
+          role: slot.role,
+          essential: slot.essential !== false,
+        };
+        if (slot.trackNumber != null) entry.trackNumber = slot.trackNumber;
+        if (slot.discNumber != null) entry.discNumber = slot.discNumber;
+        if (slot.title?.trim()) entry.title = slot.title.trim();
+        return entry;
+      });
       const colRecord: Record<string, unknown> = {
         $type: collectionType,
-        title: draft.collection.title,
+        title: rel.title,
         artistDid: sess.did,
-        releaseDate: draft.collection.releaseDate ?? new Date().toISOString(),
+        releaseDate: rel.releaseDate ?? new Date().toISOString(),
         items,
-        defaultLicenseUri: draft.licenseUri,
         createdAt: new Date().toISOString(),
+        defaultLicenseUri: draft.licenseUri,
       };
+      if (rel.collectionType) colRecord.collectionType = rel.collectionType;
+      if (rel.genre?.length) colRecord.genre = rel.genre;
+      if (rel.upc?.trim()) colRecord.upc = rel.upc.trim();
       if (collectionArtworkCid) colRecord.artworkCid = collectionArtworkCid;
       const colRes = await sess.agent.com.atproto.repo.createRecord({
         repo: sess.did,
@@ -645,6 +914,57 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         record: colRecord,
       });
       primaryItemUri = colRes.data.uri;
+      const collectionUri = colRes.data.uri;
+      const colAtUri = new AtUri(collectionUri);
+      const collectionRkeyForPid = colAtUri.rkey;
+      if (!collectionRkeyForPid) {
+        return c.json({ error: "missing_collection_rkey" }, 500);
+      }
+
+      let bazaarPid: ReturnType<typeof buildBazaarPid>;
+      try {
+        bazaarPid = buildBazaarPid({
+          artistDid: sess.did,
+          collectionUri,
+          releaseDate: rel.releaseDate ?? new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error("buildBazaarPid:", e);
+        return c.json({ error: "identifier_sign_failed" }, 500);
+      }
+
+      const colFetched = await sess.agent.com.atproto.repo.getRecord({
+        repo: sess.did,
+        collection: collectionType,
+        rkey: collectionRkeyForPid,
+      });
+      const colValue = colFetched.data.value as Record<string, unknown>;
+      await sess.agent.com.atproto.repo.putRecord({
+        repo: sess.did,
+        collection: collectionType,
+        rkey: collectionRkeyForPid,
+        swapRecord: colFetched.data.cid,
+        record: { ...colValue, bazaarPid },
+      });
+
+      for (const item of createdItems) {
+        const itemAt = new AtUri(item.uri);
+        const itemRkey = itemAt.rkey;
+        if (!itemRkey) continue;
+        const cur = await sess.agent.com.atproto.repo.getRecord({
+          repo: sess.did,
+          collection: digitalType,
+          rkey: itemRkey,
+        });
+        const v = cur.data.value as Record<string, unknown>;
+        await sess.agent.com.atproto.repo.putRecord({
+          repo: sess.did,
+          collection: digitalType,
+          rkey: itemRkey,
+          swapRecord: cur.data.cid,
+          record: { ...v, collectionUri },
+        });
+      }
 
       if (collectionArtworkCid) {
         const r2 = loadR2();
@@ -655,12 +975,13 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
           const colAt = new AtUri(colRes.data.uri);
           const collectionRkey = colAt.rkey;
           if (!collectionRkey) throw new Error("missing_collection_rkey");
-          const firstOid = draft.collection.trackObjectIds[0]!;
-          const firstMo = masterByObjectId.get(firstOid);
-          if (!firstMo) throw new Error("missing_first_track");
+          const artObj = objects.find(
+            (o) => o.id === rel.artworkObjectId && o.role === "artwork",
+          );
+          if (!artObj) throw new Error("missing_artwork_object");
           const srcKey = inventoryObjectKey(
             sess.did,
-            firstMo.rkey,
+            artObj.rkey,
             INVENTORY_ARTWORK_OBJECT_NAME,
           );
           const dstKey = inventoryObjectKey(
@@ -713,42 +1034,144 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
   return r;
 }
 
+type CollectionItemSlotV1 = {
+  objectId: string;
+  role: "track" | "video" | "document" | "artwork" | "bonus" | "other";
+  essential?: boolean;
+  trackNumber?: number;
+  discNumber?: number;
+  title?: string;
+};
+
+function buildLegacyTrackSlots(
+  trackObjectIds: string[] | undefined,
+): CollectionItemSlotV1[] {
+  if (!trackObjectIds?.length) return [];
+  return trackObjectIds.map((objectId, i) => ({
+    objectId,
+    role: "track" as const,
+    essential: true,
+    trackNumber: i + 1,
+  }));
+}
+
+type PublishDraftRightsWriter = {
+  name: string;
+  ipi?: string;
+  did?: string;
+  share?: number;
+  role?: string;
+};
+
+type PublishDraftRightsPublisher = {
+  name: string;
+  ipi?: string;
+  did?: string;
+  pro?: string;
+  share?: number;
+};
+
+type PublishDraftRightsProReg = {
+  pro: string;
+  registrationId?: string;
+  territory?: string;
+};
+
+type PublishDraftTrackRights = {
+  compositionPath?: "new" | "existing";
+  existingCompositionUri?: string;
+  existingCompositionCid?: string;
+  existingBazaarWid?: unknown;
+  compositionTitle?: string;
+  copyrightYear?: number;
+  copyrightRegistrationId?: string;
+  masterOwnerDid?: string;
+  publishingOwnerDid?: string;
+  publishingOwnerIpi?: string;
+  iswc?: string;
+  writers?: PublishDraftRightsWriter[];
+  publishers?: PublishDraftRightsPublisher[];
+  proRegistrations?: PublishDraftRightsProReg[];
+};
+
+type PublishDraftTrackClass =
+  | "track"
+  | "album"
+  | "samplePack"
+  | "preset"
+  | "stems"
+  | "video"
+  | "document"
+  | "ebook"
+  | "other";
+
 type PublishDraftV1 = {
   tracks: Array<{
     objectId: string;
     title: string;
-    itemClass:
-      | "track"
-      | "album"
-      | "samplePack"
-      | "preset"
-      | "stems"
-      | "video"
-      | "document"
-      | "ebook"
-      | "other";
+    itemClass: PublishDraftTrackClass;
     formats?: string[];
     description?: string;
     genre?: string[];
     releaseDate?: string;
     durationMs?: number;
     artworkObjectId?: string;
+    isrc?: string;
+    rights?: PublishDraftTrackRights;
   }>;
   collection?: {
     title: string;
     releaseDate?: string;
-    trackObjectIds: string[];
+    collectionType?: "single" | "ep" | "album" | "compilation" | "other";
+    genre?: string[];
+    upc?: string;
+    trackObjectIds?: string[];
+    itemSlots?: CollectionItemSlotV1[];
     artworkObjectId?: string;
   };
-  licenseUri: string;
-  licenseGrantCid: string;
+  licenseUri?: string;
+  licenseGrantCid?: string;
 };
+
+const AUDIO_DIGITAL_ITEM_CLASSES = new Set<PublishDraftTrackClass>([
+  "track",
+  "album",
+  "samplePack",
+  "preset",
+  "stems",
+]);
+
+function widInputsFromDraftWriters(
+  writers: PublishDraftRightsWriter[] | undefined,
+): WidWriterInput[] {
+  return (writers ?? []).map((w) => ({
+    name: w.name?.trim(),
+    ipi: w.ipi?.trim(),
+    did: w.did?.trim(),
+  }));
+}
+
+function parseBazaarIdentifierFromDraft(v: unknown): {
+  id: string;
+  sig: string;
+  generatedAt: string;
+} | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (
+    typeof o.id === "string" &&
+    typeof o.sig === "string" &&
+    typeof o.generatedAt === "string"
+  ) {
+    return { id: o.id, sig: o.sig, generatedAt: o.generatedAt };
+  }
+  return null;
+}
 
 function parsePublishDraft(raw: string | null): PublishDraftV1 {
   if (!raw) throw new Error("empty");
   const d = JSON.parse(raw) as PublishDraftV1;
   if (!d.tracks || !Array.isArray(d.tracks)) throw new Error("tracks");
-  if (!d.licenseUri || !d.licenseGrantCid) throw new Error("license");
   return d;
 }
 

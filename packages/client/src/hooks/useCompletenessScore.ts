@@ -7,6 +7,8 @@ import type {
 
 export type CompletenessSubject = Partial<DigitalItem | Collection> & {
   hasAudioFile?: boolean;
+  /** When false for a track, a catalog.recording link is missing (rights metadata). */
+  hasLinkedRecording?: boolean;
 };
 
 function isCollectionShape(
@@ -65,6 +67,9 @@ export function scoreCompleteness(item: CompletenessSubject): CompletenessScore 
     recKeys.push("description");
   if (!item.genre?.length) recKeys.push("genre");
   if (!item.releaseDate) recKeys.push("releaseDate");
+  if (item.itemClass === "track" && item.hasLinkedRecording === false) {
+    recKeys.push("ownershipRecords");
+  }
   if (!item.isrc) optKeys.push("isrc");
   if (!item.defaultLicenseUri) optKeys.push("defaultLicenseUri");
   const pro = (
@@ -73,7 +78,7 @@ export function scoreCompleteness(item: CompletenessSubject): CompletenessScore 
   if (!pro) optKeys.push("proMembership");
 
   const nReq = 6;
-  const nRec = 4;
+  const nRec = 5;
   const nOpt = 4;
   const perReq = 60 / nReq;
   const perRec = 25 / nRec;

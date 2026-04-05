@@ -25,11 +25,14 @@ export function BatchAudioFileDropzone({
   onError,
   accept = DEFAULT_ACCEPT,
   maxSizeMb = 500,
+  hint,
 }: {
   onBatch: (entries: BatchAudioEntry[]) => void;
   onError: (msg: string) => void;
   accept?: string[];
   maxSizeMb?: number;
+  /** Replaces the default footnote under the dropzone. */
+  hint?: string;
 }) {
   const inputId = useId();
   const [busy, setBusy] = useState(false);
@@ -106,8 +109,8 @@ export function BatchAudioFileDropzone({
         or browse
       </label>
       <p className="mt-2 text-xs text-muted-foreground">
-        Batch staging for collections. Full publish flow will use these when catalog
-        APIs support batch import.
+        {hint ??
+          "Batch staging for collections. Full publish flow will use these when catalog APIs support batch import."}
       </p>
       {busy ? <p className="mt-2 text-xs">Parsing…</p> : null}
     </div>
