@@ -30,10 +30,6 @@ export function ItemCard({
   preview?: boolean;
 }) {
   const title = item.title;
-  const artistName =
-    item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
-      ? item.artistDid
-      : item.artistDid;
   const artworkCid = item.artworkCid;
   const trackCount =
     item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
@@ -58,22 +54,17 @@ export function ItemCard({
           />
         </div>
         <CardContent className="space-y-2 p-4">
-          <div>
-            <h3 className="font-semibold leading-tight line-clamp-2">
-              {title}
-              {preview ? (
-                <Badge
-                  variant="secondary"
-                  className="ml-2 align-middle text-[10px] font-normal"
-                >
-                  Preview
-                </Badge>
-              ) : null}
-            </h3>
-            <p className="text-sm text-muted-foreground line-clamp-1">
-              {artistName}
-            </p>
-          </div>
+          <h3 className="font-semibold leading-tight line-clamp-2">
+            {title}
+            {preview ? (
+              <Badge
+                variant="secondary"
+                className="ml-2 align-middle text-[10px] font-normal"
+              >
+                Preview
+              </Badge>
+            ) : null}
+          </h3>
           {"formats" in item && item.formats?.length ? (
             <div className="flex flex-wrap gap-1">
               {item.formats.map((f) => (
