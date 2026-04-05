@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { createBrowserApiURL } from "@/lib/browserApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
+import { pdslsRecordUrl } from "@/lib/pdsls";
 import {
   getRecordValue,
   listPurchaseConsentRows,
@@ -30,6 +31,40 @@ function formatMoney(m: { amount: number; currency: string }): string {
     style: "currency",
     currency: m.currency,
   }).format(m.amount / 100);
+}
+
+function PdslsCidLink({
+  cid,
+  recordUri,
+  label,
+}: {
+  cid: string;
+  recordUri: string;
+  label: string;
+}) {
+  const href = pdslsRecordUrl(recordUri);
+  if (!href) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {label}{" "}
+        <code className="text-[11px] break-all">{cid}</code>
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-muted-foreground">
+      {label}{" "}
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open record in pdsls"
+        className="break-all font-mono text-[11px] text-primary underline-offset-2 hover:underline"
+      >
+        {cid}
+      </a>
+    </p>
+  );
 }
 
 export function PurchaseDetailPage() {
@@ -180,10 +215,25 @@ export function PurchaseDetailPage() {
             Purchased {formatMoney(receipt.pricePaid)} ·{" "}
             {new Date(receipt.purchasedAt).toLocaleString()}
           </p>
-          {receipt.licenseGrantCid && receiptCid ? (
+          {receiptCid ? (
+            <PdslsCidLink
+              cid={receiptCid}
+              recordUri={receiptUri}
+              label="Receipt record CID:"
+            />
+          ) : null}
+          {receipt.licenseGrantCid && receipt.licenseGrantUri ? (
+            <PdslsCidLink
+              cid={receipt.licenseGrantCid}
+              recordUri={receipt.licenseGrantUri}
+              label="License terms (at purchase) CID:"
+            />
+          ) : receipt.licenseGrantCid ? (
             <p className="text-xs text-muted-foreground">
               License terms (at purchase) CID:{" "}
-              <code className="text-[11px]">{receipt.licenseGrantCid}</code>
+              <code className="text-[11px] break-all">
+                {receipt.licenseGrantCid}
+              </code>
             </p>
           ) : null}
         </div>
