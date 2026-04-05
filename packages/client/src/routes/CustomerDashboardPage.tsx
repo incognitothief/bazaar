@@ -42,7 +42,7 @@ type ReceiptValidationResult = {
 };
 
 export function CustomerDashboardPage() {
-  const { session, loading, signOut } = useAtpSession();
+  const { session, loading } = useAtpSession();
   const navigate = useNavigate();
   const location = useLocation();
   const agent = useMemo(() => createPublicAgent(), []);
@@ -205,22 +205,12 @@ export function CustomerDashboardPage() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-2xl space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2 min-w-0">
-          <h1 className="text-2xl font-semibold">Your purchases</h1>
-          <p className="text-sm text-muted-foreground">
-            Downloads and terms for receipts in your repo. Validate a specific
-            receipt URI below if needed.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="shrink-0"
-          onClick={() => void signOut()}
-        >
-          Sign out
-        </Button>
+      <div className="space-y-2 min-w-0">
+        <h1 className="text-2xl font-semibold">Your purchases</h1>
+        <p className="text-sm text-muted-foreground">
+          Downloads and terms for receipts in your repo. Validate a specific
+          receipt URI below if needed.
+        </p>
       </div>
 
       {purchases.length > 0 ? (
