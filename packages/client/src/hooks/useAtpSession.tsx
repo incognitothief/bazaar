@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { getAuthRole } from "@/lib/auth";
 import { apiServerOrigin, browserApiUrl } from "@/lib/browserApi";
 import { createPublicAgent } from "@/lib/atproto/session";
@@ -30,12 +38,16 @@ function postSignInDestination(did: string): string {
   return getAuthRole(did) === "merchant" ? "/merchant/dashboard" : "/dashboard";
 }
 
-export function useAtpSession(): {
+type AtpSessionContextValue = {
   session: AtpSession | null;
   loading: boolean;
   signIn: (handle: string) => Promise<void>;
   signOut: () => Promise<void>;
-} {
+};
+
+const AtpSessionContext = createContext<AtpSessionContextValue | null>(null);
+
+export function AtpSessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AtpSession | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -106,7 +118,6 @@ export function useAtpSession(): {
       return;
     }
 
-    // OAuth redirect_uri is built on the server from APP_URL; keep VITE_API_ORIGIN in sync with that.
     const origin = apiServerOrigin();
     if (!origin) {
       window.alert("Set VITE_API_ORIGIN to your API server URL.");
@@ -133,7 +144,29 @@ export function useAtpSession(): {
     }
   }, []);
 
-  return { session, loading, signIn, signOut };
+  const value = useMemo(
+    () => ({
+      session,
+      loading,
+      signIn,
+      signOut,
+    }),
+    [session, loading, signIn, signOut],
+  );
+
+  return (
+    <AtpSessionContext.Provider value={value}>
+      {children}
+    </AtpSessionContext.Provider>
+  );
+}
+
+export function useAtpSession(): AtpSessionContextValue {
+  const ctx = useContext(AtpSessionContext);
+  if (!ctx) {
+    throw new Error("useAtpSession must be used within AtpSessionProvider");
+  }
+  return ctx;
 }
 
 /** Dev-only: set a fake session so merchant routes work without OAuth. */

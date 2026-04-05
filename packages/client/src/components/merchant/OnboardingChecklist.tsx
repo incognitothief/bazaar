@@ -49,12 +49,12 @@ export function OnboardingChecklist({
       id: "stripe",
       label: "Connect Stripe account",
       description:
-        "Add your Stripe secret key and webhook signing secret on the dashboard (or set them in server environment).",
+        "Add your Stripe secret key and webhook signing secret in Settings (or set them in server environment).",
       complete: stripeConnected,
       blocking: true,
       action: {
         label: "Set up Stripe",
-        href: `/merchant/dashboard#${STRIPE_CONNECT_PANEL_ID}`,
+        href: `/merchant/settings#${STRIPE_CONNECT_PANEL_ID}`,
       },
     },
     {

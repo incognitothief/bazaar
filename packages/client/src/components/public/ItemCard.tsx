@@ -30,10 +30,6 @@ export function ItemCard({
   preview?: boolean;
 }) {
   const title = item.title;
-  const artistName =
-    item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
-      ? item.artistDid
-      : item.artistDid;
   const artworkCid = item.artworkCid;
   const trackCount =
     item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
@@ -42,8 +38,11 @@ export function ItemCard({
   const to = `/item/${encodeURIComponent(itemUri)}`;
 
   return (
-    <Link to={to} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
-      <Card className="overflow-hidden transition-shadow hover:shadow-md h-full">
+    <Link
+      to={to}
+      className="block rounded-b-xl rounded-t-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Card className="h-full gap-0 overflow-hidden rounded-b-xl rounded-t-none py-0 ring-border transition-shadow hover:shadow-md">
         <div className="aspect-square w-full overflow-hidden bg-muted">
           <ArtworkImage
             agent={agent}
@@ -54,23 +53,18 @@ export function ItemCard({
             className="h-full w-full"
           />
         </div>
-        <CardContent className="p-4 space-y-2">
-          <div>
-            <h3 className="font-semibold leading-tight line-clamp-2">
-              {title}
-              {preview ? (
-                <Badge
-                  variant="secondary"
-                  className="ml-2 align-middle text-[10px] font-normal"
-                >
-                  Preview
-                </Badge>
-              ) : null}
-            </h3>
-            <p className="text-sm text-muted-foreground line-clamp-1">
-              {artistName}
-            </p>
-          </div>
+        <CardContent className="space-y-2 p-4">
+          <h3 className="font-semibold leading-tight line-clamp-2">
+            {title}
+            {preview ? (
+              <Badge
+                variant="secondary"
+                className="ml-2 align-middle text-[10px] font-normal"
+              >
+                Preview
+              </Badge>
+            ) : null}
+          </h3>
           {"formats" in item && item.formats?.length ? (
             <div className="flex flex-wrap gap-1">
               {item.formats.map((f) => (
