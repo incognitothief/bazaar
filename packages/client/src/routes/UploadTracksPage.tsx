@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Link, useNavigate, useBlocker } from "react-router-dom";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,6 +102,77 @@ function formatDuration(ms: number | undefined): string {
 function stripExtension(fileName: string): string {
   const base = fileName.replace(/\.[^.]+$/, "").trim();
   return base || fileName.trim() || "Untitled";
+}
+
+/** Pills for file/upload rows (tracks, extras, artwork) — shared look. */
+function fileRowStatusBadge(
+  variant: "pending" | "uploading" | "done" | "error" | "queued",
+): { text: string; className: string } {
+  switch (variant) {
+    case "uploading":
+      return {
+        text: "Uploading",
+        className:
+          "border-amber-500/50 text-amber-700 dark:text-amber-400",
+      };
+    case "done":
+      return {
+        text: "Done",
+        className:
+          "border-emerald-500/50 text-emerald-700 dark:text-emerald-400",
+      };
+    case "error":
+      return {
+        text: "Failed",
+        className: "border-destructive/50 text-destructive",
+      };
+    case "queued":
+      return {
+        text: "Queued",
+        className:
+          "border-sky-500/50 text-sky-700 dark:text-sky-400",
+      };
+    default:
+      return {
+        text: "Pending",
+        className: "border-muted-foreground/40 text-muted-foreground",
+      };
+  }
+}
+
+/** Same rules as `ImageDropzone` (square release art). */
+function validateSquareArtworkFile(
+  file: File,
+  onError: (msg: string) => void,
+): Promise<boolean> {
+  const maxBytes = 10 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    onError("Image too large (max 10 MB)");
+    return Promise.resolve(false);
+  }
+  if (!file.type.startsWith("image/")) {
+    onError("Please use JPEG, PNG, or WebP.");
+    return Promise.resolve(false);
+  }
+  const url = URL.createObjectURL(file);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      if (img.width < 600 || img.height < 600) {
+        onError("Minimum dimensions 600×600 for square artwork.");
+        resolve(false);
+        return;
+      }
+      resolve(true);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      onError("Could not read image.");
+      resolve(false);
+    };
+    img.src = url;
+  });
 }
 
 const WRITER_ROLE_NONE = "__none__" as const;
@@ -412,11 +490,17 @@ export function UploadTracksPage() {
   const [compositionSearch, setCompositionSearch] = useState("");
 
   const [busy, setBusy] = useState(false);
+  const [artworkUploadBusy, setArtworkUploadBusy] = useState(false);
   const [uploadBatchProgress, setUploadBatchProgress] = useState<{
     loaded: number;
     total: number;
     label: string;
+    itemIndex?: number;
+    itemTotal?: number;
   } | null>(null);
+  const step2ArtworkReplaceInputId = useId();
+  const step2ArtworkEmptyInputId = useId();
+  const step2ArtworkReplaceInputRef = useRef<HTMLInputElement>(null);
 
   const [licensePickMode, setLicensePickMode] = useState<"saved" | "template">(
     "saved",
@@ -434,6 +518,57 @@ export function UploadTracksPage() {
 
   const sessionIdRef = useRef<string | null>(null);
   const sessionInflightRef = useRef<Promise<string> | null>(null);
+  const skipLeaveGuardRef = useRef(false);
+
+  const artworkPreviewUrl = useMemo(
+    () => (artworkFile ? URL.createObjectURL(artworkFile) : null),
+    [artworkFile],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (artworkPreviewUrl) URL.revokeObjectURL(artworkPreviewUrl);
+    };
+  }, [artworkPreviewUrl]);
+
+  const hasInProgressWork =
+    sessionId != null ||
+    audioRows.length > 0 ||
+    extraRows.length > 0 ||
+    stagedAudio.length > 0 ||
+    stagedExtra.length > 0 ||
+    !!artworkObjectId ||
+    !!artworkFile;
+
+  const leaveBlocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      !skipLeaveGuardRef.current &&
+      hasInProgressWork &&
+      currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useEffect(() => {
+    if (leaveBlocker.state !== "blocked") return;
+    const leave = window.confirm(
+      "You have an upload session in progress. Leave this page? Changes on this screen may be lost.",
+    );
+    if (leave) {
+      skipLeaveGuardRef.current = true;
+      leaveBlocker.proceed();
+    } else {
+      leaveBlocker.reset();
+    }
+  }, [leaveBlocker, leaveBlocker.state]);
+
+  useEffect(() => {
+    if (!hasInProgressWork) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasInProgressWork]);
 
   useEffect(() => {
     sessionIdRef.current = sessionId;
@@ -470,6 +605,63 @@ export function UploadTracksPage() {
     }
     return sessionInflightRef.current;
   }, []);
+
+  const uploadArtworkFile = useCallback(
+    async (file: File): Promise<string> => {
+      if (!session?.did) throw new Error("Not signed in");
+      const sid = await ensureSession();
+      const reg = await registerInventoryObjects(sid, [
+        {
+          slotId: crypto.randomUUID(),
+          fileName: file.name,
+          contentType: file.type || undefined,
+          byteSize: file.size,
+          role: "artwork",
+        },
+      ]);
+      const art = reg.objects[0];
+      if (!art) throw new Error("Artwork registration failed");
+      await uploadFileToInventoryObject(
+        art.objectId,
+        file,
+        art.uploadKind,
+      );
+      setArtworkObjectId(art.objectId);
+      setArtworkFile(file);
+      return art.objectId;
+    },
+    [session?.did, ensureSession],
+  );
+
+  const uploadPendingReleaseArtwork =
+    useCallback(async (): Promise<string | undefined> => {
+      if (artworkObjectId) return artworkObjectId;
+      if (!artworkFile) return undefined;
+      return uploadArtworkFile(artworkFile);
+    }, [artworkObjectId, artworkFile, uploadArtworkFile]);
+
+  const onReleaseArtworkChosen = useCallback(
+    (f: File) => {
+      setArtworkFile(f);
+      setArtworkObjectId(null);
+      if (audioRows.length > 0) {
+        setArtworkUploadBusy(true);
+        void (async () => {
+          try {
+            await uploadArtworkFile(f);
+            toast.success("Cover art saved to your upload session");
+          } catch (e) {
+            toast.error(
+              e instanceof Error ? e.message : "Could not upload cover art",
+            );
+          } finally {
+            setArtworkUploadBusy(false);
+          }
+        })();
+      }
+    },
+    [audioRows.length, uploadArtworkFile],
+  );
 
   const appendStagedAudio = useCallback(
     (entries: BatchAudioEntry[]) => {
@@ -539,6 +731,30 @@ export function UploadTracksPage() {
   const canPublish =
     requiredGateOk && recommendedScore >= 60 && uploadsComplete && !busy;
 
+  const goToStep = useCallback(
+    (n: number) => {
+      if (n === step) return;
+      if (n < step) {
+        setStep(n);
+        return;
+      }
+      if (n === 2 && !step1Valid) {
+        toast.error("Add a release title and date first.");
+        return;
+      }
+      if (n === 3 && (!step1Valid || !tracksMetaValid)) {
+        toast.error("Upload audio files and complete track metadata first.");
+        return;
+      }
+      if (n === 4 && (!step1Valid || !tracksMetaValid || !step3LicenseOk)) {
+        toast.error("Choose a license before opening review.");
+        return;
+      }
+      setStep(n);
+    },
+    [step, step1Valid, tracksMetaValid, step3LicenseOk],
+  );
+
   useEffect(() => {
     if (step !== 3 || !agent || !session?.did) return;
     let cancelled = false;
@@ -568,6 +784,29 @@ export function UploadTracksPage() {
     });
   };
 
+  const removeAudioRow = useCallback((objectId: string) => {
+    if (
+      !window.confirm(
+        "Remove this track from the draft? It will not be included when you publish.",
+      )
+    ) {
+      return;
+    }
+    setAudioRows((prev) => prev.filter((r) => r.objectId !== objectId));
+    setExpandedAudioId((id) => (id === objectId ? null : id));
+  }, []);
+
+  const removeExtraRow = useCallback((objectId: string) => {
+    if (
+      !window.confirm(
+        "Remove this file from the draft? It will not be included when you publish.",
+      )
+    ) {
+      return;
+    }
+    setExtraRows((prev) => prev.filter((r) => r.objectId !== objectId));
+  }, []);
+
   const registerAndUploadAll = useCallback(async () => {
     if (!session?.did) {
       toast.error("Sign in to upload");
@@ -578,10 +817,12 @@ export function UploadTracksPage() {
       toast.error("Add at least one audio track");
       return;
     }
+    const artworkBytes =
+      artworkFile && !artworkObjectId ? artworkFile.size : 0;
     const totalBytes =
       stagedAudio.reduce((s, e) => s + e.file.size, 0) +
       stagedExtra.reduce((s, e) => s + e.file.size, 0) +
-      (artworkFile?.size ?? 0);
+      artworkBytes;
     setBusy(true);
     setUploadBatchProgress({
       loaded: 0,
@@ -611,7 +852,7 @@ export function UploadTracksPage() {
         byteSize: f.size,
         role: "master" as const,
       }));
-      if (artworkFile) {
+      if (artworkFile && !artworkObjectId) {
         objects.push({
           slotId: crypto.randomUUID(),
           fileName: artworkFile.name,
@@ -630,10 +871,10 @@ export function UploadTracksPage() {
       const nExtra = extraFiles.length;
       const masterRegs = reg.objects.slice(0, nAudio + nExtra);
       const artReg =
-        artworkFile && reg.objects.length > nAudio + nExtra
+        artworkFile && !artworkObjectId && reg.objects.length > nAudio + nExtra
           ? reg.objects[nAudio + nExtra]
           : null;
-      setArtworkObjectId(artReg?.objectId ?? null);
+      setArtworkObjectId((prev) => artReg?.objectId ?? prev);
 
       const nextAudio: AudioRowState[] = audioFiles.map((file, i) => {
         const meta = stagedAudio[i]?.meta;
@@ -673,8 +914,10 @@ export function UploadTracksPage() {
       setStagedExtra([]);
 
       const allMasters = [...nextAudio, ...nextExtra];
+      const uploadItemsTotal = allMasters.length + (artReg ? 1 : 0);
       for (let i = 0; i < allMasters.length; i++) {
         const row = allMasters[i]!;
+        const itemIndex = i + 1;
         if (i < nextAudio.length) {
           const idx = i;
           setAudioRows((prev) =>
@@ -692,6 +935,8 @@ export function UploadTracksPage() {
                   loaded: doneBase + pe.loaded,
                   total: Math.max(1, totalBytes),
                   label: row.file.name,
+                  itemIndex,
+                  itemTotal: uploadItemsTotal,
                 });
               },
             );
@@ -729,6 +974,8 @@ export function UploadTracksPage() {
                   loaded: doneBase + pe.loaded,
                   total: Math.max(1, totalBytes),
                   label: row.file.name,
+                  itemIndex,
+                  itemTotal: uploadItemsTotal,
                 });
               },
             );
@@ -753,6 +1000,7 @@ export function UploadTracksPage() {
       }
 
       if (artworkFile && artReg) {
+        const artItemIndex = allMasters.length + 1;
         await uploadFileToInventoryObject(
           artReg.objectId,
           artworkFile,
@@ -762,6 +1010,8 @@ export function UploadTracksPage() {
               loaded: doneBase + pe.loaded,
               total: Math.max(1, totalBytes),
               label: artworkFile.name,
+              itemIndex: artItemIndex,
+              itemTotal: uploadItemsTotal,
             });
           },
         );
@@ -774,7 +1024,14 @@ export function UploadTracksPage() {
       setUploadBatchProgress(null);
       setBusy(false);
     }
-  }, [ensureSession, stagedAudio, stagedExtra, artworkFile, session]);
+  }, [
+    ensureSession,
+    stagedAudio,
+    stagedExtra,
+    artworkFile,
+    artworkObjectId,
+    session,
+  ]);
 
   const resolveLicense = useCallback(async (): Promise<{
     uri: string;
@@ -825,6 +1082,7 @@ export function UploadTracksPage() {
     }
     setBusy(true);
     try {
+      const resolvedArtworkObjectId = await uploadPendingReleaseArtwork();
       const lic = await resolveLicense();
       const itemSlots = [
         ...audioRows.map((r, i) => {
@@ -875,7 +1133,8 @@ export function UploadTracksPage() {
           releaseDate: new Date(releaseDate).toISOString(),
           genre: genreTags.length ? genreTags : undefined,
           upc: upc.trim() || undefined,
-          artworkObjectId: artworkObjectId ?? undefined,
+          artworkObjectId:
+            resolvedArtworkObjectId ?? artworkObjectId ?? undefined,
           itemSlots,
         },
         licenseUri: lic.uri,
@@ -885,6 +1144,7 @@ export function UploadTracksPage() {
       await saveInventoryDraft(sessionId, draft);
       const snap = await publishInventorySession(sessionId);
       toast.success("Release published to your PDS.");
+      skipLeaveGuardRef.current = true;
       navigate("/merchant/dashboard", {
         state: {
           listingPrefillPath: `/merchant/listings?prefillItemUri=${encodeURIComponent(snap.primaryItemUri)}`,
@@ -914,6 +1174,68 @@ export function UploadTracksPage() {
     artworkObjectId,
     navigate,
     session,
+    uploadPendingReleaseArtwork,
+  ]);
+
+  const artworkRowUi = useMemo(() => {
+    if (!artworkFile) {
+      return {
+        uploadingNow: false,
+        badgeText: "",
+        badgeClassName: "",
+        detailLine: "",
+      };
+    }
+    const uploadPhase =
+      !!uploadBatchProgress &&
+      busy &&
+      uploadBatchProgress.label === artworkFile.name;
+    const uploadingNow = artworkUploadBusy || uploadPhase;
+    const done = !!artworkObjectId && !busy;
+    const queued = !!artworkObjectId && busy && !uploadingNow;
+
+    const badge =
+      uploadingNow
+        ? fileRowStatusBadge("uploading")
+        : done
+          ? fileRowStatusBadge("done")
+          : queued
+            ? fileRowStatusBadge("queued")
+            : fileRowStatusBadge("pending");
+    const badgeText = badge.text;
+    const badgeClassName = badge.className;
+
+    let detailLine: string;
+    if (uploadingNow) {
+      detailLine = artworkUploadBusy
+        ? "Sending to your upload session…"
+        : "Uploading bytes to storage…";
+    } else if (done) {
+      detailLine = "Saved to your upload session for this release.";
+    } else if (queued) {
+      detailLine =
+        "Registered — finishing other files in this batch first…";
+    } else if (audioRows.length === 0) {
+      detailLine =
+        "Included when you click Upload files to storage with your tracks.";
+    } else {
+      detailLine =
+        "Should save automatically — use Replace if this stays on Pending.";
+    }
+
+    return {
+      uploadingNow,
+      badgeText,
+      badgeClassName,
+      detailLine,
+    };
+  }, [
+    artworkFile,
+    artworkObjectId,
+    artworkUploadBusy,
+    audioRows.length,
+    busy,
+    uploadBatchProgress,
   ]);
 
   if (!session || !agent) return null;
@@ -946,7 +1268,10 @@ export function UploadTracksPage() {
         </p>
       </header>
 
-      <div className="flex flex-wrap gap-2 text-sm text-muted-foreground border-b border-border pb-4">
+      <nav
+        className="flex flex-wrap gap-x-1 gap-y-1 text-sm text-muted-foreground border-b border-border pb-4"
+        aria-label="Upload steps"
+      >
         {(
           [
             "Release",
@@ -954,17 +1279,45 @@ export function UploadTracksPage() {
             "License",
             "Review & publish",
           ] as const
-        ).map((label, i) => (
-          <span
-            key={label}
-            className={cn(
-              i + 1 === step && "text-foreground font-medium",
-            )}
-          >
-            Step {i + 1} — {label}
-          </span>
-        ))}
-      </div>
+        ).map((label, i) => {
+          const n = i + 1;
+          const active = n === step;
+          const forwardBlocked =
+            n > step &&
+            ((n >= 2 && !step1Valid) ||
+              (n >= 3 && !tracksMetaValid) ||
+              (n >= 4 && !step3LicenseOk));
+          return (
+            <span key={label} className="inline-flex items-center gap-x-1">
+              {i > 0 ? (
+                <span className="text-border select-none px-0.5" aria-hidden>
+                  /
+                </span>
+              ) : null}
+              <button
+                type="button"
+                disabled={forwardBlocked}
+                title={
+                  forwardBlocked
+                    ? "Complete the previous steps first"
+                    : `Go to step ${n}`
+                }
+                onClick={() => goToStep(n)}
+                className={cn(
+                  "rounded-md px-1.5 py-0.5 text-left transition-colors",
+                  active && "text-foreground font-medium",
+                  !active &&
+                    !forwardBlocked &&
+                    "hover:text-foreground underline-offset-4 hover:underline",
+                  forwardBlocked && "opacity-45 cursor-not-allowed",
+                )}
+              >
+                Step {n} — {label}
+              </button>
+            </span>
+          );
+        })}
+      </nav>
 
       {step === 1 ? (
         <div className="space-y-6">
@@ -1041,29 +1394,51 @@ export function UploadTracksPage() {
             </div>
             <div className="space-y-2">
               <Label>Artwork</Label>
-              <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64">
-                <ImageDropzone
-                  key="release-artwork"
-                  aspectRatio="1:1"
-                  className="h-full w-full max-w-none min-h-[8rem] rounded-none border-0 bg-transparent p-2 flex flex-col justify-center"
-                  onFile={(f) => {
-                    setArtworkFile(f);
-                    void ensureSession().catch((e) =>
-                      toast.error(
-                        e instanceof Error ? e.message : "Session error",
-                      ),
-                    );
-                  }}
-                  onError={(m) => toast.error(m)}
-                />
+              <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64 relative">
+                {artworkPreviewUrl ? (
+                  <div className="relative h-full w-full min-h-[8rem]">
+                    <img
+                      src={artworkPreviewUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 flex flex-wrap justify-center gap-2 p-2 bg-gradient-to-t from-background/90 to-transparent">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="text-xs"
+                        onClick={() => {
+                          setArtworkFile(null);
+                          setArtworkObjectId(null);
+                        }}
+                      >
+                        Remove artwork
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <ImageDropzone
+                    key="release-artwork"
+                    aspectRatio="1:1"
+                    className="h-full w-full max-w-none min-h-[8rem] rounded-none border-0 bg-transparent p-2 flex flex-col justify-center"
+                    onFile={(f) => onReleaseArtworkChosen(f)}
+                    onError={(m) => toast.error(m)}
+                  />
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Recommended. Visible on your storefront. Can be added later from
-                inventory.
+                If you add it here, it still uploads on the next step with your
+                audio (<span className="font-medium text-foreground">Upload files</span>
+                ), unless tracks are already on the server — then it uploads
+                immediately. You can also add or change cover art on step 2.
               </p>
             </div>
           </div>
-          <Button disabled={!step1Valid} onClick={() => setStep(2)}>
+          <Button
+            disabled={!step1Valid || busy}
+            onClick={() => setStep(2)}
+          >
             Continue
           </Button>
         </div>
@@ -1076,21 +1451,30 @@ export function UploadTracksPage() {
               className="rounded-lg border border-border bg-muted/30 p-4 space-y-2"
               aria-live="polite"
             >
-              <div className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
                 <span className="min-w-0 truncate font-medium">
                   {uploadBatchProgress.label}
                 </span>
-                <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
-                  {Math.min(
-                    100,
-                    Math.round(
-                      (uploadBatchProgress.loaded /
-                        uploadBatchProgress.total) *
-                        100,
-                    ),
-                  )}
-                  %
-                </span>
+                <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
+                  {uploadBatchProgress.itemIndex != null &&
+                  uploadBatchProgress.itemTotal != null ? (
+                    <span>
+                      Item {uploadBatchProgress.itemIndex} /{" "}
+                      {uploadBatchProgress.itemTotal}
+                    </span>
+                  ) : null}
+                  <span>
+                    {Math.min(
+                      100,
+                      Math.round(
+                        (uploadBatchProgress.loaded /
+                          uploadBatchProgress.total) *
+                          100,
+                      ),
+                    )}
+                    %
+                  </span>
+                </div>
               </div>
               <Progress
                 value={Math.min(
@@ -1145,49 +1529,85 @@ export function UploadTracksPage() {
               </>
             ) : (
               <ol className="space-y-2 border rounded-lg divide-y">
-                {audioRows.map((r, i) => (
+                {audioRows.map((r, i) => {
+                  const uploadBadge = fileRowStatusBadge(r.status);
+                  return (
                   <li key={r.objectId} className="p-3 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2 justify-between">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm font-medium tabular-nums w-6">
-                          {i + 1}.
-                        </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          disabled={i === 0}
-                          onClick={() => moveAudio(i, -1)}
-                          aria-label="Move up"
-                        >
-                          ↑
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          disabled={i === audioRows.length - 1}
-                          onClick={() => moveAudio(i, 1)}
-                          aria-label="Move down"
-                        >
-                          ↓
-                        </Button>
-                        <span
-                          className={cn(
-                            "text-xs rounded-full px-2 py-0.5 border",
-                            r.title.trim()
-                              ? "border-emerald-500/50 text-emerald-700 dark:text-emerald-400"
-                              : "border-destructive/50 text-destructive",
-                          )}
-                        >
-                          {r.title.trim() ? "OK" : "Title required"}
-                        </span>
+                    <div className="flex flex-wrap items-start gap-2 justify-between">
+                      <div className="flex min-w-0 flex-1 gap-3">
+                        <div className="flex shrink-0 items-center gap-1">
+                          <span className="w-6 text-sm font-medium tabular-nums">
+                            {i + 1}.
+                          </span>
+                          <div className="flex items-center gap-0.5">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              disabled={i === 0}
+                              onClick={() => moveAudio(i, -1)}
+                              aria-label="Move up"
+                            >
+                              ↑
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              disabled={i === audioRows.length - 1}
+                              onClick={() => moveAudio(i, 1)}
+                              aria-label="Move down"
+                            >
+                              ↓
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {r.title.trim() || stripExtension(r.file.name)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            <span className="tabular-nums">
+                              {formatDuration(r.durationMs)}
+                            </span>
+                            <span className="break-all"> · {r.file.name}</span>
+                          </p>
+                        </div>
                       </div>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {formatDuration(r.durationMs)} · {r.status}
-                      </span>
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <span
+                            className={cn(
+                              "text-xs rounded-full px-2 py-0.5 border",
+                              r.title.trim()
+                                ? "border-emerald-500/50 text-emerald-700 dark:text-emerald-400"
+                                : "border-destructive/50 text-destructive",
+                            )}
+                          >
+                            {r.title.trim() ? "OK" : "Title required"}
+                          </span>
+                          <span
+                            className={cn(
+                              "text-xs rounded-full px-2 py-0.5 border",
+                              uploadBadge.className,
+                            )}
+                          >
+                            {uploadBadge.text}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-destructive hover:text-destructive"
+                            disabled={r.status === "uploading"}
+                            onClick={() => removeAudioRow(r.objectId)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                     {r.error ? (
                       <p className="text-destructive text-xs">{r.error}</p>
@@ -2324,8 +2744,141 @@ export function UploadTracksPage() {
                       </div>
                     ) : null}
                   </li>
-                ))}
+                );
+                })}
               </ol>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-medium">Release artwork</h2>
+            <p className="text-sm text-muted-foreground">
+              Square cover (min 600×600). Same upload session as your tracks; optional.
+            </p>
+            {artworkPreviewUrl && artworkFile ? (
+              <ol className="space-y-2 border rounded-lg divide-y">
+                <li className="p-3 space-y-2">
+                  <div className="flex flex-wrap items-start gap-2 justify-between">
+                    <div className="flex gap-3 min-w-0 flex-1">
+                      <img
+                        src={artworkPreviewUrl}
+                        alt=""
+                        className="h-16 w-16 shrink-0 rounded-md object-cover ring-1 ring-border"
+                      />
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {artworkFile.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {artworkRowUi.detailLine}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {artworkRowUi.badgeText ? (
+                          <span
+                            className={cn(
+                              "text-xs rounded-full px-2 py-0.5 border",
+                              artworkRowUi.badgeClassName,
+                            )}
+                          >
+                            {artworkRowUi.badgeText}
+                          </span>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-destructive hover:text-destructive"
+                          disabled={artworkRowUi.uploadingNow}
+                          onClick={() => {
+                            setArtworkFile(null);
+                            setArtworkObjectId(null);
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      <input
+                        ref={step2ArtworkReplaceInputRef}
+                        id={step2ArtworkReplaceInputId}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="sr-only"
+                        disabled={artworkRowUi.uploadingNow}
+                        onChange={async (ev) => {
+                          const f = ev.target.files?.[0];
+                          ev.target.value = "";
+                          if (!f) return;
+                          const ok = await validateSquareArtworkFile(f, (m) =>
+                            toast.error(m),
+                          );
+                          if (ok) onReleaseArtworkChosen(f);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-full max-w-[12rem] text-xs sm:w-auto"
+                        disabled={artworkRowUi.uploadingNow}
+                        onClick={() =>
+                          step2ArtworkReplaceInputRef.current?.click()
+                        }
+                      >
+                        Replace
+                      </Button>
+                    </div>
+                  </div>
+                </li>
+              </ol>
+            ) : (
+              <div
+                className={cn(
+                  "rounded-lg border-2 border-dashed border-border p-6 text-center transition-colors",
+                  "hover:bg-muted/40 focus-within:border-ring",
+                )}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  const f = e.dataTransfer.files[0];
+                  if (!f) return;
+                  const ok = await validateSquareArtworkFile(f, (m) =>
+                    toast.error(m),
+                  );
+                  if (ok) onReleaseArtworkChosen(f);
+                }}
+              >
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  id={step2ArtworkEmptyInputId}
+                  disabled={artworkRowUi.uploadingNow}
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f) return;
+                    const ok = await validateSquareArtworkFile(f, (m) =>
+                      toast.error(m),
+                    );
+                    if (ok) onReleaseArtworkChosen(f);
+                  }}
+                />
+                <label
+                  htmlFor={step2ArtworkEmptyInputId}
+                  className="cursor-pointer text-sm text-muted-foreground"
+                >
+                  <span className="font-medium text-foreground">
+                    Drop cover image
+                  </span>{" "}
+                  or browse
+                </label>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  JPEG, PNG, or WebP. Minimum 600×600 px. Optional.
+                </p>
+              </div>
             )}
           </section>
 
@@ -2335,6 +2888,14 @@ export function UploadTracksPage() {
               Non-audio files become extra{" "}
               <code className="text-xs">catalog.item.digital</code> records in the
               collection (PDF, video, etc.).
+            </p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              <span className="font-medium text-foreground">Item class</span> is stored
+              on the item record (what kind of digital good it is).{" "}
+              <span className="font-medium text-foreground">Collection role</span> is
+              separate: it controls how the file appears in the release’s item list
+              (e.g. bonus vs booklet). They are two different fields in the data model,
+              so both are shown here.
             </p>
             {audioRows.length === 0 ? (
               <div
@@ -2418,11 +2979,41 @@ export function UploadTracksPage() {
             ) : null}
             {extraRows.length > 0 ? (
               <ul className="border rounded-lg divide-y text-sm space-y-0">
-                {extraRows.map((r) => (
+                {extraRows.map((r) => {
+                  const uploadBadge = fileRowStatusBadge(r.status);
+                  return (
                   <li key={r.objectId} className="p-3 space-y-2">
-                    <div className="flex justify-between gap-2 text-xs text-muted-foreground">
-                      <span className="truncate">{r.file.name}</span>
-                      <span>{r.status}</span>
+                    <div className="flex flex-wrap items-start gap-2 justify-between">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {r.title.trim() || stripExtension(r.file.name)}
+                        </p>
+                        <p className="text-xs text-muted-foreground break-all">
+                          {r.itemClass} · {r.role} · {r.file.name}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <span
+                            className={cn(
+                              "text-xs rounded-full px-2 py-0.5 border",
+                              uploadBadge.className,
+                            )}
+                          >
+                            {uploadBadge.text}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-destructive hover:text-destructive"
+                            disabled={r.status === "uploading"}
+                            onClick={() => removeExtraRow(r.objectId)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                     {r.error ? (
                       <p className="text-destructive text-xs">{r.error}</p>
@@ -2440,83 +3031,89 @@ export function UploadTracksPage() {
                         )
                       }
                     />
-                    <div className="flex flex-wrap gap-2">
-                      <Select
-                        value={r.itemClass}
-                        onValueChange={(v) => {
-                          const ic = v as ExtraRowState["itemClass"];
-                          setExtraRows((prev) =>
-                            prev.map((x) =>
-                              x.objectId === r.objectId
-                                ? {
-                                    ...x,
-                                    itemClass: ic,
-                                    role: defaultRoleForItemClass(ic, x.file),
-                                  }
-                                : x,
-                            ),
-                          );
-                        }}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {EXTRA_ITEM_CLASSES.map((c) => (
-                            <SelectItem key={c} value={c}>
-                              {c}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={r.role}
-                        onValueChange={(v) =>
-                          setExtraRows((prev) =>
-                            prev.map((x) =>
-                              x.objectId === r.objectId
-                                ? { ...x, role: v as CollectionItemRole }
-                                : x,
-                            ),
-                          )
-                        }
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue placeholder="Role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(
-                            [
-                              "video",
-                              "document",
-                              "artwork",
-                              "bonus",
-                              "other",
-                            ] as const
-                          ).map((role) => (
-                            <SelectItem key={role} value={role}>
-                              {role}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <label className="flex items-center gap-2 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={r.essential}
-                          onChange={(e) =>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Item class</Label>
+                        <Select
+                          value={r.itemClass}
+                          onValueChange={(v) => {
+                            const ic = v as ExtraRowState["itemClass"];
                             setExtraRows((prev) =>
                               prev.map((x) =>
                                 x.objectId === r.objectId
-                                  ? { ...x, essential: e.target.checked }
+                                  ? {
+                                      ...x,
+                                      itemClass: ic,
+                                      role: defaultRoleForItemClass(ic, x.file),
+                                    }
+                                  : x,
+                              ),
+                            );
+                          }}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {EXTRA_ITEM_CLASSES.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Collection role</Label>
+                        <Select
+                          value={r.role}
+                          onValueChange={(v) =>
+                            setExtraRows((prev) =>
+                              prev.map((x) =>
+                                x.objectId === r.objectId
+                                  ? { ...x, role: v as CollectionItemRole }
                                   : x,
                               ),
                             )
                           }
-                        />
-                        Essential
-                      </label>
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(
+                              [
+                                "video",
+                                "document",
+                                "artwork",
+                                "bonus",
+                                "other",
+                              ] as const
+                            ).map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {role}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={r.essential}
+                        onChange={(e) =>
+                          setExtraRows((prev) =>
+                            prev.map((x) =>
+                              x.objectId === r.objectId
+                                ? { ...x, essential: e.target.checked }
+                                : x,
+                            ),
+                          )
+                        }
+                      />
+                      Essential to the release
+                    </label>
                     <Textarea
                       rows={2}
                       placeholder="Description (optional)"
@@ -2532,7 +3129,8 @@ export function UploadTracksPage() {
                       }
                     />
                   </li>
-                ))}
+                );
+                })}
               </ul>
             ) : null}
           </section>

@@ -37,8 +37,32 @@ export function catalogItemUriKey(uri: string): string {
 type ListRecordsResponse = {
   data: {
     records: Array<{ uri: string; cid: string; value: unknown }>;
+    cursor?: string;
   };
 };
+
+const LIST_RECORDS_PAGE_SIZE = 100;
+
+async function listAllRecordsForCollection(
+  agent: ATPRepoClient,
+  did: string,
+  collection: string,
+): Promise<Array<{ uri: string; cid: string; value: unknown }>> {
+  const out: Array<{ uri: string; cid: string; value: unknown }> = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const res = (await agent.com.atproto.repo.listRecords({
+      repo: did,
+      collection,
+      limit: LIST_RECORDS_PAGE_SIZE,
+      ...(cursor ? { cursor } : {}),
+    })) as ListRecordsResponse;
+    out.push(...res.data.records);
+    cursor = res.data.cursor;
+    if (!cursor) break;
+  }
+  return out;
+}
 
 type GetRecordResponse = {
   data: { cid: string; value: unknown };
@@ -301,12 +325,12 @@ export async function listRecordingRows(
   agent: ATPRepoClient,
   did: string,
 ): Promise<RecordingRow[]> {
-  const res = (await agent.com.atproto.repo.listRecords({
-    repo: did,
-    collection: BAZAAR_COLLECTION.recording,
-    limit: 200,
-  })) as ListRecordsResponse;
-  return res.data.records
+  const records = await listAllRecordsForCollection(
+    agent,
+    did,
+    BAZAAR_COLLECTION.recording,
+  );
+  return records
     .filter((r) => isRecording(r.value))
     .map((r) => ({
       uri: r.uri,
@@ -321,12 +345,12 @@ export async function listCompositionRows(
   agent: ATPRepoClient,
   did: string,
 ): Promise<CompositionRow[]> {
-  const res = (await agent.com.atproto.repo.listRecords({
-    repo: did,
-    collection: BAZAAR_COLLECTION.composition,
-    limit: 200,
-  })) as ListRecordsResponse;
-  return res.data.records
+  const records = await listAllRecordsForCollection(
+    agent,
+    did,
+    BAZAAR_COLLECTION.composition,
+  );
+  return records
     .filter((r) => isComposition(r.value))
     .map((r) => ({
       uri: r.uri,
