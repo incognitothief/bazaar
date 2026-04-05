@@ -38,11 +38,14 @@ export function InventoryGrid({
 
 export function InventoryGridSkeleton() {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" aria-busy>
+    <div
+      className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+      aria-busy
+    >
       {Array.from({ length: 8 }).map((_, i) => (
         <div
           key={i}
-          className="rounded-xl border border-border overflow-hidden animate-pulse"
+          className="overflow-hidden rounded-b-xl rounded-t-none animate-pulse"
         >
           <div className="aspect-square bg-muted" />
           <div className="p-4 space-y-2">
