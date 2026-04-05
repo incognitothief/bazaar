@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Markdown from "react-markdown";
+import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   getRecordValue,
   listListingRows,
 } from "@/lib/atproto/records";
+import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
+import { fetchActorPublicProfile } from "@/lib/actorTypeahead";
+import { pdslsRepoCollectionsUrl } from "@/lib/pdsls";
 import {
   buildDummyDigitalItem,
   buildDummyListing,
@@ -22,6 +26,7 @@ import { MetadataChip } from "@/components/shared/MetadataChip";
 import { TrackList } from "@/components/public/TrackList";
 import { Button } from "@/components/ui/button";
 import type {
+  ActorMerchant,
   CatalogItem,
   DigitalItem,
   LicenseTerms,
@@ -47,6 +52,14 @@ export function ItemDetailPage() {
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [loading, setLoading] = useState(true);
   const [legalOpen, setLegalOpen] = useState(false);
+  const [relayAvatarUrl, setRelayAvatarUrl] = useState<string | null>(null);
+  const [relayAvatarBroken, setRelayAvatarBroken] = useState(false);
+  const [bazaarAvatarObjectUrl, setBazaarAvatarObjectUrl] = useState<
+    string | null
+  >(null);
+  const [authorDisplayName, setAuthorDisplayName] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!itemUri) {
@@ -109,6 +122,94 @@ export function ItemDetailPage() {
     };
   }, [agent, itemUri, artistDid]);
 
+  useEffect(() => {
+    setRelayAvatarBroken(false);
+  }, [relayAvatarUrl]);
+
+  useEffect(() => {
+    const authorDid = item?.artistDid?.trim();
+    if (!authorDid?.startsWith("did:")) {
+      setRelayAvatarUrl(null);
+      setAuthorDisplayName(null);
+      setBazaarAvatarObjectUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const ac = new AbortController();
+
+    setRelayAvatarUrl(null);
+    setAuthorDisplayName(null);
+    setBazaarAvatarObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+
+    void (async () => {
+      const emptyProfile = {
+        avatar: null as string | null,
+        handle: null as string | null,
+        displayName: null as string | null,
+      };
+      const [profile, merchantList] = await Promise.all([
+        fetchActorPublicProfile(authorDid, ac.signal).catch(() => emptyProfile),
+        agent.com.atproto.repo
+          .listRecords({
+            repo: authorDid,
+            collection: BAZAAR_COLLECTION.actorMerchant,
+            limit: 1,
+          })
+          .catch(() => ({ data: { records: [] as { value?: unknown }[] } })),
+      ]);
+      if (cancelled) return;
+
+      const v = merchantList.data.records[0]?.value as
+        | ActorMerchant
+        | undefined;
+      const merchantName = v?.displayName?.trim() || null;
+      const relayName = profile.displayName?.trim() || null;
+      setAuthorDisplayName(merchantName ?? relayName);
+
+      if (profile.avatar) setRelayAvatarUrl(profile.avatar);
+
+      const cid = v?.avatarCid;
+      if (!cid) return;
+      try {
+        const url = await fetchBlobObjectUrl(agent, authorDid, cid);
+        if (cancelled) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        if (!url) return;
+        setBazaarAvatarObjectUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      } catch {
+        if (!cancelled) {
+          setBazaarAvatarObjectUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      ac.abort();
+      setRelayAvatarUrl(null);
+      setAuthorDisplayName(null);
+      setBazaarAvatarObjectUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [agent, item?.artistDid]);
+
   if (!itemUri) {
     return <p className="text-muted-foreground">Missing item.</p>;
   }
@@ -139,7 +240,9 @@ export function ItemDetailPage() {
   }
 
   const title = item.title;
-  const artistName = item.artistDid;
+  const authorDid = item.artistDid;
+  const authorInitial =
+    authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
   const isCollection =
     item.$type === "diamonds.whereditgo.bazaar.catalog.collection";
   const blobDid =
@@ -176,7 +279,52 @@ export function ItemDetailPage() {
         <div className="space-y-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-            <p className="text-muted-foreground mt-1">{artistName}</p>
+            {authorDid.startsWith("did:") ? (
+              <div className="mt-3 flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
+                {relayAvatarUrl && !relayAvatarBroken ? (
+                  <img
+                    src={relayAvatarUrl}
+                    alt=""
+                    className="size-12 shrink-0 rounded-full object-cover ring-1 ring-border"
+                    onError={() => setRelayAvatarBroken(true)}
+                  />
+                ) : bazaarAvatarObjectUrl ? (
+                  <img
+                    src={bazaarAvatarObjectUrl}
+                    alt=""
+                    className="size-12 shrink-0 rounded-full object-cover ring-1 ring-border"
+                  />
+                ) : (
+                  <span
+                    className="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground ring-1 ring-border"
+                    aria-hidden
+                  >
+                    {authorInitial}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Published By
+                  </p>
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {authorDisplayName ?? "—"}
+                  </p>
+                  <p className="text-sm">
+                    <a
+                      href={pdslsRepoCollectionsUrl(authorDid)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="break-all font-mono text-xs text-primary underline-offset-2 hover:underline"
+                      title="Open repo in pdsls"
+                    >
+                      {authorDid}
+                    </a>
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-1 text-muted-foreground">{authorDid}</p>
+            )}
           </div>
           {listing ? (
             <p className="text-2xl font-medium">

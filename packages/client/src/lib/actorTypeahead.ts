@@ -20,9 +20,50 @@ type TypeaheadResponse = {
 type GetProfilesResponse = {
   profiles?: Array<{
     did?: string;
+    handle?: string;
+    displayName?: string;
     avatar?: string;
   }>;
 };
+
+export type ActorPublicProfile = {
+  avatar: string | null;
+  handle: string | null;
+  displayName: string | null;
+};
+
+/**
+ * Bluesky-style public profile fields for a DID or handle (relay `getProfiles`).
+ */
+export async function fetchActorPublicProfile(
+  actor: string,
+  signal?: AbortSignal,
+): Promise<ActorPublicProfile> {
+  const a = actor.trim();
+  if (!a) {
+    return { avatar: null, handle: null, displayName: null };
+  }
+
+  const url = `${TYPEAHEAD_URL}/xrpc/app.bsky.actor.getProfiles?actors=${encodeURIComponent(a)}`;
+  const response = await fetch(url, { signal });
+
+  if (!response.ok) {
+    throw new Error(`getProfiles failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as GetProfilesResponse;
+  const p = data.profiles?.[0];
+  return {
+    avatar:
+      typeof p?.avatar === "string" && p.avatar.length > 0 ? p.avatar : null,
+    handle:
+      typeof p?.handle === "string" && p.handle.length > 0 ? p.handle : null,
+    displayName:
+      typeof p?.displayName === "string" && p.displayName.length > 0
+        ? p.displayName
+        : null,
+  };
+}
 
 function parseHits(raw: TypeaheadResponse["actors"]): ActorTypeaheadHit[] {
   if (!Array.isArray(raw)) return [];
@@ -53,20 +94,8 @@ export async function fetchActorAvatarByActor(
   actor: string,
   signal?: AbortSignal,
 ): Promise<string | null> {
-  const a = actor.trim();
-  if (!a) return null;
-
-  const url = `${TYPEAHEAD_URL}/xrpc/app.bsky.actor.getProfiles?actors=${encodeURIComponent(a)}`;
-  const response = await fetch(url, { signal });
-
-  if (!response.ok) {
-    throw new Error(`getProfiles failed: ${response.status}`);
-  }
-
-  const data = (await response.json()) as GetProfilesResponse;
-  const p = data.profiles?.[0];
-  const avatar = p?.avatar;
-  return typeof avatar === "string" && avatar.length > 0 ? avatar : null;
+  const profile = await fetchActorPublicProfile(actor, signal);
+  return profile.avatar;
 }
 
 async function enrichHitsWithProfileAvatars(
