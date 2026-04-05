@@ -48,3 +48,17 @@ export function browserApiUrl(path: string): string {
   }
   return `${base}${p}`;
 }
+
+/**
+ * Build a `URL` with query params. In dev, `browserApiUrl` is origin-relative (`/api/...`);
+ * `new URL("/api/...")` throws without a base — use this instead.
+ */
+export function createBrowserApiURL(path: string): URL {
+  const resolved = browserApiUrl(path);
+  if (resolved.startsWith("http://") || resolved.startsWith("https://")) {
+    return new URL(resolved);
+  }
+  const base =
+    typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1";
+  return new URL(resolved, base);
+}

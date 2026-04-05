@@ -29,8 +29,8 @@ export function SettingsPage() {
   const [description, setDescription] = useState("");
   const [profileRkey, setProfileRkey] = useState<string | null>(null);
   const [profileCid, setProfileCid] = useState<string | null>(null);
-  const [profileCreatedAt, setProfileCreatedAt] = useState<string>(
-    () => new Date().toISOString(),
+  const [profileCreatedAt, setProfileCreatedAt] = useState<string>(() =>
+    new Date().toISOString(),
   );
   const [stripeConnected, setStripeConnected] = useState(false);
   const [unpub, setUnpub] = useState("");
@@ -181,7 +181,7 @@ export function SettingsPage() {
 
   async function unpublishAll() {
     if (unpub !== "UNPUBLISH") {
-      toast.error('Type UNPUBLISH to confirm');
+      toast.error("Type UNPUBLISH to confirm");
       return;
     }
     if (!agent || !session) return;
@@ -209,7 +209,7 @@ export function SettingsPage() {
       <h1 className="text-2xl font-semibold">Settings</h1>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-medium">Profile</h2>
+        <h2 className="text-lg font-medium">Merchant Profile</h2>
         <div className="space-y-2">
           <Label htmlFor="storefront-name">Storefront name</Label>
           <Input
@@ -230,7 +230,11 @@ export function SettingsPage() {
           <Label>Avatar</Label>
           <ImageDropzone
             aspectRatio="1:1"
-            onFile={() => toast.message("Avatar upload saves CID on profile save (wire in save).")}
+            onFile={() =>
+              toast.message(
+                "Avatar upload saves CID on profile save (wire in save).",
+              )
+            }
             onError={(m) => toast.error(m)}
           />
         </div>
@@ -304,7 +308,10 @@ export function SettingsPage() {
           </p>
           <a
             href={browserApiUrl("/api/stripe/connect")}
-            className={cn(buttonVariants({ variant: "secondary" }), "mt-2 inline-flex")}
+            className={cn(
+              buttonVariants({ variant: "secondary" }),
+              "mt-2 inline-flex",
+            )}
           >
             Connect Stripe
           </a>

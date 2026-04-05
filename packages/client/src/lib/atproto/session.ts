@@ -21,6 +21,7 @@ export interface ATPRepoClient {
           repo: string;
           collection: string;
           record: Record<string, unknown>;
+          rkey?: string;
         }): Promise<{ data: { uri: string; cid: string } }>;
         putRecord(input: {
           repo: string;
@@ -85,7 +86,11 @@ export function createProxyAgent(did: string): ATPRepoClient {
           async createRecord(input) {
             const raw = await proxyPost<{ uri: string; cid: string }>(
               "/repo/createRecord",
-              { collection: input.collection, record: input.record },
+              {
+                collection: input.collection,
+                record: input.record,
+                ...(input.rkey ? { rkey: input.rkey } : {}),
+              },
             );
             return { data: raw };
           },

@@ -49,6 +49,7 @@ export function ItemCard({
             agent={agent}
             did={artistDid}
             cid={artworkCid}
+            itemUri={itemUri}
             alt=""
             className="h-full w-full"
           />

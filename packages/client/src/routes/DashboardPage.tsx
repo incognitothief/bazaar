@@ -142,7 +142,7 @@ export function DashboardPage() {
         <div className="rounded-xl border border-dashed border-border p-12 text-center">
           <p className="text-lg font-medium mb-4">Upload your first release</p>
           <Link
-            to="/merchant/upload/digital"
+            to="/merchant/upload/tracks"
             className={cn(buttonVariants())}
           >
             Start upload

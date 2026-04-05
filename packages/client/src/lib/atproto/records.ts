@@ -8,10 +8,14 @@ import {
 import type { ATPRepoClient } from "./session";
 import type {
   ActorMerchant,
+  BazaarItemType,
+  CatalogItem,
   Collection,
   DigitalItem,
+  ItemRef,
   LicenseTerms,
   Listing,
+  PurchaseConsent,
   PurchaseReceipt,
 } from "@/types/lexicons";
 import { BAZAAR_COLLECTION } from "./ns";
@@ -47,6 +51,7 @@ function nowIso(): string {
 export async function createDigitalItem(
   agent: ATPRepoClient,
   record: Omit<DigitalItem, "$type" | "createdAt">,
+  opts?: { rkey?: string },
 ): Promise<{ uri: string; cid: string }> {
   const did = agent.session?.did;
   if (!did) throw new Error("Not authenticated");
@@ -59,6 +64,7 @@ export async function createDigitalItem(
     repo: did,
     collection: BAZAAR_COLLECTION.digitalItem,
     record: full as unknown as Record<string, unknown>,
+    ...(opts?.rkey ? { rkey: opts.rkey } : {}),
   });
   return { uri: res.data.uri, cid: res.data.cid };
 }
@@ -170,6 +176,72 @@ function isLicenseTerms(v: unknown): v is LicenseTerms {
     v !== null &&
     (v as LicenseTerms).$type === "diamonds.whereditgo.bazaar.license.terms"
   );
+}
+
+function isPurchaseReceipt(v: unknown): v is PurchaseReceipt {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as PurchaseReceipt).$type ===
+      "diamonds.whereditgo.bazaar.purchase.receipt"
+  );
+}
+
+function isPurchaseConsent(v: unknown): v is PurchaseConsent {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as PurchaseConsent).$type ===
+      "diamonds.whereditgo.bazaar.purchase.consent"
+  );
+}
+
+export type PurchaseReceiptRow = {
+  uri: string;
+  cid: string;
+  receipt: PurchaseReceipt;
+};
+
+export async function listPurchaseReceiptRows(
+  agent: ATPRepoClient,
+  did: string,
+): Promise<PurchaseReceiptRow[]> {
+  const res = (await agent.com.atproto.repo.listRecords({
+    repo: did,
+    collection: BAZAAR_COLLECTION.receipt,
+    limit: 100,
+  })) as ListRecordsResponse;
+  return res.data.records
+    .filter((r) => isPurchaseReceipt(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      receipt: r.value as PurchaseReceipt,
+    }));
+}
+
+export type PurchaseConsentRow = {
+  uri: string;
+  cid: string;
+  consent: PurchaseConsent;
+};
+
+export async function listPurchaseConsentRows(
+  agent: ATPRepoClient,
+  did: string,
+): Promise<PurchaseConsentRow[]> {
+  const res = (await agent.com.atproto.repo.listRecords({
+    repo: did,
+    collection: BAZAAR_COLLECTION.consent,
+    limit: 100,
+  })) as ListRecordsResponse;
+  return res.data.records
+    .filter((r) => isPurchaseConsent(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      consent: r.value as PurchaseConsent,
+    }));
 }
 
 export type DigitalItemRow = { uri: string; cid: string; item: DigitalItem };
@@ -343,6 +415,31 @@ export async function getRecordValue<T>(
       rkey,
     })) as GetRecordResponse;
     return res.data.value as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve `item` + `cid` for a new listing from a catalog AT-URI. */
+export async function buildItemRefFromUri(
+  agent: ATPRepoClient,
+  itemUri: string,
+): Promise<ItemRef | null> {
+  try {
+    const at = new AtUri(itemUri);
+    if (!at.collection || !at.rkey) return null;
+    const res = (await agent.com.atproto.repo.getRecord({
+      repo: at.hostname,
+      collection: at.collection,
+      rkey: at.rkey,
+    })) as GetRecordResponse;
+    const v = res.data.value as CatalogItem;
+    if (!v || typeof v !== "object" || !("$type" in v)) return null;
+    return {
+      uri: itemUri,
+      cid: res.data.cid,
+      itemType: (v as { $type: BazaarItemType }).$type,
+    };
   } catch {
     return null;
   }
