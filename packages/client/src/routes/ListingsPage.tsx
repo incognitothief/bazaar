@@ -145,12 +145,17 @@ export function ListingsPage() {
     const licenseUri = q.get("licenseUri");
     const licenseGrantCid = q.get("licenseGrantCid");
     const priceUsd = q.get("priceUsd");
-    if (!itemUri || !licenseUri || !licenseGrantCid) return;
+    if (!itemUri) return;
 
     setNewItemUri(itemUri);
-    setNewLicenseUri(licenseUri);
-    setNewLicenseCid(licenseGrantCid);
     setNewPrice(priceUsd ?? "9.99");
+    if (licenseUri && licenseGrantCid) {
+      setNewLicenseUri(licenseUri);
+      setNewLicenseCid(licenseGrantCid);
+    } else {
+      setNewLicenseUri("");
+      setNewLicenseCid("");
+    }
     navigate("/merchant/listings", { replace: true });
   }, [location.search, agent, session, navigate]);
 

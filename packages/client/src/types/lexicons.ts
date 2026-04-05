@@ -65,6 +65,40 @@ export type CollectionItemEntry = {
   title?: string;
 };
 
+export type CompositionWriter = {
+  name: string;
+  ipi?: string;
+  did?: string;
+  share?: number;
+  role?: string;
+};
+
+export type CompositionPublisher = {
+  name: string;
+  ipi?: string;
+  did?: string;
+  pro?: string;
+  share?: number;
+};
+
+export type Composition = {
+  $type: "diamonds.whereditgo.bazaar.catalog.composition";
+  title: string;
+  artistDid: string;
+  iswc?: string;
+  bazaarWid?: unknown;
+  writers?: CompositionWriter[];
+  publishers?: CompositionPublisher[];
+  proRegistrations?: Array<{
+    pro: string;
+    registrationId?: string;
+    territory?: string;
+  }>;
+  copyrightYear?: number;
+  copyrightRegistrationId?: string;
+  createdAt: string;
+};
+
 export type DigitalItem = {
   $type: "diamonds.whereditgo.bazaar.catalog.item.digital";
   title: string;

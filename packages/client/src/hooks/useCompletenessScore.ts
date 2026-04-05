@@ -7,6 +7,8 @@ import type {
 
 export type CompletenessSubject = Partial<DigitalItem | Collection> & {
   hasAudioFile?: boolean;
+  /** When false for a track, a catalog.recording link is missing (rights metadata). */
+  hasLinkedRecording?: boolean;
 };
 
 function isCollectionShape(
@@ -15,6 +17,12 @@ function isCollectionShape(
   return x.$type === "diamonds.whereditgo.bazaar.catalog.collection";
 }
 
+/**
+ * Scores 0–100. Only core catalog identity + structure count as "required";
+ * artwork, genre, description, UPC, ISRC, license URI, and per-item artwork
+ * contribute via recommended/optional buckets and do not empty the required list
+ * for publish-style gates (those live on the upload flow separately).
+ */
 export function scoreCompleteness(item: CompletenessSubject): CompletenessScore {
   const reqKeys: string[] = [];
   const recKeys: string[] = [];
@@ -25,19 +33,19 @@ export function scoreCompleteness(item: CompletenessSubject): CompletenessScore 
     if (!item.artistDid) reqKeys.push("artistDid");
     if (!item.releaseDate) reqKeys.push("releaseDate");
     if (!item.items?.length) reqKeys.push("items");
+
     if (!item.artworkCid) recKeys.push("artwork");
-    if (!("description" in item) || !item.description)
-      recKeys.push("description");
+    if (!item.description?.trim()) recKeys.push("description");
     if (!item.genre?.length) recKeys.push("genre");
-    if (!item.upc) optKeys.push("upc");
-    if (!item.defaultLicenseUri) optKeys.push("defaultLicenseUri");
+
+    if (!item.upc?.trim()) optKeys.push("upc");
 
     const nReq = 4;
     const nRec = 3;
-    const nOpt = 2;
-    const perReq = 60 / nReq;
-    const perRec = 25 / nRec;
-    const perOpt = 15 / nOpt;
+    const nOpt = 1;
+    const perReq = 70 / nReq;
+    const perRec = 20 / nRec;
+    const perOpt = 10 / nOpt;
     const score = Math.min(
       100,
       Math.round(
@@ -60,23 +68,25 @@ export function scoreCompleteness(item: CompletenessSubject): CompletenessScore 
   if (!item.formats?.length) reqKeys.push("formats");
   if (!item.hasAudioFile) reqKeys.push("audioFile");
   if (!item.fileChecksum || !item.fileCid) reqKeys.push("fileIntegrity");
-  if (!item.artworkCid) recKeys.push("artwork");
-  if (!("description" in item) || !item.description)
-    recKeys.push("description");
+
+  if (!item.description?.trim()) recKeys.push("description");
   if (!item.genre?.length) recKeys.push("genre");
   if (!item.releaseDate) recKeys.push("releaseDate");
-  if (!item.isrc) optKeys.push("isrc");
-  if (!item.defaultLicenseUri) optKeys.push("defaultLicenseUri");
+  if (item.itemClass === "track" && item.hasLinkedRecording === false) {
+    recKeys.push("ownershipRecords");
+  }
+
+  if (!item.isrc?.trim()) optKeys.push("isrc");
   const pro = (
     item as { legalMetadata?: { proMembership?: string } }
   ).legalMetadata?.proMembership;
-  if (!pro) optKeys.push("proMembership");
+  if (!pro?.trim()) optKeys.push("proMembership");
 
   const nReq = 6;
-  const nRec = 4;
-  const nOpt = 4;
-  const perReq = 60 / nReq;
-  const perRec = 25 / nRec;
+  const nRec = item.itemClass === "track" ? 4 : 3;
+  const nOpt = 2;
+  const perReq = 55 / nReq;
+  const perRec = 30 / nRec;
   const perOpt = 15 / nOpt;
   const score = Math.min(
     100,

@@ -8,9 +8,11 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { browserApiUrl } from "@/lib/browserApi";
 import {
+  catalogItemUriKey,
   listDigitalItemRows,
   listLicenseTerms,
   listListingRows,
+  listRecordingRows,
 } from "@/lib/atproto/records";
 import { scoreCompleteness } from "@/hooks/useCompletenessScore";
 import type { DigitalItem } from "@/types/lexicons";
@@ -24,6 +26,9 @@ export function DashboardPage() {
   const [listingCount, setListingCount] = useState(0);
   const [stripeConnected, setStripeConnected] = useState(false);
   const [hasLicense, setHasLicense] = useState(false);
+  const [recordingItemKeys, setRecordingItemKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     void (async () => {
@@ -46,14 +51,20 @@ export function DashboardPage() {
   useEffect(() => {
     if (!agent || !session) return;
     void (async () => {
-      const [rows, listings, licenses] = await Promise.all([
+      const [rows, listings, licenses, recordings] = await Promise.all([
         listDigitalItemRows(agent, session.did),
         listListingRows(agent, session.did),
         listLicenseTerms(agent, session.did),
+        listRecordingRows(agent, session.did),
       ]);
       setItems(rows.map((r) => ({ uri: r.uri, item: r.item })));
       setListingCount(listings.filter((l) => l.listing.status === "active").length);
       setHasLicense(licenses.length > 0);
+      setRecordingItemKeys(
+        new Set(
+          recordings.map((r) => catalogItemUriKey(r.recording.itemUri)),
+        ),
+      );
     })();
   }, [agent, session]);
 
@@ -114,6 +125,10 @@ export function DashboardPage() {
                       score={scoreCompleteness({
                         ...item,
                         hasAudioFile: true,
+                        hasLinkedRecording:
+                          item.itemClass === "track"
+                            ? recordingItemKeys.has(catalogItemUriKey(uri))
+                            : undefined,
                       })}
                     />
                   </td>

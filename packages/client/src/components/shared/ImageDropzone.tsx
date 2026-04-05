@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export function ImageDropzone({
@@ -6,13 +6,22 @@ export function ImageDropzone({
   onError,
   aspectRatio = "1:1",
   maxSizeMb = 10,
+  className,
 }: {
   onFile: (file: File, previewUrl: string) => void;
   onError: (msg: string) => void;
   aspectRatio?: "1:1" | "16:9";
   maxSizeMb?: number;
+  className?: string;
 }) {
+  const inputId = useId();
   const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   const handle = useCallback(
     (file: File) => {
@@ -50,6 +59,7 @@ export function ImageDropzone({
       className={cn(
         "rounded-lg border-2 border-dashed border-border p-4",
         aspectRatio === "1:1" ? "max-w-sm" : "max-w-lg",
+        className,
       )}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
@@ -62,13 +72,13 @@ export function ImageDropzone({
         type="file"
         accept="image/jpeg,image/png,image/webp"
         className="sr-only"
-        id="image-drop"
+        id={inputId}
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) handle(f);
         }}
       />
-      <label htmlFor="image-drop" className="cursor-pointer block text-sm">
+      <label htmlFor={inputId} className="cursor-pointer block text-sm">
         {preview ? (
           <img
             src={preview}

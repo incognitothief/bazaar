@@ -11,22 +11,58 @@ import type {
   BazaarItemType,
   CatalogItem,
   Collection,
+  Composition,
   DigitalItem,
   ItemRef,
   LicenseTerms,
   Listing,
   PurchaseConsent,
   PurchaseReceipt,
+  Recording,
 } from "@/types/lexicons";
 import { BAZAAR_COLLECTION } from "./ns";
 
 export type { LicenseTemplateId } from "@bazaar/shared";
 
+/** Stable key for comparing AT-URIs to the same repo record. */
+export function catalogItemUriKey(uri: string): string {
+  try {
+    const a = new AtUri(uri);
+    return `${a.hostname}/${a.collection}/${a.rkey}`;
+  } catch {
+    return uri;
+  }
+}
+
 type ListRecordsResponse = {
   data: {
     records: Array<{ uri: string; cid: string; value: unknown }>;
+    cursor?: string;
   };
 };
+
+const LIST_RECORDS_PAGE_SIZE = 100;
+
+async function listAllRecordsForCollection(
+  agent: ATPRepoClient,
+  did: string,
+  collection: string,
+): Promise<Array<{ uri: string; cid: string; value: unknown }>> {
+  const out: Array<{ uri: string; cid: string; value: unknown }> = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const res = (await agent.com.atproto.repo.listRecords({
+      repo: did,
+      collection,
+      limit: LIST_RECORDS_PAGE_SIZE,
+      ...(cursor ? { cursor } : {}),
+    })) as ListRecordsResponse;
+    out.push(...res.data.records);
+    cursor = res.data.cursor;
+    if (!cursor) break;
+  }
+  return out;
+}
 
 type GetRecordResponse = {
   data: { cid: string; value: unknown };
@@ -153,6 +189,24 @@ function isDigitalItem(v: unknown): v is DigitalItem {
   );
 }
 
+function isRecording(v: unknown): v is Recording {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as Recording).$type ===
+      "diamonds.whereditgo.bazaar.catalog.recording"
+  );
+}
+
+function isComposition(v: unknown): v is Composition {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as Composition).$type ===
+      "diamonds.whereditgo.bazaar.catalog.composition"
+  );
+}
+
 function isCollection(v: unknown): v is Collection {
   return (
     typeof v === "object" &&
@@ -262,6 +316,46 @@ export async function listDigitalItemRows(
       uri: r.uri,
       cid: r.cid,
       item: r.value as DigitalItem,
+    }));
+}
+
+export type RecordingRow = { uri: string; cid: string; recording: Recording };
+
+export async function listRecordingRows(
+  agent: ATPRepoClient,
+  did: string,
+): Promise<RecordingRow[]> {
+  const records = await listAllRecordsForCollection(
+    agent,
+    did,
+    BAZAAR_COLLECTION.recording,
+  );
+  return records
+    .filter((r) => isRecording(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      recording: r.value as Recording,
+    }));
+}
+
+export type CompositionRow = { uri: string; cid: string; composition: Composition };
+
+export async function listCompositionRows(
+  agent: ATPRepoClient,
+  did: string,
+): Promise<CompositionRow[]> {
+  const records = await listAllRecordsForCollection(
+    agent,
+    did,
+    BAZAAR_COLLECTION.composition,
+  );
+  return records
+    .filter((r) => isComposition(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      composition: r.value as Composition,
     }));
 }
 

@@ -5,6 +5,7 @@ import { meta } from "./db/schema";
 import { createAtprotoRouter } from "./routes/atproto";
 import { createCatalogRouter } from "./routes/catalog";
 import { createDownloadRouter } from "./routes/download";
+import { createIdentifiersRouter } from "./routes/identifiers";
 import { createInventoryRouter } from "./routes/inventory";
 import { createInventoryPublicRouter } from "./routes/inventoryPublic";
 import { createMerchantRouter } from "./routes/merchant";
@@ -33,6 +34,7 @@ export function createApiRouter(db: Db, oauthClient: OAuthClient) {
   api.route("/stripe", createStripeRouter(db, oauthClient));
   api.route("/catalog", createCatalogRouter());
   api.route("/merchant", createMerchantRouter(db));
+  api.route("/identifiers", createIdentifiersRouter(oauthClient));
   api.route("/inventory", createInventoryRouter(db, oauthClient));
   api.route("/inventory-public", createInventoryPublicRouter());
   api.route("/download", createDownloadRouter(oauthClient));

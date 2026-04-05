@@ -33,6 +33,11 @@
               "other"
             ]
           },
+          "description": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Optional longer text for the release (e.g. storefront, listings, liner notes)."
+          },
           "releaseDate": {
             "type": "string",
             "format": "datetime"
