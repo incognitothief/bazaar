@@ -905,6 +905,8 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         defaultLicenseUri: draft.licenseUri,
       };
       if (rel.collectionType) colRecord.collectionType = rel.collectionType;
+      if (rel.description?.trim())
+        colRecord.description = rel.description.trim().slice(0, 4096);
       if (rel.genre?.length) colRecord.genre = rel.genre;
       if (rel.upc?.trim()) colRecord.upc = rel.upc.trim();
       if (collectionArtworkCid) colRecord.artworkCid = collectionArtworkCid;
@@ -1123,6 +1125,7 @@ type PublishDraftV1 = {
     title: string;
     releaseDate?: string;
     collectionType?: "single" | "ep" | "album" | "compilation" | "other";
+    description?: string;
     genre?: string[];
     upc?: string;
     trackObjectIds?: string[];

@@ -1131,6 +1131,7 @@ export function UploadTracksPage() {
           title: releaseTitle.trim(),
           collectionType,
           releaseDate: new Date(releaseDate).toISOString(),
+          description: releaseDescription.trim() || undefined,
           genre: genreTags.length ? genreTags : undefined,
           upc: upc.trim() || undefined,
           artworkObjectId:
@@ -1169,6 +1170,7 @@ export function UploadTracksPage() {
     releaseTitle,
     collectionType,
     releaseDate,
+    releaseDescription,
     genreTags,
     upc,
     artworkObjectId,
@@ -1376,7 +1378,7 @@ export function UploadTracksPage() {
                   value={releaseDescription}
                   onChange={(e) => setReleaseDescription(e.target.value)}
                   rows={3}
-                  placeholder="Optional — not stored on the collection record yet."
+                  placeholder="Optional. Can be edited after publishing."
                 />
               </div>
               <div className="space-y-2">
