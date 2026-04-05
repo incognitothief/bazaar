@@ -112,8 +112,7 @@ function fileRowStatusBadge(
     case "uploading":
       return {
         text: "Uploading",
-        className:
-          "border-amber-500/50 text-amber-700 dark:text-amber-400",
+        className: "border-amber-500/50 text-amber-700 dark:text-amber-400",
       };
     case "done":
       return {
@@ -129,8 +128,7 @@ function fileRowStatusBadge(
     case "queued":
       return {
         text: "Queued",
-        className:
-          "border-sky-500/50 text-sky-700 dark:text-sky-400",
+        className: "border-sky-500/50 text-sky-700 dark:text-sky-400",
       };
     default:
       return {
@@ -391,25 +389,26 @@ function inferExtraItemClass(file: File): (typeof EXTRA_ITEM_CLASSES)[number] {
   return "other";
 }
 
+/** Optional-metadata advisory score (0–100). Does not gate publish. */
 function computeRecommendedScore(input: {
   hasArtwork: boolean;
   genreTags: string[];
   upc: string;
+  releaseDescription: string;
   audioRows: AudioRowState[];
 }): number {
   let s = 0;
-  if (input.hasArtwork) s += 15;
-  if (input.genreTags.length > 0) s += 10;
-  if (input.upc.trim()) s += 5;
+  if (input.hasArtwork) s += 18;
+  if (input.genreTags.length > 0) s += 15;
+  if (input.upc.trim()) s += 10;
+  if (input.releaseDescription.trim()) s += 15;
   const n = input.audioRows.length || 1;
-  const isrcAvg =
-    input.audioRows.filter((r) => r.isrc.trim()).length / n;
-  s += Math.round(10 * isrcAvg);
+  const isrcAvg = input.audioRows.filter((r) => r.isrc.trim()).length / n;
+  s += Math.round(20 * isrcAvg);
   const descAvg =
     input.audioRows.filter((r) => r.description.trim()).length / n;
-  s += Math.round(5 * descAvg);
-  s += 10;
-  return Math.min(95, s);
+  s += Math.round(22 * descAvg);
+  return Math.min(100, s);
 }
 
 function BazaarWidLivePreview({
@@ -484,9 +483,7 @@ export function UploadTracksPage() {
   const [compositionPickerObjectId, setCompositionPickerObjectId] = useState<
     string | null
   >(null);
-  const [compositionRows, setCompositionRows] = useState<CompositionRow[]>(
-    [],
-  );
+  const [compositionRows, setCompositionRows] = useState<CompositionRow[]>([]);
   const [compositionSearch, setCompositionSearch] = useState("");
 
   const [busy, setBusy] = useState(false);
@@ -621,11 +618,7 @@ export function UploadTracksPage() {
       ]);
       const art = reg.objects[0];
       if (!art) throw new Error("Artwork registration failed");
-      await uploadFileToInventoryObject(
-        art.objectId,
-        file,
-        art.uploadKind,
-      );
+      await uploadFileToInventoryObject(art.objectId, file, art.uploadKind);
       setArtworkObjectId(art.objectId);
       setArtworkFile(file);
       return art.objectId;
@@ -633,12 +626,13 @@ export function UploadTracksPage() {
     [session?.did, ensureSession],
   );
 
-  const uploadPendingReleaseArtwork =
-    useCallback(async (): Promise<string | undefined> => {
-      if (artworkObjectId) return artworkObjectId;
-      if (!artworkFile) return undefined;
-      return uploadArtworkFile(artworkFile);
-    }, [artworkObjectId, artworkFile, uploadArtworkFile]);
+  const uploadPendingReleaseArtwork = useCallback(async (): Promise<
+    string | undefined
+  > => {
+    if (artworkObjectId) return artworkObjectId;
+    if (!artworkFile) return undefined;
+    return uploadArtworkFile(artworkFile);
+  }, [artworkObjectId, artworkFile, uploadArtworkFile]);
 
   const onReleaseArtworkChosen = useCallback(
     (f: File) => {
@@ -676,7 +670,9 @@ export function UploadTracksPage() {
           return;
         }
         setStagedAudio((prev) => {
-          const seen = new Set(prev.map((e) => `${e.file.name}-${e.file.size}`));
+          const seen = new Set(
+            prev.map((e) => `${e.file.name}-${e.file.size}`),
+          );
           const add = entries.filter((e) => {
             const k = `${e.file.name}-${e.file.size}`;
             if (seen.has(k)) return false;
@@ -695,9 +691,7 @@ export function UploadTracksPage() {
     .map((g) => g.trim())
     .filter(Boolean);
 
-  const step1Valid =
-    !!releaseTitle.trim() &&
-    !!releaseDate.trim();
+  const step1Valid = !!releaseTitle.trim() && !!releaseDate.trim();
 
   const uploadsComplete =
     audioRows.length > 0 &&
@@ -712,7 +706,8 @@ export function UploadTracksPage() {
   const step3LicenseOk =
     licensePickMode === "saved"
       ? !!savedLicense
-      : !!licenseTemplateId && !!licenseTermsPayloadFromTemplateId(licenseTemplateId);
+      : !!licenseTemplateId &&
+        !!licenseTermsPayloadFromTemplateId(licenseTemplateId);
 
   const requiredGateOk =
     step1Valid &&
@@ -725,11 +720,11 @@ export function UploadTracksPage() {
     hasArtwork: !!artworkObjectId || !!artworkFile,
     genreTags,
     upc,
+    releaseDescription,
     audioRows,
   });
 
-  const canPublish =
-    requiredGateOk && recommendedScore >= 60 && uploadsComplete && !busy;
+  const canPublish = requiredGateOk && uploadsComplete && !busy;
 
   const goToStep = useCallback(
     (n: number) => {
@@ -817,8 +812,7 @@ export function UploadTracksPage() {
       toast.error("Add at least one audio track");
       return;
     }
-    const artworkBytes =
-      artworkFile && !artworkObjectId ? artworkFile.size : 0;
+    const artworkBytes = artworkFile && !artworkObjectId ? artworkFile.size : 0;
     const totalBytes =
       stagedAudio.reduce((s, e) => s + e.file.size, 0) +
       stagedExtra.reduce((s, e) => s + e.file.size, 0) +
@@ -950,9 +944,7 @@ export function UploadTracksPage() {
             const msg = err instanceof Error ? err.message : String(err);
             setAudioRows((prev) =>
               prev.map((r, j) =>
-                j === idx
-                  ? { ...r, status: "error" as const, error: msg }
-                  : r,
+                j === idx ? { ...r, status: "error" as const, error: msg } : r,
               ),
             );
             throw err;
@@ -989,9 +981,7 @@ export function UploadTracksPage() {
             const msg = err instanceof Error ? err.message : String(err);
             setExtraRows((prev) =>
               prev.map((r, j) =>
-                j === idx
-                  ? { ...r, status: "error" as const, error: msg }
-                  : r,
+                j === idx ? { ...r, status: "error" as const, error: msg } : r,
               ),
             );
             throw err;
@@ -1062,10 +1052,11 @@ export function UploadTracksPage() {
       extraRows.some((r) => !r.title.trim()) ||
       !step3LicenseOk ||
       !reviewAcknowledged ||
-      recommendedScore < 60 ||
       !uploadsComplete
     ) {
-      toast.error("Complete the checklist and confirm review before publishing.");
+      toast.error(
+        "Complete the checklist and confirm review before publishing.",
+      );
       return;
     }
     if (
@@ -1164,7 +1155,6 @@ export function UploadTracksPage() {
     extraRows,
     step3LicenseOk,
     reviewAcknowledged,
-    recommendedScore,
     uploadsComplete,
     resolveLicense,
     releaseTitle,
@@ -1196,14 +1186,13 @@ export function UploadTracksPage() {
     const done = !!artworkObjectId && !busy;
     const queued = !!artworkObjectId && busy && !uploadingNow;
 
-    const badge =
-      uploadingNow
-        ? fileRowStatusBadge("uploading")
-        : done
-          ? fileRowStatusBadge("done")
-          : queued
-            ? fileRowStatusBadge("queued")
-            : fileRowStatusBadge("pending");
+    const badge = uploadingNow
+      ? fileRowStatusBadge("uploading")
+      : done
+        ? fileRowStatusBadge("done")
+        : queued
+          ? fileRowStatusBadge("queued")
+          : fileRowStatusBadge("pending");
     const badgeText = badge.text;
     const badgeClassName = badge.className;
 
@@ -1215,8 +1204,7 @@ export function UploadTracksPage() {
     } else if (done) {
       detailLine = "Saved to your upload session for this release.";
     } else if (queued) {
-      detailLine =
-        "Registered — finishing other files in this batch first…";
+      detailLine = "Registered — finishing other files in this batch first…";
     } else if (audioRows.length === 0) {
       detailLine =
         "Included when you click Upload files to storage with your tracks.";
@@ -1261,12 +1249,15 @@ export function UploadTracksPage() {
         <h1 className="text-2xl font-semibold">Upload release</h1>
         <p className="text-sm text-muted-foreground max-w-prose">
           Every release is a{" "}
-          <code className="text-xs rounded bg-muted px-1 py-0.5">collection</code>{" "}
+          <code className="text-xs rounded bg-muted px-1 py-0.5">
+            collection
+          </code>{" "}
           wrapping one{" "}
           <code className="text-xs rounded bg-muted px-1 py-0.5">
             catalog.item.digital
           </code>{" "}
-          per file. Listings (price, listing-level license) are created separately.
+          per file. Listings (price, listing-level license) are created
+          separately.
         </p>
       </header>
 
@@ -1275,12 +1266,7 @@ export function UploadTracksPage() {
         aria-label="Upload steps"
       >
         {(
-          [
-            "Release",
-            "Tracks & files",
-            "License",
-            "Review & publish",
-          ] as const
+          ["Release", "Tracks & files", "License", "Review & publish"] as const
         ).map((label, i) => {
           const n = i + 1;
           const active = n === step;
@@ -1342,7 +1328,9 @@ export function UploadTracksPage() {
                       key={opt.value}
                       type="button"
                       size="sm"
-                      variant={collectionType === opt.value ? "default" : "outline"}
+                      variant={
+                        collectionType === opt.value ? "default" : "outline"
+                      }
                       onClick={() => setCollectionType(opt.value)}
                     >
                       {opt.label}
@@ -1390,7 +1378,8 @@ export function UploadTracksPage() {
                   placeholder="Optional"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Optional. bazaarPid is generated when the collection is written.
+                  Optional. bazaarPid is generated when the collection is
+                  written.
                 </p>
               </div>
             </div>
@@ -1431,16 +1420,16 @@ export function UploadTracksPage() {
               </div>
               <p className="text-xs text-muted-foreground">
                 If you add it here, it still uploads on the next step with your
-                audio (<span className="font-medium text-foreground">Upload files</span>
+                audio (
+                <span className="font-medium text-foreground">
+                  Upload files
+                </span>
                 ), unless tracks are already on the server — then it uploads
                 immediately. You can also add or change cover art on step 2.
               </p>
             </div>
           </div>
-          <Button
-            disabled={!step1Valid || busy}
-            onClick={() => setStep(2)}
-          >
+          <Button disabled={!step1Valid || busy} onClick={() => setStep(2)}>
             Continue
           </Button>
         </div>
@@ -1481,7 +1470,8 @@ export function UploadTracksPage() {
               <Progress
                 value={Math.min(
                   100,
-                  (uploadBatchProgress.loaded / uploadBatchProgress.total) * 100,
+                  (uploadBatchProgress.loaded / uploadBatchProgress.total) *
+                    100,
                 )}
                 className="h-2 w-full"
               />
@@ -1491,8 +1481,8 @@ export function UploadTracksPage() {
             <h2 className="text-lg font-medium">Tracks</h2>
             <p className="text-sm text-muted-foreground">
               Audio files are always{" "}
-              <code className="text-xs">itemClass: track</code>. Upload sends bytes to
-              storage; publish writes PDS records.
+              <code className="text-xs">itemClass: track</code>. Upload sends
+              bytes to storage; publish writes PDS records.
             </p>
             {audioRows.length === 0 ? (
               <>
@@ -1519,7 +1509,9 @@ export function UploadTracksPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() =>
-                            setStagedAudio((p) => p.filter((x) => x.id !== e.id))
+                            setStagedAudio((p) =>
+                              p.filter((x) => x.id !== e.id),
+                            )
                           }
                         >
                           Remove
@@ -1534,1131 +1526,561 @@ export function UploadTracksPage() {
                 {audioRows.map((r, i) => {
                   const uploadBadge = fileRowStatusBadge(r.status);
                   return (
-                  <li key={r.objectId} className="p-3 space-y-2">
-                    <div className="flex flex-wrap items-start gap-2 justify-between">
-                      <div className="flex min-w-0 flex-1 gap-3">
-                        <div className="flex shrink-0 items-center gap-1">
-                          <span className="w-6 text-sm font-medium tabular-nums">
-                            {i + 1}.
-                          </span>
-                          <div className="flex items-center gap-0.5">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 shrink-0"
-                              disabled={i === 0}
-                              onClick={() => moveAudio(i, -1)}
-                              aria-label="Move up"
-                            >
-                              ↑
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 shrink-0"
-                              disabled={i === audioRows.length - 1}
-                              onClick={() => moveAudio(i, 1)}
-                              aria-label="Move down"
-                            >
-                              ↓
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <p className="truncate text-sm font-medium text-foreground">
-                            {r.title.trim() || stripExtension(r.file.name)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            <span className="tabular-nums">
-                              {formatDuration(r.durationMs)}
+                    <li key={r.objectId} className="p-3 space-y-2">
+                      <div className="flex flex-wrap items-start gap-2 justify-between">
+                        <div className="flex min-w-0 flex-1 gap-3">
+                          <div className="flex shrink-0 items-center gap-1">
+                            <span className="w-6 text-sm font-medium tabular-nums">
+                              {i + 1}.
                             </span>
-                            <span className="break-all"> · {r.file.name}</span>
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-2">
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                          <span
-                            className={cn(
-                              "text-xs rounded-full px-2 py-0.5 border",
-                              r.title.trim()
-                                ? "border-emerald-500/50 text-emerald-700 dark:text-emerald-400"
-                                : "border-destructive/50 text-destructive",
-                            )}
-                          >
-                            {r.title.trim() ? "OK" : "Title required"}
-                          </span>
-                          <span
-                            className={cn(
-                              "text-xs rounded-full px-2 py-0.5 border",
-                              uploadBadge.className,
-                            )}
-                          >
-                            {uploadBadge.text}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 text-destructive hover:text-destructive"
-                            disabled={r.status === "uploading"}
-                            onClick={() => removeAudioRow(r.objectId)}
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                    {r.error ? (
-                      <p className="text-destructive text-xs">{r.error}</p>
-                    ) : null}
-                    <Input
-                      placeholder="Title"
-                      value={r.title}
-                      onChange={(e) =>
-                        setAudioRows((prev) =>
-                          prev.map((x) =>
-                            x.objectId === r.objectId
-                              ? { ...x, title: e.target.value }
-                              : x,
-                          ),
-                        )
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 -ml-2"
-                      onClick={() =>
-                        setExpandedAudioId((id) =>
-                          id === r.objectId ? null : r.objectId,
-                        )
-                      }
-                    >
-                      {expandedAudioId === r.objectId
-                        ? "Hide details"
-                        : "More metadata"}
-                    </Button>
-                    {expandedAudioId === r.objectId ? (
-                      <div className="space-y-3 pl-1 border-l-2 border-muted ml-1">
-                        <p className="text-xs font-medium text-muted-foreground">
-                          Additional metadata — these fields can be filled or
-                          updated after publishing.
-                        </p>
-                        <div className="flex flex-wrap gap-2 items-center">
-                          <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">
-                            track
-                          </span>
-                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={r.showDisc}
-                              onChange={(e) =>
-                                setAudioRows((prev) =>
-                                  prev.map((x) =>
-                                    x.objectId === r.objectId
-                                      ? { ...x, showDisc: e.target.checked }
-                                      : x,
-                                  ),
-                                )
-                              }
-                            />
-                            Disc number
-                          </label>
-                        </div>
-                        {r.showDisc ? (
-                          <Input
-                            className="max-w-[6rem]"
-                            inputMode="numeric"
-                            placeholder="Disc"
-                            value={r.discNumber}
-                            onChange={(e) =>
-                              setAudioRows((prev) =>
-                                prev.map((x) =>
-                                  x.objectId === r.objectId
-                                    ? { ...x, discNumber: e.target.value }
-                                    : x,
-                                ),
-                              )
-                            }
-                          />
-                        ) : null}
-                        <div className="space-y-1">
-                          <Label className="text-xs">ISRC</Label>
-                          <Input
-                            value={r.isrc}
-                            onChange={(e) =>
-                              setAudioRows((prev) =>
-                                prev.map((x) =>
-                                  x.objectId === r.objectId
-                                    ? { ...x, isrc: e.target.value }
-                                    : x,
-                                ),
-                              )
-                            }
-                            placeholder="Optional"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Add when registered. A{" "}
-                            <code className="text-[10px]">bazaarRid</code> is
-                            generated automatically at publish (signed by the
-                            Bazaar app key, like receipt{" "}
-                            <code className="text-[10px]">appSig</code>).
-                          </p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Description</Label>
-                          <Textarea
-                            rows={2}
-                            value={r.description}
-                            onChange={(e) =>
-                              setAudioRows((prev) =>
-                                prev.map((x) =>
-                                  x.objectId === r.objectId
-                                    ? { ...x, description: e.target.value }
-                                    : x,
-                                ),
-                              )
-                            }
-                          />
-                        </div>
-                        <details className="rounded-md border border-border bg-muted/15 p-3 space-y-3">
-                          <summary className="cursor-pointer text-sm font-medium">
-                            Rights & ownership
-                          </summary>
-                          <p className="text-xs text-muted-foreground">
-                            These fields establish ownership of the composition
-                            and master recording. They can be filled now or
-                            after publishing, but are required before creating a
-                            sync or commercial listing.
-                          </p>
-                          <div className="flex flex-wrap gap-2 items-center">
-                            <Button
-                              type="button"
-                              variant={
-                                r.rights.compositionPath === "new"
-                                  ? "default"
-                                  : "outline"
-                              }
-                              size="sm"
-                              className="h-8 text-xs"
-                              onClick={() =>
-                                setAudioRows((prev) =>
-                                  prev.map((x) =>
-                                    x.objectId === r.objectId
-                                      ? {
-                                          ...x,
-                                          rights: {
-                                            ...x.rights,
-                                            compositionPath: "new",
-                                            existingCompositionUri: "",
-                                            existingCompositionCid: "",
-                                            existingBazaarWid: null,
-                                            linkedCompositionSnapshot: null,
-                                          },
-                                        }
-                                      : x,
-                                  ),
-                                )
-                              }
-                            >
-                              New composition
-                            </Button>
-                            <Button
-                              type="button"
-                              variant={
-                                r.rights.compositionPath === "existing"
-                                  ? "default"
-                                  : "outline"
-                              }
-                              size="sm"
-                              className="h-8 text-xs"
-                              onClick={() =>
-                                setCompositionPickerObjectId(r.objectId)
-                              }
-                            >
-                              Link to existing composition
-                            </Button>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Master owner (DID)</Label>
-                            <Input
-                              className="font-mono text-xs"
-                              value={r.rights.masterOwnerDid}
-                              onChange={(e) =>
-                                setAudioRows((prev) =>
-                                  prev.map((x) =>
-                                    x.objectId === r.objectId
-                                      ? {
-                                          ...x,
-                                          rights: {
-                                            ...x.rights,
-                                            masterOwnerDid: e.target.value,
-                                          },
-                                        }
-                                      : x,
-                                  ),
-                                )
-                              }
-                              placeholder={session.did}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">
-                              Publishing owner (DID)
-                            </Label>
-                            <Input
-                              className="font-mono text-xs"
-                              value={r.rights.publishingOwnerDid}
-                              onChange={(e) =>
-                                setAudioRows((prev) =>
-                                  prev.map((x) =>
-                                    x.objectId === r.objectId
-                                      ? {
-                                          ...x,
-                                          rights: {
-                                            ...x.rights,
-                                            publishingOwnerDid: e.target.value,
-                                          },
-                                        }
-                                      : x,
-                                  ),
-                                )
-                              }
-                              placeholder={session.did}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">
-                              Publishing owner IPI
-                            </Label>
-                            <Input
-                              className="font-mono text-xs"
-                              value={r.rights.publishingOwnerIpi}
-                              onChange={(e) =>
-                                setAudioRows((prev) =>
-                                  prev.map((x) =>
-                                    x.objectId === r.objectId
-                                      ? {
-                                          ...x,
-                                          rights: {
-                                            ...x.rights,
-                                            publishingOwnerIpi: e.target.value,
-                                          },
-                                        }
-                                      : x,
-                                  ),
-                                )
-                              }
-                              placeholder="Add when you have your IPI number from your PRO"
-                            />
-                          </div>
-                          {r.rights.compositionPath === "new" ? (
-                            <>
-                              <div className="space-y-1">
-                                <Label className="text-xs">
-                                  Composition title
-                                </Label>
-                                <Input
-                                  className="text-sm"
-                                  value={r.rights.compositionTitle}
-                                  onChange={(e) =>
-                                    setAudioRows((prev) =>
-                                      prev.map((x) =>
-                                        x.objectId === r.objectId
-                                          ? {
-                                              ...x,
-                                              rights: {
-                                                ...x.rights,
-                                                compositionTitle:
-                                                  e.target.value,
-                                              },
-                                            }
-                                          : x,
-                                      ),
-                                    )
-                                  }
-                                  placeholder={r.title || "Same as track title"}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">ISWC</Label>
-                                <Input
-                                  className="font-mono text-xs"
-                                  value={r.rights.iswc}
-                                  onChange={(e) =>
-                                    setAudioRows((prev) =>
-                                      prev.map((x) =>
-                                        x.objectId === r.objectId
-                                          ? {
-                                              ...x,
-                                              rights: {
-                                                ...x.rights,
-                                                iswc: e.target.value,
-                                              },
-                                            }
-                                          : x,
-                                      ),
-                                    )
-                                  }
-                                  placeholder="Add when assigned by your PRO"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">
-                                  Work ID (bazaar:wid)
-                                </Label>
-                                <p className="text-xs text-muted-foreground">
-                                  Preview uses the canonical payload from the
-                                  signing strategy (title + sorted writer keys
-                                  + time). The real record uses the publish
-                                  timestamp. Signature: Bazaar app service key (
-                                  <code className="text-[10px]">appDid</code>),
-                                  not your personal ATProto key — same trust
-                                  model as purchase receipts.
-                                </p>
-                                <BazaarWidLivePreview
-                                  artistDid={session.did}
-                                  compositionTitle={
-                                    r.rights.compositionTitle.trim() ||
-                                    r.title.trim() ||
-                                    "Untitled work"
-                                  }
-                                  writers={r.rights.writers}
-                                />
-                              </div>
-                            </>
-                          ) : (
-                            <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3 text-xs">
-                              <p className="font-medium text-foreground">
-                                Linked composition
-                              </p>
-                              {r.rights.linkedCompositionSnapshot ? (
-                                <ul className="text-muted-foreground space-y-1 list-disc pl-4">
-                                  <li>
-                                    Title:{" "}
-                                    {r.rights.linkedCompositionSnapshot.title}
-                                  </li>
-                                  {r.rights.linkedCompositionSnapshot.iswc ? (
-                                    <li>
-                                      ISWC:{" "}
-                                      {r.rights.linkedCompositionSnapshot.iswc}
-                                    </li>
-                                  ) : null}
-                                  <li>
-                                    Co-writers:{" "}
-                                    {r.rights.linkedCompositionSnapshot.writers
-                                      ?.length ?? 0}
-                                  </li>
-                                  {r.rights.existingBazaarWid ? (
-                                    <li className="font-mono break-all">
-                                      bazaarWid:{" "}
-                                      {r.rights.existingBazaarWid.id.slice(
-                                        0,
-                                        28,
-                                      )}
-                                      …
-                                    </li>
-                                  ) : null}
-                                </ul>
-                              ) : (
-                                <p className="text-amber-600 dark:text-amber-500">
-                                  Choose &quot;Link to existing composition&quot;
-                                  to pick a work from your PDS.
-                                </p>
-                              )}
+                            <div className="flex items-center gap-0.5">
                               <Button
                                 type="button"
                                 variant="outline"
+                                size="icon"
+                                className="h-7 w-7 shrink-0"
+                                disabled={i === 0}
+                                onClick={() => moveAudio(i, -1)}
+                                aria-label="Move up"
+                              >
+                                ↑
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7 shrink-0"
+                                disabled={i === audioRows.length - 1}
+                                onClick={() => moveAudio(i, 1)}
+                                aria-label="Move down"
+                              >
+                                ↓
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <p className="truncate text-sm font-medium text-foreground">
+                              {r.title.trim() || stripExtension(r.file.name)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              <span className="tabular-nums">
+                                {formatDuration(r.durationMs)}
+                              </span>
+                              <span className="break-all">
+                                {" "}
+                                · {r.file.name}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <span
+                              className={cn(
+                                "text-xs rounded-full px-2 py-0.5 border",
+                                r.title.trim()
+                                  ? "border-emerald-500/50 text-emerald-700 dark:text-emerald-400"
+                                  : "border-destructive/50 text-destructive",
+                              )}
+                            >
+                              {r.title.trim() ? "OK" : "Title required"}
+                            </span>
+                            <span
+                              className={cn(
+                                "text-xs rounded-full px-2 py-0.5 border",
+                                uploadBadge.className,
+                              )}
+                            >
+                              {uploadBadge.text}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-destructive hover:text-destructive"
+                              disabled={r.status === "uploading"}
+                              onClick={() => removeAudioRow(r.objectId)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      {r.error ? (
+                        <p className="text-destructive text-xs">{r.error}</p>
+                      ) : null}
+                      <Input
+                        placeholder="Title"
+                        value={r.title}
+                        onChange={(e) =>
+                          setAudioRows((prev) =>
+                            prev.map((x) =>
+                              x.objectId === r.objectId
+                                ? { ...x, title: e.target.value }
+                                : x,
+                            ),
+                          )
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-2"
+                        onClick={() =>
+                          setExpandedAudioId((id) =>
+                            id === r.objectId ? null : r.objectId,
+                          )
+                        }
+                      >
+                        {expandedAudioId === r.objectId
+                          ? "Hide details"
+                          : "More metadata"}
+                      </Button>
+                      {expandedAudioId === r.objectId ? (
+                        <div className="space-y-3 pl-1 border-l-2 border-muted ml-1">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            Additional metadata — these fields can be filled or
+                            updated after publishing.
+                          </p>
+                          <div className="flex flex-wrap gap-2 items-center">
+                            <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">
+                              track
+                            </span>
+                            <label className="flex items-center gap-2 text-xs cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={r.showDisc}
+                                onChange={(e) =>
+                                  setAudioRows((prev) =>
+                                    prev.map((x) =>
+                                      x.objectId === r.objectId
+                                        ? { ...x, showDisc: e.target.checked }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                              />
+                              Disc number
+                            </label>
+                          </div>
+                          {r.showDisc ? (
+                            <Input
+                              className="max-w-[6rem]"
+                              inputMode="numeric"
+                              placeholder="Disc"
+                              value={r.discNumber}
+                              onChange={(e) =>
+                                setAudioRows((prev) =>
+                                  prev.map((x) =>
+                                    x.objectId === r.objectId
+                                      ? { ...x, discNumber: e.target.value }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            />
+                          ) : null}
+                          <div className="space-y-1">
+                            <Label className="text-xs">ISRC</Label>
+                            <Input
+                              value={r.isrc}
+                              onChange={(e) =>
+                                setAudioRows((prev) =>
+                                  prev.map((x) =>
+                                    x.objectId === r.objectId
+                                      ? { ...x, isrc: e.target.value }
+                                      : x,
+                                  ),
+                                )
+                              }
+                              placeholder="Optional"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Add when registered. A{" "}
+                              <code className="text-[10px]">bazaarRid</code> is
+                              generated automatically at publish (signed by the
+                              Bazaar app key, like receipt{" "}
+                              <code className="text-[10px]">appSig</code>).
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Description</Label>
+                            <Textarea
+                              rows={2}
+                              value={r.description}
+                              onChange={(e) =>
+                                setAudioRows((prev) =>
+                                  prev.map((x) =>
+                                    x.objectId === r.objectId
+                                      ? { ...x, description: e.target.value }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            />
+                          </div>
+                          <details className="rounded-md border border-border bg-muted/15 p-3 space-y-3">
+                            <summary className="cursor-pointer text-sm font-medium">
+                              Rights & ownership
+                            </summary>
+                            <p className="text-xs text-muted-foreground">
+                              These fields establish ownership of the
+                              composition and master recording. They can be
+                              filled now or after publishing, but are required
+                              before creating a sync or commercial listing.
+                            </p>
+                            <div className="flex flex-wrap gap-2 items-center">
+                              <Button
+                                type="button"
+                                variant={
+                                  r.rights.compositionPath === "new"
+                                    ? "default"
+                                    : "outline"
+                                }
                                 size="sm"
                                 className="h-8 text-xs"
-                                onClick={() => {
-                                  const snap = r.rights.linkedCompositionSnapshot;
+                                onClick={() =>
                                   setAudioRows((prev) =>
-                                    prev.map((x) => {
-                                      if (x.objectId !== r.objectId) return x;
-                                      if (!snap) {
+                                    prev.map((x) =>
+                                      x.objectId === r.objectId
+                                        ? {
+                                            ...x,
+                                            rights: {
+                                              ...x.rights,
+                                              compositionPath: "new",
+                                              existingCompositionUri: "",
+                                              existingCompositionCid: "",
+                                              existingBazaarWid: null,
+                                              linkedCompositionSnapshot: null,
+                                            },
+                                          }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                              >
+                                New composition
+                              </Button>
+                              <Button
+                                type="button"
+                                variant={
+                                  r.rights.compositionPath === "existing"
+                                    ? "default"
+                                    : "outline"
+                                }
+                                size="sm"
+                                className="h-8 text-xs"
+                                onClick={() =>
+                                  setCompositionPickerObjectId(r.objectId)
+                                }
+                              >
+                                Link to existing composition
+                              </Button>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">
+                                Master owner (DID)
+                              </Label>
+                              <Input
+                                className="font-mono text-xs"
+                                value={r.rights.masterOwnerDid}
+                                onChange={(e) =>
+                                  setAudioRows((prev) =>
+                                    prev.map((x) =>
+                                      x.objectId === r.objectId
+                                        ? {
+                                            ...x,
+                                            rights: {
+                                              ...x.rights,
+                                              masterOwnerDid: e.target.value,
+                                            },
+                                          }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                                placeholder={session.did}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">
+                                Publishing owner (DID)
+                              </Label>
+                              <Input
+                                className="font-mono text-xs"
+                                value={r.rights.publishingOwnerDid}
+                                onChange={(e) =>
+                                  setAudioRows((prev) =>
+                                    prev.map((x) =>
+                                      x.objectId === r.objectId
+                                        ? {
+                                            ...x,
+                                            rights: {
+                                              ...x.rights,
+                                              publishingOwnerDid:
+                                                e.target.value,
+                                            },
+                                          }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                                placeholder={session.did}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">
+                                Publishing owner IPI
+                              </Label>
+                              <Input
+                                className="font-mono text-xs"
+                                value={r.rights.publishingOwnerIpi}
+                                onChange={(e) =>
+                                  setAudioRows((prev) =>
+                                    prev.map((x) =>
+                                      x.objectId === r.objectId
+                                        ? {
+                                            ...x,
+                                            rights: {
+                                              ...x.rights,
+                                              publishingOwnerIpi:
+                                                e.target.value,
+                                            },
+                                          }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                                placeholder="Add when you have your IPI number from your PRO"
+                              />
+                            </div>
+                            {r.rights.compositionPath === "new" ? (
+                              <>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">
+                                    Composition title
+                                  </Label>
+                                  <Input
+                                    className="text-sm"
+                                    value={r.rights.compositionTitle}
+                                    onChange={(e) =>
+                                      setAudioRows((prev) =>
+                                        prev.map((x) =>
+                                          x.objectId === r.objectId
+                                            ? {
+                                                ...x,
+                                                rights: {
+                                                  ...x.rights,
+                                                  compositionTitle:
+                                                    e.target.value,
+                                                },
+                                              }
+                                            : x,
+                                        ),
+                                      )
+                                    }
+                                    placeholder={
+                                      r.title || "Same as track title"
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">ISWC</Label>
+                                  <Input
+                                    className="font-mono text-xs"
+                                    value={r.rights.iswc}
+                                    onChange={(e) =>
+                                      setAudioRows((prev) =>
+                                        prev.map((x) =>
+                                          x.objectId === r.objectId
+                                            ? {
+                                                ...x,
+                                                rights: {
+                                                  ...x.rights,
+                                                  iswc: e.target.value,
+                                                },
+                                              }
+                                            : x,
+                                        ),
+                                      )
+                                    }
+                                    placeholder="Add when assigned by your PRO"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">
+                                    Work ID (bazaar:wid)
+                                  </Label>
+                                  <p className="text-xs text-muted-foreground">
+                                    Preview uses the canonical payload from the
+                                    signing strategy (title + sorted writer keys
+                                    + time). The real record uses the publish
+                                    timestamp. Signature: Bazaar app service key
+                                    (<code className="text-[10px]">appDid</code>
+                                    ), not your personal ATProto key — same
+                                    trust model as purchase receipts.
+                                  </p>
+                                  <BazaarWidLivePreview
+                                    artistDid={session.did}
+                                    compositionTitle={
+                                      r.rights.compositionTitle.trim() ||
+                                      r.title.trim() ||
+                                      "Untitled work"
+                                    }
+                                    writers={r.rights.writers}
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3 text-xs">
+                                <p className="font-medium text-foreground">
+                                  Linked composition
+                                </p>
+                                {r.rights.linkedCompositionSnapshot ? (
+                                  <ul className="text-muted-foreground space-y-1 list-disc pl-4">
+                                    <li>
+                                      Title:{" "}
+                                      {r.rights.linkedCompositionSnapshot.title}
+                                    </li>
+                                    {r.rights.linkedCompositionSnapshot.iswc ? (
+                                      <li>
+                                        ISWC:{" "}
+                                        {
+                                          r.rights.linkedCompositionSnapshot
+                                            .iswc
+                                        }
+                                      </li>
+                                    ) : null}
+                                    <li>
+                                      Co-writers:{" "}
+                                      {r.rights.linkedCompositionSnapshot
+                                        .writers?.length ?? 0}
+                                    </li>
+                                    {r.rights.existingBazaarWid ? (
+                                      <li className="font-mono break-all">
+                                        bazaarWid:{" "}
+                                        {r.rights.existingBazaarWid.id.slice(
+                                          0,
+                                          28,
+                                        )}
+                                        …
+                                      </li>
+                                    ) : null}
+                                  </ul>
+                                ) : (
+                                  <p className="text-amber-600 dark:text-amber-500">
+                                    Choose &quot;Link to existing
+                                    composition&quot; to pick a work from your
+                                    PDS.
+                                  </p>
+                                )}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 text-xs"
+                                  onClick={() => {
+                                    const snap =
+                                      r.rights.linkedCompositionSnapshot;
+                                    setAudioRows((prev) =>
+                                      prev.map((x) => {
+                                        if (x.objectId !== r.objectId) return x;
+                                        if (!snap) {
+                                          return {
+                                            ...x,
+                                            rights: {
+                                              ...emptyTrackRights(session.did),
+                                              masterOwnerDid:
+                                                x.rights.masterOwnerDid,
+                                              publishingOwnerDid:
+                                                x.rights.publishingOwnerDid,
+                                              publishingOwnerIpi:
+                                                x.rights.publishingOwnerIpi,
+                                              compositionPath: "new",
+                                            },
+                                          };
+                                        }
+                                        const writers: CoWriterForm[] = (
+                                          snap.writers ?? []
+                                        ).map((w) => ({
+                                          id: crypto.randomUUID(),
+                                          name: w.name ?? "",
+                                          ipi: w.ipi ?? "",
+                                          did: w.did ?? "",
+                                          share:
+                                            w.share != null
+                                              ? String(w.share)
+                                              : "",
+                                          role: w.role ?? "",
+                                        }));
+                                        const publishers: PublisherForm[] = (
+                                          snap.publishers ?? []
+                                        ).map((p) => ({
+                                          id: crypto.randomUUID(),
+                                          name: p.name ?? "",
+                                          ipi: p.ipi ?? "",
+                                          did: p.did ?? "",
+                                          pro: p.pro ?? "",
+                                          share:
+                                            p.share != null
+                                              ? String(p.share)
+                                              : "",
+                                        }));
+                                        const proRegistrations: ProRegForm[] = (
+                                          snap.proRegistrations ?? []
+                                        ).map((pr) => ({
+                                          id: crypto.randomUUID(),
+                                          pro: pr.pro,
+                                          registrationId:
+                                            pr.registrationId ?? "",
+                                          territory: pr.territory ?? "",
+                                        }));
                                         return {
                                           ...x,
                                           rights: {
                                             ...emptyTrackRights(session.did),
-                                            masterOwnerDid: x.rights.masterOwnerDid,
+                                            masterOwnerDid:
+                                              x.rights.masterOwnerDid,
                                             publishingOwnerDid:
                                               x.rights.publishingOwnerDid,
                                             publishingOwnerIpi:
                                               x.rights.publishingOwnerIpi,
                                             compositionPath: "new",
+                                            compositionTitle: snap.title,
+                                            iswc: snap.iswc ?? "",
+                                            copyrightYear:
+                                              snap.copyrightYear != null
+                                                ? String(snap.copyrightYear)
+                                                : "",
+                                            copyrightRegistrationId:
+                                              snap.copyrightRegistrationId ??
+                                              "",
+                                            writers,
+                                            publishers,
+                                            proRegistrations,
                                           },
                                         };
-                                      }
-                                      const writers: CoWriterForm[] = (
-                                        snap.writers ?? []
-                                      ).map((w) => ({
-                                        id: crypto.randomUUID(),
-                                        name: w.name ?? "",
-                                        ipi: w.ipi ?? "",
-                                        did: w.did ?? "",
-                                        share:
-                                          w.share != null
-                                            ? String(w.share)
-                                            : "",
-                                        role: w.role ?? "",
-                                      }));
-                                      const publishers: PublisherForm[] = (
-                                        snap.publishers ?? []
-                                      ).map((p) => ({
-                                        id: crypto.randomUUID(),
-                                        name: p.name ?? "",
-                                        ipi: p.ipi ?? "",
-                                        did: p.did ?? "",
-                                        pro: p.pro ?? "",
-                                        share:
-                                          p.share != null
-                                            ? String(p.share)
-                                            : "",
-                                      }));
-                                      const proRegistrations: ProRegForm[] = (
-                                        snap.proRegistrations ?? []
-                                      ).map((pr) => ({
-                                        id: crypto.randomUUID(),
-                                        pro: pr.pro,
-                                        registrationId:
-                                          pr.registrationId ?? "",
-                                        territory: pr.territory ?? "",
-                                      }));
-                                      return {
-                                        ...x,
-                                        rights: {
-                                          ...emptyTrackRights(session.did),
-                                          masterOwnerDid: x.rights.masterOwnerDid,
-                                          publishingOwnerDid:
-                                            x.rights.publishingOwnerDid,
-                                          publishingOwnerIpi:
-                                            x.rights.publishingOwnerIpi,
-                                          compositionPath: "new",
-                                          compositionTitle: snap.title,
-                                          iswc: snap.iswc ?? "",
-                                          copyrightYear:
-                                            snap.copyrightYear != null
-                                              ? String(snap.copyrightYear)
-                                              : "",
-                                          copyrightRegistrationId:
-                                            snap.copyrightRegistrationId ?? "",
-                                          writers,
-                                          publishers,
-                                          proRegistrations,
-                                        },
-                                      };
-                                    }),
-                                  );
-                                }}
-                              >
-                                Edit as new composition
-                              </Button>
-                            </div>
-                          )}
-                          {r.rights.compositionPath === "new" ? (
-                            <>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <Label className="text-xs">Co-writers</Label>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() =>
-                                  setAudioRows((prev) =>
-                                    prev.map((x) =>
-                                      x.objectId === r.objectId
-                                        ? {
-                                            ...x,
-                                            rights: {
-                                              ...x.rights,
-                                              writers: [
-                                                ...x.rights.writers,
-                                                {
-                                                  id: crypto.randomUUID(),
-                                                  name: "",
-                                                  ipi: "",
-                                                  did: "",
-                                                  share: "",
-                                                  role: "",
-                                                },
-                                              ],
-                                            },
-                                          }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                              >
-                                Add writer
-                              </Button>
-                            </div>
-                            <ul className="space-y-2">
-                              {r.rights.writers.map((w) => (
-                                <li
-                                  key={w.id}
-                                  className="grid gap-2 sm:grid-cols-2 border rounded p-2"
+                                      }),
+                                    );
+                                  }}
                                 >
-                                  <Input
-                                    className="text-xs sm:col-span-2"
-                                    placeholder="Name"
-                                    value={w.name}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  writers: x.rights.writers.map(
-                                                    (y) =>
-                                                      y.id === w.id
-                                                        ? {
-                                                            ...y,
-                                                            name: e.target.value,
-                                                          }
-                                                        : y,
-                                                  ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    className="text-xs font-mono"
-                                    placeholder="IPI"
-                                    value={w.ipi}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  writers: x.rights.writers.map(
-                                                    (y) =>
-                                                      y.id === w.id
-                                                        ? {
-                                                            ...y,
-                                                            ipi: e.target.value,
-                                                          }
-                                                        : y,
-                                                  ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    className="text-xs font-mono"
-                                    placeholder="DID (optional)"
-                                    value={w.did}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  writers: x.rights.writers.map(
-                                                    (y) =>
-                                                      y.id === w.id
-                                                        ? {
-                                                            ...y,
-                                                            did: e.target.value,
-                                                          }
-                                                        : y,
-                                                  ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    className="text-xs"
-                                    placeholder="Share %"
-                                    inputMode="decimal"
-                                    value={w.share}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  writers: x.rights.writers.map(
-                                                    (y) =>
-                                                      y.id === w.id
-                                                        ? {
-                                                            ...y,
-                                                            share:
-                                                              e.target.value,
-                                                          }
-                                                        : y,
-                                                  ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Select
-                                    value={w.role || WRITER_ROLE_NONE}
-                                    onValueChange={(v) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  writers: x.rights.writers.map(
-                                                    (y) =>
-                                                      y.id === w.id
-                                                        ? {
-                                                            ...y,
-                                                            role:
-                                                              v == null ||
-                                                              v ===
-                                                                WRITER_ROLE_NONE
-                                                                ? ""
-                                                                : v,
-                                                          }
-                                                        : y,
-                                                  ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger className="text-xs h-8">
-                                      <SelectValue placeholder="Role" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {WRITER_ROLE_OPTIONS.map((opt) => (
-                                        <SelectItem
-                                          key={opt.value}
-                                          value={opt.value}
-                                        >
-                                          {opt.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 text-xs sm:col-span-2 justify-self-start"
-                                    onClick={() =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  writers:
-                                                    x.rights.writers.filter(
-                                                      (y) => y.id !== w.id,
-                                                    ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  >
-                                    Remove writer
-                                  </Button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <Label className="text-xs">Publishers</Label>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() =>
-                                  setAudioRows((prev) =>
-                                    prev.map((x) =>
-                                      x.objectId === r.objectId
-                                        ? {
-                                            ...x,
-                                            rights: {
-                                              ...x.rights,
-                                              publishers: [
-                                                ...x.rights.publishers,
-                                                {
-                                                  id: crypto.randomUUID(),
-                                                  name: "",
-                                                  ipi: "",
-                                                  did: "",
-                                                  pro: "",
-                                                  share: "",
-                                                },
-                                              ],
-                                            },
-                                          }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                              >
-                                Add publisher
-                              </Button>
-                            </div>
-                            <ul className="space-y-2">
-                              {r.rights.publishers.map((p) => (
-                                <li
-                                  key={p.id}
-                                  className="grid gap-2 sm:grid-cols-2 border rounded p-2"
-                                >
-                                  <Input
-                                    className="text-xs sm:col-span-2"
-                                    placeholder="Name"
-                                    value={p.name}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  publishers:
-                                                    x.rights.publishers.map(
-                                                      (y) =>
-                                                        y.id === p.id
-                                                          ? {
-                                                              ...y,
-                                                              name: e.target
-                                                                .value,
-                                                            }
-                                                          : y,
-                                                    ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    className="text-xs font-mono"
-                                    placeholder="IPI"
-                                    value={p.ipi}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  publishers:
-                                                    x.rights.publishers.map(
-                                                      (y) =>
-                                                        y.id === p.id
-                                                          ? {
-                                                              ...y,
-                                                              ipi: e.target
-                                                                .value,
-                                                            }
-                                                          : y,
-                                                    ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    className="text-xs font-mono"
-                                    placeholder="DID (optional)"
-                                    value={p.did}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  publishers:
-                                                    x.rights.publishers.map(
-                                                      (y) =>
-                                                        y.id === p.id
-                                                          ? {
-                                                              ...y,
-                                                              did: e.target
-                                                                .value,
-                                                            }
-                                                          : y,
-                                                    ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    className="text-xs"
-                                    placeholder="PRO (e.g. ASCAP)"
-                                    value={p.pro}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  publishers:
-                                                    x.rights.publishers.map(
-                                                      (y) =>
-                                                        y.id === p.id
-                                                          ? {
-                                                              ...y,
-                                                              pro: e.target
-                                                                .value,
-                                                            }
-                                                          : y,
-                                                    ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    className="text-xs"
-                                    placeholder="Share %"
-                                    inputMode="decimal"
-                                    value={p.share}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  publishers:
-                                                    x.rights.publishers.map(
-                                                      (y) =>
-                                                        y.id === p.id
-                                                          ? {
-                                                              ...y,
-                                                              share:
-                                                                e.target.value,
-                                                            }
-                                                          : y,
-                                                    ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 text-xs sm:col-span-2 justify-self-start"
-                                    onClick={() =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  publishers:
-                                                    x.rights.publishers.filter(
-                                                      (y) => y.id !== p.id,
-                                                    ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  >
-                                    Remove publisher
-                                  </Button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <Label className="text-xs">
-                                PRO registrations
-                              </Label>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() =>
-                                  setAudioRows((prev) =>
-                                    prev.map((x) =>
-                                      x.objectId === r.objectId
-                                        ? {
-                                            ...x,
-                                            rights: {
-                                              ...x.rights,
-                                              proRegistrations: [
-                                                ...x.rights.proRegistrations,
-                                                {
-                                                  id: crypto.randomUUID(),
-                                                  pro: "",
-                                                  registrationId: "",
-                                                  territory: "",
-                                                },
-                                              ],
-                                            },
-                                          }
-                                        : x,
-                                    ),
-                                  )
-                                }
-                              >
-                                Add registration
-                              </Button>
-                            </div>
-                            <ul className="space-y-2">
-                              {r.rights.proRegistrations.map((pr) => (
-                                <li
-                                  key={pr.id}
-                                  className="grid gap-2 sm:grid-cols-3 border rounded p-2"
-                                >
-                                  <Input
-                                    className="text-xs"
-                                    placeholder="PRO name"
-                                    value={pr.pro}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  proRegistrations:
-                                                    x.rights.proRegistrations.map(
-                                                      (y) =>
-                                                        y.id === pr.id
-                                                          ? {
-                                                              ...y,
-                                                              pro: e.target
-                                                                .value,
-                                                            }
-                                                          : y,
-                                                    ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    className="text-xs font-mono"
-                                    placeholder="Registration ID"
-                                    value={pr.registrationId}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  proRegistrations:
-                                                    x.rights.proRegistrations.map(
-                                                      (y) =>
-                                                        y.id === pr.id
-                                                          ? {
-                                                              ...y,
-                                                              registrationId:
-                                                                e.target.value,
-                                                            }
-                                                          : y,
-                                                    ),
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <div className="flex gap-2 sm:col-span-3">
-                                    <Input
-                                      className="text-xs font-mono max-w-[4rem]"
-                                      placeholder="CC"
-                                      maxLength={2}
-                                      value={pr.territory}
-                                      onChange={(e) =>
-                                        setAudioRows((prev) =>
-                                          prev.map((x) =>
-                                            x.objectId === r.objectId
-                                              ? {
-                                                  ...x,
-                                                  rights: {
-                                                    ...x.rights,
-                                                    proRegistrations:
-                                                      x.rights.proRegistrations.map(
-                                                        (y) =>
-                                                          y.id === pr.id
-                                                            ? {
-                                                                ...y,
-                                                                territory:
-                                                                  e.target
-                                                                    .value,
-                                                              }
-                                                            : y,
-                                                      ),
-                                                  },
-                                                }
-                                              : x,
-                                          ),
-                                        )
-                                      }
-                                    />
+                                  Edit as new composition
+                                </Button>
+                              </div>
+                            )}
+                            {r.rights.compositionPath === "new" ? (
+                              <>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Label className="text-xs">
+                                      Co-writers
+                                    </Label>
                                     <Button
                                       type="button"
-                                      variant="ghost"
+                                      variant="outline"
                                       size="sm"
-                                      className="h-8 text-xs"
+                                      className="h-7 text-xs"
                                       onClick={() =>
                                         setAudioRows((prev) =>
                                           prev.map((x) =>
@@ -2667,10 +2089,17 @@ export function UploadTracksPage() {
                                                   ...x,
                                                   rights: {
                                                     ...x.rights,
-                                                    proRegistrations:
-                                                      x.rights.proRegistrations.filter(
-                                                        (y) => y.id !== pr.id,
-                                                      ),
+                                                    writers: [
+                                                      ...x.rights.writers,
+                                                      {
+                                                        id: crypto.randomUUID(),
+                                                        name: "",
+                                                        ipi: "",
+                                                        did: "",
+                                                        share: "",
+                                                        role: "",
+                                                      },
+                                                    ],
                                                   },
                                                 }
                                               : x,
@@ -2678,75 +2107,683 @@ export function UploadTracksPage() {
                                         )
                                       }
                                     >
-                                      Remove
+                                      Add writer
                                     </Button>
                                   </div>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                              <div className="grid gap-2 sm:grid-cols-2 pt-1">
-                                <div className="space-y-1">
-                                  <Label className="text-xs">
-                                    Copyright year
-                                  </Label>
-                                  <Input
-                                    className="text-xs"
-                                    inputMode="numeric"
-                                    placeholder="e.g. 2026"
-                                    value={r.rights.copyrightYear}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  copyrightYear:
-                                                    e.target.value,
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
+                                  <ul className="space-y-2">
+                                    {r.rights.writers.map((w) => (
+                                      <li
+                                        key={w.id}
+                                        className="grid gap-2 sm:grid-cols-2 border rounded p-2"
+                                      >
+                                        <Input
+                                          className="text-xs sm:col-span-2"
+                                          placeholder="Name"
+                                          value={w.name}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        writers:
+                                                          x.rights.writers.map(
+                                                            (y) =>
+                                                              y.id === w.id
+                                                                ? {
+                                                                    ...y,
+                                                                    name: e
+                                                                      .target
+                                                                      .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Input
+                                          className="text-xs font-mono"
+                                          placeholder="IPI"
+                                          value={w.ipi}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        writers:
+                                                          x.rights.writers.map(
+                                                            (y) =>
+                                                              y.id === w.id
+                                                                ? {
+                                                                    ...y,
+                                                                    ipi: e
+                                                                      .target
+                                                                      .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Input
+                                          className="text-xs font-mono"
+                                          placeholder="DID (optional)"
+                                          value={w.did}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        writers:
+                                                          x.rights.writers.map(
+                                                            (y) =>
+                                                              y.id === w.id
+                                                                ? {
+                                                                    ...y,
+                                                                    did: e
+                                                                      .target
+                                                                      .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Input
+                                          className="text-xs"
+                                          placeholder="Share %"
+                                          inputMode="decimal"
+                                          value={w.share}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        writers:
+                                                          x.rights.writers.map(
+                                                            (y) =>
+                                                              y.id === w.id
+                                                                ? {
+                                                                    ...y,
+                                                                    share:
+                                                                      e.target
+                                                                        .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Select
+                                          value={w.role || WRITER_ROLE_NONE}
+                                          onValueChange={(v) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        writers:
+                                                          x.rights.writers.map(
+                                                            (y) =>
+                                                              y.id === w.id
+                                                                ? {
+                                                                    ...y,
+                                                                    role:
+                                                                      v ==
+                                                                        null ||
+                                                                      v ===
+                                                                        WRITER_ROLE_NONE
+                                                                        ? ""
+                                                                        : v,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          <SelectTrigger className="text-xs h-8">
+                                            <SelectValue placeholder="Role" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {WRITER_ROLE_OPTIONS.map((opt) => (
+                                              <SelectItem
+                                                key={opt.value}
+                                                value={opt.value}
+                                              >
+                                                {opt.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-8 text-xs sm:col-span-2 justify-self-start"
+                                          onClick={() =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        writers:
+                                                          x.rights.writers.filter(
+                                                            (y) =>
+                                                              y.id !== w.id,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          Remove writer
+                                        </Button>
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
-                                <div className="space-y-1 sm:col-span-2">
-                                  <Label className="text-xs">
-                                    Copyright registration ID
-                                  </Label>
-                                  <Input
-                                    className="text-xs font-mono"
-                                    placeholder="US Copyright Office PA number or equivalent"
-                                    value={r.rights.copyrightRegistrationId}
-                                    onChange={(e) =>
-                                      setAudioRows((prev) =>
-                                        prev.map((x) =>
-                                          x.objectId === r.objectId
-                                            ? {
-                                                ...x,
-                                                rights: {
-                                                  ...x.rights,
-                                                  copyrightRegistrationId:
-                                                    e.target.value,
-                                                },
-                                              }
-                                            : x,
-                                        ),
-                                      )
-                                    }
-                                  />
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Label className="text-xs">
+                                      Publishers
+                                    </Label>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={() =>
+                                        setAudioRows((prev) =>
+                                          prev.map((x) =>
+                                            x.objectId === r.objectId
+                                              ? {
+                                                  ...x,
+                                                  rights: {
+                                                    ...x.rights,
+                                                    publishers: [
+                                                      ...x.rights.publishers,
+                                                      {
+                                                        id: crypto.randomUUID(),
+                                                        name: "",
+                                                        ipi: "",
+                                                        did: "",
+                                                        pro: "",
+                                                        share: "",
+                                                      },
+                                                    ],
+                                                  },
+                                                }
+                                              : x,
+                                          ),
+                                        )
+                                      }
+                                    >
+                                      Add publisher
+                                    </Button>
+                                  </div>
+                                  <ul className="space-y-2">
+                                    {r.rights.publishers.map((p) => (
+                                      <li
+                                        key={p.id}
+                                        className="grid gap-2 sm:grid-cols-2 border rounded p-2"
+                                      >
+                                        <Input
+                                          className="text-xs sm:col-span-2"
+                                          placeholder="Name"
+                                          value={p.name}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        publishers:
+                                                          x.rights.publishers.map(
+                                                            (y) =>
+                                                              y.id === p.id
+                                                                ? {
+                                                                    ...y,
+                                                                    name: e
+                                                                      .target
+                                                                      .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Input
+                                          className="text-xs font-mono"
+                                          placeholder="IPI"
+                                          value={p.ipi}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        publishers:
+                                                          x.rights.publishers.map(
+                                                            (y) =>
+                                                              y.id === p.id
+                                                                ? {
+                                                                    ...y,
+                                                                    ipi: e
+                                                                      .target
+                                                                      .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Input
+                                          className="text-xs font-mono"
+                                          placeholder="DID (optional)"
+                                          value={p.did}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        publishers:
+                                                          x.rights.publishers.map(
+                                                            (y) =>
+                                                              y.id === p.id
+                                                                ? {
+                                                                    ...y,
+                                                                    did: e
+                                                                      .target
+                                                                      .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Input
+                                          className="text-xs"
+                                          placeholder="PRO (e.g. ASCAP)"
+                                          value={p.pro}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        publishers:
+                                                          x.rights.publishers.map(
+                                                            (y) =>
+                                                              y.id === p.id
+                                                                ? {
+                                                                    ...y,
+                                                                    pro: e
+                                                                      .target
+                                                                      .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Input
+                                          className="text-xs"
+                                          placeholder="Share %"
+                                          inputMode="decimal"
+                                          value={p.share}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        publishers:
+                                                          x.rights.publishers.map(
+                                                            (y) =>
+                                                              y.id === p.id
+                                                                ? {
+                                                                    ...y,
+                                                                    share:
+                                                                      e.target
+                                                                        .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-8 text-xs sm:col-span-2 justify-self-start"
+                                          onClick={() =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        publishers:
+                                                          x.rights.publishers.filter(
+                                                            (y) =>
+                                                              y.id !== p.id,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          Remove publisher
+                                        </Button>
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
-                              </div>
-                            </>
-                          ) : null}
-                        </details>
-                      </div>
-                    ) : null}
-                  </li>
-                );
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Label className="text-xs">
+                                      PRO registrations
+                                    </Label>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={() =>
+                                        setAudioRows((prev) =>
+                                          prev.map((x) =>
+                                            x.objectId === r.objectId
+                                              ? {
+                                                  ...x,
+                                                  rights: {
+                                                    ...x.rights,
+                                                    proRegistrations: [
+                                                      ...x.rights
+                                                        .proRegistrations,
+                                                      {
+                                                        id: crypto.randomUUID(),
+                                                        pro: "",
+                                                        registrationId: "",
+                                                        territory: "",
+                                                      },
+                                                    ],
+                                                  },
+                                                }
+                                              : x,
+                                          ),
+                                        )
+                                      }
+                                    >
+                                      Add registration
+                                    </Button>
+                                  </div>
+                                  <ul className="space-y-2">
+                                    {r.rights.proRegistrations.map((pr) => (
+                                      <li
+                                        key={pr.id}
+                                        className="grid gap-2 sm:grid-cols-3 border rounded p-2"
+                                      >
+                                        <Input
+                                          className="text-xs"
+                                          placeholder="PRO name"
+                                          value={pr.pro}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        proRegistrations:
+                                                          x.rights.proRegistrations.map(
+                                                            (y) =>
+                                                              y.id === pr.id
+                                                                ? {
+                                                                    ...y,
+                                                                    pro: e
+                                                                      .target
+                                                                      .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <Input
+                                          className="text-xs font-mono"
+                                          placeholder="Registration ID"
+                                          value={pr.registrationId}
+                                          onChange={(e) =>
+                                            setAudioRows((prev) =>
+                                              prev.map((x) =>
+                                                x.objectId === r.objectId
+                                                  ? {
+                                                      ...x,
+                                                      rights: {
+                                                        ...x.rights,
+                                                        proRegistrations:
+                                                          x.rights.proRegistrations.map(
+                                                            (y) =>
+                                                              y.id === pr.id
+                                                                ? {
+                                                                    ...y,
+                                                                    registrationId:
+                                                                      e.target
+                                                                        .value,
+                                                                  }
+                                                                : y,
+                                                          ),
+                                                      },
+                                                    }
+                                                  : x,
+                                              ),
+                                            )
+                                          }
+                                        />
+                                        <div className="flex gap-2 sm:col-span-3">
+                                          <Input
+                                            className="text-xs font-mono max-w-[4rem]"
+                                            placeholder="CC"
+                                            maxLength={2}
+                                            value={pr.territory}
+                                            onChange={(e) =>
+                                              setAudioRows((prev) =>
+                                                prev.map((x) =>
+                                                  x.objectId === r.objectId
+                                                    ? {
+                                                        ...x,
+                                                        rights: {
+                                                          ...x.rights,
+                                                          proRegistrations:
+                                                            x.rights.proRegistrations.map(
+                                                              (y) =>
+                                                                y.id === pr.id
+                                                                  ? {
+                                                                      ...y,
+                                                                      territory:
+                                                                        e.target
+                                                                          .value,
+                                                                    }
+                                                                  : y,
+                                                            ),
+                                                        },
+                                                      }
+                                                    : x,
+                                                ),
+                                              )
+                                            }
+                                          />
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 text-xs"
+                                            onClick={() =>
+                                              setAudioRows((prev) =>
+                                                prev.map((x) =>
+                                                  x.objectId === r.objectId
+                                                    ? {
+                                                        ...x,
+                                                        rights: {
+                                                          ...x.rights,
+                                                          proRegistrations:
+                                                            x.rights.proRegistrations.filter(
+                                                              (y) =>
+                                                                y.id !== pr.id,
+                                                            ),
+                                                        },
+                                                      }
+                                                    : x,
+                                                ),
+                                              )
+                                            }
+                                          >
+                                            Remove
+                                          </Button>
+                                        </div>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2 pt-1">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">
+                                      Copyright year
+                                    </Label>
+                                    <Input
+                                      className="text-xs"
+                                      inputMode="numeric"
+                                      placeholder="e.g. 2026"
+                                      value={r.rights.copyrightYear}
+                                      onChange={(e) =>
+                                        setAudioRows((prev) =>
+                                          prev.map((x) =>
+                                            x.objectId === r.objectId
+                                              ? {
+                                                  ...x,
+                                                  rights: {
+                                                    ...x.rights,
+                                                    copyrightYear:
+                                                      e.target.value,
+                                                  },
+                                                }
+                                              : x,
+                                          ),
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1 sm:col-span-2">
+                                    <Label className="text-xs">
+                                      Copyright registration ID
+                                    </Label>
+                                    <Input
+                                      className="text-xs font-mono"
+                                      placeholder="US Copyright Office PA number or equivalent"
+                                      value={r.rights.copyrightRegistrationId}
+                                      onChange={(e) =>
+                                        setAudioRows((prev) =>
+                                          prev.map((x) =>
+                                            x.objectId === r.objectId
+                                              ? {
+                                                  ...x,
+                                                  rights: {
+                                                    ...x.rights,
+                                                    copyrightRegistrationId:
+                                                      e.target.value,
+                                                  },
+                                                }
+                                              : x,
+                                          ),
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              </>
+                            ) : null}
+                          </details>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
                 })}
               </ol>
             )}
@@ -2755,7 +2792,8 @@ export function UploadTracksPage() {
           <section className="space-y-3">
             <h2 className="text-lg font-medium">Release artwork</h2>
             <p className="text-sm text-muted-foreground">
-              Square cover (min 600×600). Same upload session as your tracks; optional.
+              Square cover (min 600×600). Same upload session as your tracks;
+              optional.
             </p>
             {artworkPreviewUrl && artworkFile ? (
               <ol className="space-y-2 border rounded-lg divide-y">
@@ -2888,16 +2926,18 @@ export function UploadTracksPage() {
             <h2 className="text-lg font-medium">Additional material</h2>
             <p className="text-xs text-muted-foreground">
               Non-audio files become extra{" "}
-              <code className="text-xs">catalog.item.digital</code> records in the
-              collection (PDF, video, etc.).
+              <code className="text-xs">catalog.item.digital</code> records in
+              the collection (PDF, video, etc.).
             </p>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              <span className="font-medium text-foreground">Item class</span> is stored
-              on the item record (what kind of digital good it is).{" "}
-              <span className="font-medium text-foreground">Collection role</span> is
-              separate: it controls how the file appears in the release’s item list
-              (e.g. bonus vs booklet). They are two different fields in the data model,
-              so both are shown here.
+              <span className="font-medium text-foreground">Item class</span> is
+              stored on the item record (what kind of digital good it is).{" "}
+              <span className="font-medium text-foreground">
+                Collection role
+              </span>{" "}
+              is separate: it controls how the file appears in the release’s
+              item list (e.g. bonus vs booklet). They are two different fields
+              in the data model, so both are shown here.
             </p>
             {audioRows.length === 0 ? (
               <div
@@ -2984,154 +3024,157 @@ export function UploadTracksPage() {
                 {extraRows.map((r) => {
                   const uploadBadge = fileRowStatusBadge(r.status);
                   return (
-                  <li key={r.objectId} className="p-3 space-y-2">
-                    <div className="flex flex-wrap items-start gap-2 justify-between">
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {r.title.trim() || stripExtension(r.file.name)}
-                        </p>
-                        <p className="text-xs text-muted-foreground break-all">
-                          {r.itemClass} · {r.role} · {r.file.name}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-2">
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                          <span
-                            className={cn(
-                              "text-xs rounded-full px-2 py-0.5 border",
-                              uploadBadge.className,
-                            )}
-                          >
-                            {uploadBadge.text}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 text-destructive hover:text-destructive"
-                            disabled={r.status === "uploading"}
-                            onClick={() => removeExtraRow(r.objectId)}
-                          >
-                            Remove
-                          </Button>
+                    <li key={r.objectId} className="p-3 space-y-2">
+                      <div className="flex flex-wrap items-start gap-2 justify-between">
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {r.title.trim() || stripExtension(r.file.name)}
+                          </p>
+                          <p className="text-xs text-muted-foreground break-all">
+                            {r.itemClass} · {r.role} · {r.file.name}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <span
+                              className={cn(
+                                "text-xs rounded-full px-2 py-0.5 border",
+                                uploadBadge.className,
+                              )}
+                            >
+                              {uploadBadge.text}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-destructive hover:text-destructive"
+                              disabled={r.status === "uploading"}
+                              onClick={() => removeExtraRow(r.objectId)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    {r.error ? (
-                      <p className="text-destructive text-xs">{r.error}</p>
-                    ) : null}
-                    <Input
-                      placeholder="Title"
-                      value={r.title}
-                      onChange={(e) =>
-                        setExtraRows((prev) =>
-                          prev.map((x) =>
-                            x.objectId === r.objectId
-                              ? { ...x, title: e.target.value }
-                              : x,
-                          ),
-                        )
-                      }
-                    />
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Item class</Label>
-                        <Select
-                          value={r.itemClass}
-                          onValueChange={(v) => {
-                            const ic = v as ExtraRowState["itemClass"];
-                            setExtraRows((prev) =>
-                              prev.map((x) =>
-                                x.objectId === r.objectId
-                                  ? {
-                                      ...x,
-                                      itemClass: ic,
-                                      role: defaultRoleForItemClass(ic, x.file),
-                                    }
-                                  : x,
-                              ),
-                            );
-                          }}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {EXTRA_ITEM_CLASSES.map((c) => (
-                              <SelectItem key={c} value={c}>
-                                {c}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Collection role</Label>
-                        <Select
-                          value={r.role}
-                          onValueChange={(v) =>
-                            setExtraRows((prev) =>
-                              prev.map((x) =>
-                                x.objectId === r.objectId
-                                  ? { ...x, role: v as CollectionItemRole }
-                                  : x,
-                              ),
-                            )
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Role" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(
-                              [
-                                "video",
-                                "document",
-                                "artwork",
-                                "bonus",
-                                "other",
-                              ] as const
-                            ).map((role) => (
-                              <SelectItem key={role} value={role}>
-                                {role}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <label className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={r.essential}
+                      {r.error ? (
+                        <p className="text-destructive text-xs">{r.error}</p>
+                      ) : null}
+                      <Input
+                        placeholder="Title"
+                        value={r.title}
                         onChange={(e) =>
                           setExtraRows((prev) =>
                             prev.map((x) =>
                               x.objectId === r.objectId
-                                ? { ...x, essential: e.target.checked }
+                                ? { ...x, title: e.target.value }
                                 : x,
                             ),
                           )
                         }
                       />
-                      Essential to the release
-                    </label>
-                    <Textarea
-                      rows={2}
-                      placeholder="Description (optional)"
-                      value={r.description}
-                      onChange={(e) =>
-                        setExtraRows((prev) =>
-                          prev.map((x) =>
-                            x.objectId === r.objectId
-                              ? { ...x, description: e.target.value }
-                              : x,
-                          ),
-                        )
-                      }
-                    />
-                  </li>
-                );
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Item class</Label>
+                          <Select
+                            value={r.itemClass}
+                            onValueChange={(v) => {
+                              const ic = v as ExtraRowState["itemClass"];
+                              setExtraRows((prev) =>
+                                prev.map((x) =>
+                                  x.objectId === r.objectId
+                                    ? {
+                                        ...x,
+                                        itemClass: ic,
+                                        role: defaultRoleForItemClass(
+                                          ic,
+                                          x.file,
+                                        ),
+                                      }
+                                    : x,
+                                ),
+                              );
+                            }}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {EXTRA_ITEM_CLASSES.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Collection role</Label>
+                          <Select
+                            value={r.role}
+                            onValueChange={(v) =>
+                              setExtraRows((prev) =>
+                                prev.map((x) =>
+                                  x.objectId === r.objectId
+                                    ? { ...x, role: v as CollectionItemRole }
+                                    : x,
+                                ),
+                              )
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(
+                                [
+                                  "video",
+                                  "document",
+                                  "artwork",
+                                  "bonus",
+                                  "other",
+                                ] as const
+                              ).map((role) => (
+                                <SelectItem key={role} value={role}>
+                                  {role}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={r.essential}
+                          onChange={(e) =>
+                            setExtraRows((prev) =>
+                              prev.map((x) =>
+                                x.objectId === r.objectId
+                                  ? { ...x, essential: e.target.checked }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                        Essential to the release
+                      </label>
+                      <Textarea
+                        rows={2}
+                        placeholder="Description (optional)"
+                        value={r.description}
+                        onChange={(e) =>
+                          setExtraRows((prev) =>
+                            prev.map((x) =>
+                              x.objectId === r.objectId
+                                ? { ...x, description: e.target.value }
+                                : x,
+                            ),
+                          )
+                        }
+                      />
+                    </li>
+                  );
                 })}
               </ul>
             ) : null}
@@ -3141,9 +3184,7 @@ export function UploadTracksPage() {
             <Button
               type="button"
               disabled={
-                busy ||
-                stagedAudio.length === 0 ||
-                audioRows.length > 0
+                busy || stagedAudio.length === 0 || audioRows.length > 0
               }
               onClick={() => void registerAndUploadAll()}
             >
@@ -3155,10 +3196,7 @@ export function UploadTracksPage() {
             <Button variant="outline" onClick={() => setStep(1)}>
               Back
             </Button>
-            <Button
-              disabled={!tracksMetaValid}
-              onClick={() => setStep(3)}
-            >
+            <Button disabled={!tracksMetaValid} onClick={() => setStep(3)}>
               Continue
             </Button>
           </div>
@@ -3169,9 +3207,11 @@ export function UploadTracksPage() {
         <div className="space-y-6">
           <p className="text-sm text-muted-foreground">
             This license is stored as{" "}
-            <code className="text-xs rounded bg-muted px-1">license.terms</code> and
-            set as{" "}
-            <code className="text-xs rounded bg-muted px-1">defaultLicenseUri</code>{" "}
+            <code className="text-xs rounded bg-muted px-1">license.terms</code>{" "}
+            and set as{" "}
+            <code className="text-xs rounded bg-muted px-1">
+              defaultLicenseUri
+            </code>{" "}
             on your collection. Listing checkout still uses the listing record.
           </p>
           <details className="rounded-lg border border-border px-3 py-2 text-sm">
@@ -3179,9 +3219,10 @@ export function UploadTracksPage() {
               Why licenses are reused
             </summary>
             <p className="mt-2 text-muted-foreground text-xs leading-relaxed">
-              A license record is published once and reused across listings. Buyers who
-              purchase under a given license retain those exact terms permanently —
-              changing your license on a future listing does not affect past purchases.
+              A license record is published once and reused across listings.
+              Buyers who purchase under a given license retain those exact terms
+              permanently — changing your license on a future listing does not
+              affect past purchases.
             </p>
           </details>
           <div className="flex flex-wrap gap-2">
@@ -3250,8 +3291,8 @@ export function UploadTracksPage() {
           ) : (
             <div className="space-y-6 max-h-[min(60vh,420px)] overflow-y-auto pr-1">
               <p className="text-xs font-medium text-muted-foreground">
-                Templates — not yet published to your storefront until you confirm at
-                publish.
+                Templates — not yet published to your storefront until you
+                confirm at publish.
               </p>
               {LICENSE_TEMPLATE_COMPLEXITY_ORDER.map(
                 (complexity: LicenseTemplateComplexity) => {
@@ -3271,7 +3312,8 @@ export function UploadTracksPage() {
                             }}
                             className={cn(
                               "rounded-lg border p-3 text-left text-sm",
-                              licenseTemplateId === def.id && "ring-2 ring-ring",
+                              licenseTemplateId === def.id &&
+                                "ring-2 ring-ring",
                             )}
                           >
                             <p className="font-medium">{def.record.title}</p>
@@ -3314,21 +3356,28 @@ export function UploadTracksPage() {
                 )}
               >
                 {recommendedScore}
-                <span className="text-muted-foreground font-normal"> / 95</span>
+                <span className="text-muted-foreground font-normal"> / 100</span>
               </span>
             </div>
-            {recommendedScore < 60 ? (
-              <p className="text-destructive text-xs">
-                Score must be at least 60 to publish. Add artwork, genres, UPC, or
-                enrich track metadata.
+            <p className="text-xs text-muted-foreground">
+              Advisory only — artwork, genres, UPC, release description, ISRCs,
+              and track descriptions raise this score but do not block publishing.
+              License terms are chosen in step 3 and can be adjusted again at
+              listing time.
+            </p>
+            {recommendedScore < 50 ? (
+              <p className="text-muted-foreground text-xs">
+                Consider adding more optional metadata for a richer catalog
+                record.
               </p>
             ) : recommendedScore < 80 ? (
               <p className="text-amber-700 dark:text-amber-400 text-xs">
-                Consider adding more metadata for a stronger release (target 80+).
+                Good coverage — aim for 80+ if you want a strong storefront
+                profile.
               </p>
             ) : (
               <p className="text-emerald-700 dark:text-emerald-400 text-xs">
-                Strong metadata coverage.
+                Strong optional metadata coverage.
               </p>
             )}
           </div>
@@ -3336,7 +3385,11 @@ export function UploadTracksPage() {
           <section className="space-y-2 text-sm">
             <div className="flex justify-between items-baseline">
               <h3 className="font-medium">Release</h3>
-              <Button variant="link" className="h-auto p-0" onClick={() => setStep(1)}>
+              <Button
+                variant="link"
+                className="h-auto p-0"
+                onClick={() => setStep(1)}
+              >
                 Edit
               </Button>
             </div>
@@ -3346,7 +3399,8 @@ export function UploadTracksPage() {
                 {releaseTitle || "—"}
               </div>
               <div>
-                <dt className="inline text-foreground">Type:</dt> {collectionType}
+                <dt className="inline text-foreground">Type:</dt>{" "}
+                {collectionType}
               </div>
               <div>
                 <dt className="inline text-foreground">Date:</dt>{" "}
@@ -3362,7 +3416,11 @@ export function UploadTracksPage() {
           <section className="space-y-2 text-sm">
             <div className="flex justify-between items-baseline">
               <h3 className="font-medium">Tracks</h3>
-              <Button variant="link" className="h-auto p-0" onClick={() => setStep(2)}>
+              <Button
+                variant="link"
+                className="h-auto p-0"
+                onClick={() => setStep(2)}
+              >
                 Edit
               </Button>
             </div>
@@ -3394,7 +3452,11 @@ export function UploadTracksPage() {
           <section className="space-y-2 text-sm">
             <div className="flex justify-between items-baseline">
               <h3 className="font-medium">License</h3>
-              <Button variant="link" className="h-auto p-0" onClick={() => setStep(3)}>
+              <Button
+                variant="link"
+                className="h-auto p-0"
+                onClick={() => setStep(3)}
+              >
                 Edit
               </Button>
             </div>
@@ -3409,7 +3471,9 @@ export function UploadTracksPage() {
 
           {deferrableChecklist.length > 0 ? (
             <div className="rounded-lg border border-dashed p-4 space-y-2 text-sm">
-              <p className="font-medium">You can fill these in later from inventory</p>
+              <p className="font-medium">
+                You can fill these in later from inventory
+              </p>
               <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5">
                 {deferrableChecklist.map((x) => (
                   <li key={x}>{x}</li>
@@ -3427,8 +3491,8 @@ export function UploadTracksPage() {
             />
             <span>
               I have reviewed this summary. I understand that publish writes{" "}
-              <code className="text-xs">license.terms</code> (if using a template),
-              digital items, and the collection to my PDS.
+              <code className="text-xs">license.terms</code> (if using a
+              template), digital items, and the collection to my PDS.
             </span>
           </label>
 
@@ -3436,10 +3500,7 @@ export function UploadTracksPage() {
             <Button variant="outline" onClick={() => setStep(3)}>
               Back
             </Button>
-            <Button
-              disabled={!canPublish}
-              onClick={() => void runPublish()}
-            >
+            <Button disabled={!canPublish} onClick={() => void runPublish()}>
               {busy ? "Publishing…" : "Confirm & publish"}
             </Button>
           </div>
@@ -3460,10 +3521,9 @@ export function UploadTracksPage() {
             <DialogTitle>Link existing composition</DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground">
-            Picks a{" "}
-            <code className="text-[10px]">catalog.composition</code> from your
-            PDS. <code className="text-[10px]">bazaarWid</code> is copied onto
-            the recording; no new composition record is written.
+            Picks a <code className="text-[10px]">catalog.composition</code>{" "}
+            from your PDS. <code className="text-[10px]">bazaarWid</code> is
+            copied onto the recording; no new composition record is written.
           </p>
           <Input
             placeholder="Search by title"
@@ -3525,13 +3585,12 @@ export function UploadTracksPage() {
           </ul>
           {compositionRows.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              No compositions in your PDS yet. Use &quot;New composition&quot; for
-              this track.
+              No compositions in your PDS yet. Use &quot;New composition&quot;
+              for this track.
             </p>
           ) : null}
         </DialogContent>
       </Dialog>
-
     </article>
   );
 }
