@@ -5,6 +5,12 @@ import {
   verify as cryptoVerify,
 } from "node:crypto";
 
+/**
+ * Explicit digest for receipt/consent signatures. OpenSSL 3 + some Bun builds throw
+ * ERR_OSSL_NO_DEFAULT_DIGEST when verify(null, …) is used with SPKI public keys.
+ */
+const APP_SIG_DIGEST = "sha256";
+
 /** SPKI PEM for verifyReceiptPayload / verifyConsentPayload when only APP_SERVICE_PRIVATE_KEY is configured. */
 export function appServicePublicKeyPemFromEnv(): string | null {
   const raw = process.env.APP_SERVICE_PRIVATE_KEY?.trim();
@@ -82,7 +88,7 @@ export function signReceiptPayload(params: {
 }): string {
   const message = receiptPayloadString(params);
   const key = createPrivateKey(normalizeAppServicePrivateKey(params.privateKeyPem));
-  const sig = cryptoSign(null, Buffer.from(message, "utf8"), key);
+  const sig = cryptoSign(APP_SIG_DIGEST, Buffer.from(message, "utf8"), key);
   return Buffer.from(sig).toString("base64url");
 }
 
@@ -98,7 +104,7 @@ export function verifyReceiptPayload(params: {
   const message = receiptPayloadString(params);
   const key = createPublicKey(params.publicKeyPem);
   return cryptoVerify(
-    null,
+    APP_SIG_DIGEST,
     Buffer.from(message, "utf8"),
     key,
     Buffer.from(params.appSig, "base64url"),
@@ -114,7 +120,7 @@ export function signConsentPayload(params: {
 }): string {
   const message = consentPayloadString(params);
   const key = createPrivateKey(normalizeAppServicePrivateKey(params.privateKeyPem));
-  const sig = cryptoSign(null, Buffer.from(message, "utf8"), key);
+  const sig = cryptoSign(APP_SIG_DIGEST, Buffer.from(message, "utf8"), key);
   return Buffer.from(sig).toString("base64url");
 }
 
@@ -129,7 +135,7 @@ export function verifyConsentPayload(params: {
   const message = consentPayloadString(params);
   const key = createPublicKey(params.publicKeyPem);
   return cryptoVerify(
-    null,
+    APP_SIG_DIGEST,
     Buffer.from(message, "utf8"),
     key,
     Buffer.from(params.appSig, "base64url"),
