@@ -9,7 +9,7 @@ import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { Button } from "@/components/ui/button";
 import { useAtpSession } from "@/hooks/useAtpSession";
-import { browserApiUrl } from "@/lib/browserApi";
+import { createBrowserApiURL } from "@/lib/browserApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   getRecordValue,
@@ -103,9 +103,9 @@ export function PurchaseDetailPage() {
     if (!session) return;
     setBusy(true);
     try {
-      const url = new URL(browserApiUrl("/api/download"));
+      const url = createBrowserApiURL("/api/download");
       url.searchParams.set("itemUri", itemUri);
-      const res = await fetch(url.toString(), { credentials: "include" });
+      const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
         const t = await res.text();
         throw new Error(t || res.statusText);
@@ -169,7 +169,7 @@ export function PurchaseDetailPage() {
             agent={agent}
             did={blobDid}
             cid={item.artworkCid}
-            itemUri={isDigital ? receipt.item.uri : undefined}
+            itemUri={receipt.item.uri}
             alt=""
             className="h-full w-full"
           />

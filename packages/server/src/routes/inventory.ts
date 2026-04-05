@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import {
   CompleteMultipartUploadCommand,
+  CopyObjectCommand,
   CreateMultipartUploadCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
+import { AtUri } from "@atproto/syntax";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { TID } from "@atproto/common-web";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -193,8 +195,15 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     if (!body.objects?.length) return c.json({ error: "objects_required" }, 400);
 
     const out: Array<{ objectId: string; rkey: string; r2Key: string; uploadKind: string }> = [];
+    let firstMasterRkeyInBatch: string | null = null;
     for (const o of body.objects) {
-      const rkey = o.rkey?.trim() || TID.nextStr();
+      let rkey: string;
+      if (o.role === "master") {
+        rkey = o.rkey?.trim() || TID.nextStr();
+        if (firstMasterRkeyInBatch === null) firstMasterRkeyInBatch = rkey;
+      } else {
+        rkey = firstMasterRkeyInBatch ?? (o.rkey?.trim() || TID.nextStr());
+      }
       const nameInKey =
         o.role === "artwork" ? INVENTORY_ARTWORK_OBJECT_NAME : INVENTORY_MASTER_OBJECT_NAME;
       const r2Key = inventoryObjectKey(sess.did, rkey, nameInKey);
@@ -552,7 +561,6 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
 
     const digitalType = col("catalog.item.digital");
     const collectionType = col("catalog.collection");
-    const listingType = col("catalog.listing");
 
     for (const t of draft.tracks) {
       const mo = masterByObjectId.get(t.objectId);
@@ -592,9 +600,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       createdItems.push({ uri: res.data.uri, cid: res.data.cid, rkey: mo.rkey });
     }
 
-    let listingItemUri = createdItems[0]!.uri;
-    let listingItemCid = createdItems[0]!.cid;
-    let listingItemType = digitalType;
+    let primaryItemUri = createdItems[0]!.uri;
 
     if (draft.collection) {
       for (const oid of draft.collection.trackObjectIds) {
@@ -638,34 +644,57 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         collection: collectionType,
         record: colRecord,
       });
-      listingItemUri = colRes.data.uri;
-      listingItemCid = colRes.data.cid;
-      listingItemType = collectionType;
-    }
+      primaryItemUri = colRes.data.uri;
 
-    const listingRecord: Record<string, unknown> = {
-      $type: listingType,
-      item: {
-        uri: listingItemUri,
-        cid: listingItemCid,
-        itemType: listingItemType,
-      },
-      licenseUri: draft.licenseUri,
-      licenseGrantCid: draft.licenseGrantCid,
-      price: draft.price ?? { amount: 0, currency: "USD" },
-      status: draft.listingStatus ?? "active",
-      createdAt: new Date().toISOString(),
-    };
-    const listRes = await sess.agent.com.atproto.repo.createRecord({
-      repo: sess.did,
-      collection: listingType,
-      record: listingRecord,
-    });
+      if (collectionArtworkCid) {
+        const r2 = loadR2();
+        if (!r2.ok) {
+          return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
+        }
+        try {
+          const colAt = new AtUri(colRes.data.uri);
+          const collectionRkey = colAt.rkey;
+          if (!collectionRkey) throw new Error("missing_collection_rkey");
+          const firstOid = draft.collection.trackObjectIds[0]!;
+          const firstMo = masterByObjectId.get(firstOid);
+          if (!firstMo) throw new Error("missing_first_track");
+          const srcKey = inventoryObjectKey(
+            sess.did,
+            firstMo.rkey,
+            INVENTORY_ARTWORK_OBJECT_NAME,
+          );
+          const dstKey = inventoryObjectKey(
+            sess.did,
+            collectionRkey,
+            INVENTORY_ARTWORK_OBJECT_NAME,
+          );
+          const copySource = `${r2.cfg.bucket}/${srcKey
+            .split("/")
+            .map(encodeURIComponent)
+            .join("/")}`;
+          await r2.client.send(
+            new CopyObjectCommand({
+              Bucket: r2.cfg.bucket,
+              Key: dstKey,
+              CopySource: copySource,
+            }),
+          );
+        } catch (e) {
+          console.error("inventory publish collection artwork copy:", e);
+          return c.json(
+            {
+              error: "artwork_copy_failed",
+              message: e instanceof Error ? e.message : String(e),
+            },
+            500,
+          );
+        }
+      }
+    }
 
     const snapshot = {
       items: createdItems,
-      listingUri: listRes.data.uri,
-      listingCid: listRes.data.cid,
+      primaryItemUri,
     };
     await db
       .update(inventoryUploadSession)
@@ -713,8 +742,6 @@ type PublishDraftV1 = {
   };
   licenseUri: string;
   licenseGrantCid: string;
-  price?: { amount: number; currency: string };
-  listingStatus?: "active" | "paused" | "scheduled";
 };
 
 function parsePublishDraft(raw: string | null): PublishDraftV1 {

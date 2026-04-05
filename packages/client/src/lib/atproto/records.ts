@@ -8,8 +8,11 @@ import {
 import type { ATPRepoClient } from "./session";
 import type {
   ActorMerchant,
+  BazaarItemType,
+  CatalogItem,
   Collection,
   DigitalItem,
+  ItemRef,
   LicenseTerms,
   Listing,
   PurchaseConsent,
@@ -412,6 +415,31 @@ export async function getRecordValue<T>(
       rkey,
     })) as GetRecordResponse;
     return res.data.value as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve `item` + `cid` for a new listing from a catalog AT-URI. */
+export async function buildItemRefFromUri(
+  agent: ATPRepoClient,
+  itemUri: string,
+): Promise<ItemRef | null> {
+  try {
+    const at = new AtUri(itemUri);
+    if (!at.collection || !at.rkey) return null;
+    const res = (await agent.com.atproto.repo.getRecord({
+      repo: at.hostname,
+      collection: at.collection,
+      rkey: at.rkey,
+    })) as GetRecordResponse;
+    const v = res.data.value as CatalogItem;
+    if (!v || typeof v !== "object" || !("$type" in v)) return null;
+    return {
+      uri: itemUri,
+      cid: res.data.cid,
+      itemType: (v as { $type: BazaarItemType }).$type,
+    };
   } catch {
     return null;
   }

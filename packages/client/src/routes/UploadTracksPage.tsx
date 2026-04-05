@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   createInventorySession,
+  type PublishInventorySnapshot,
   publishInventorySession,
   registerInventoryObjects,
   saveInventoryDraft,
@@ -58,6 +59,10 @@ export function UploadTracksPage() {
   const [collectionMode, setCollectionMode] = useState(false);
   const [collectionTitle, setCollectionTitle] = useState("");
   const [titles, setTitles] = useState<Record<number, string>>({});
+  const [publishDone, setPublishDone] = useState<{
+    snap: PublishInventorySnapshot;
+    listingPrefillPath: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!agent || !session?.did) return;
@@ -201,12 +206,6 @@ export function UploadTracksPage() {
       toast.error("Collection title required");
       return;
     }
-    const cents = Math.round(parseFloat(price || "0") * 100);
-    if (!Number.isFinite(cents) || cents < 0) {
-      toast.error("Invalid price");
-      return;
-    }
-
     const draft = {
       tracks: rows.map((r, i) => ({
         objectId: r.objectId,
@@ -227,15 +226,23 @@ export function UploadTracksPage() {
           : undefined,
       licenseUri: savedLicense.uri,
       licenseGrantCid: savedLicense.cid,
-      price: { amount: cents, currency: "USD" },
-      listingStatus: "active" as const,
     };
 
     setBusy(true);
     try {
       await saveInventoryDraft(sessionId, draft);
-      await publishInventorySession(sessionId);
-      toast.success("Published to your PDS");
+      const snap = await publishInventorySession(sessionId);
+      const params = new URLSearchParams({
+        prefillItemUri: snap.primaryItemUri,
+        priceUsd: price,
+        licenseUri: savedLicense.uri,
+        licenseGrantCid: savedLicense.cid,
+      });
+      setPublishDone({
+        snap,
+        listingPrefillPath: `/merchant/listings?${params.toString()}`,
+      });
+      toast.success("Published to your PDS. Add a listing when you are ready.");
       setSessionId(null);
       setRows([]);
       setFiles([]);
@@ -403,12 +410,15 @@ export function UploadTracksPage() {
       </div>
 
       <div className="space-y-2">
-        <Label>Price (USD)</Label>
+        <Label>Suggested listing price (USD)</Label>
         <Input
           inputMode="decimal"
           value={price}
           onChange={(e) => setPrice(e.target.value)}
         />
+        <p className="text-xs text-muted-foreground">
+          Used only to pre-fill the listing form. Publishing does not create a listing.
+        </p>
       </div>
 
       <Button
@@ -418,6 +428,37 @@ export function UploadTracksPage() {
       >
         Publish to PDS
       </Button>
+
+      {publishDone ? (
+        <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3 text-sm">
+          <p className="font-medium">Catalog saved</p>
+          <p className="text-muted-foreground">
+            Your item is in your repo. Create a storefront listing in one step (you can
+            edit price and status before saving).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to={publishDone.listingPrefillPath}
+              className={cn(buttonVariants())}
+            >
+              Pre-fill new listing
+            </Link>
+            <Link
+              to={`/item/${encodeURIComponent(publishDone.snap.primaryItemUri)}`}
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              Preview item page
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setPublishDone(null)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -122,12 +122,19 @@ export async function saveInventoryDraft(sessionId: string, draft: unknown): Pro
   if (!res.ok) throw new Error(await res.text());
 }
 
-export async function publishInventorySession(sessionId: string): Promise<unknown> {
+export type PublishInventorySnapshot = {
+  items: Array<{ uri: string; cid: string; rkey: string }>;
+  primaryItemUri: string;
+};
+
+export async function publishInventorySession(
+  sessionId: string,
+): Promise<PublishInventorySnapshot> {
   const res = await invFetch(`/sessions/${sessionId}/publish`, {
     method: "POST",
   });
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return res.json() as Promise<PublishInventorySnapshot>;
 }
 
 const MULTIPART_CHUNK = 8 * 1024 * 1024;

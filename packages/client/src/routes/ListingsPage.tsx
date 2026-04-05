@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,8 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { scoreCompleteness } from "@/hooks/useCompletenessScore";
 import {
+  buildItemRefFromUri,
+  createListing,
   getRecordValue,
   listListingRows,
   putListing,
@@ -27,6 +29,7 @@ import {
   isDummyListingRowUri,
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
+import type { ATPRepoClient } from "@/lib/atproto/session";
 import { cn } from "@/lib/utils";
 import type { CatalogItem, Listing } from "@/types/lexicons";
 import { toast } from "sonner";
@@ -53,34 +56,69 @@ function formatMoney(m: { amount: number; currency: string }): string {
   }).format(m.amount / 100);
 }
 
+async function loadListingTitles(
+  agent: ATPRepoClient,
+  sessionDid: string,
+  list: ListingRow[],
+): Promise<Record<string, string>> {
+  const t: Record<string, string> = {};
+  const dummyRow = devDummyListingRow(sessionDid);
+  const forTitles = list.length > 0 ? list : dummyRow ? [dummyRow] : [];
+  for (const r of forTitles) {
+    const item = await getRecordValue<CatalogItem>(agent, r.listing.item.uri);
+    t[r.uri] =
+      item?.title ??
+      (isDummyListingRow(r) ? "Sample listing (dev)" : r.listing.item.uri);
+  }
+  return t;
+}
+
 export function ListingsPage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [rows, setRows] = useState<ListingRow[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [editRow, setEditRow] = useState<ListingRow | null>(null);
   const [editDollars, setEditDollars] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newItemUri, setNewItemUri] = useState("");
+  const [newTitle, setNewTitle] = useState("");
+  const [newPrice, setNewPrice] = useState("9.99");
+  const [newLicenseUri, setNewLicenseUri] = useState("");
+  const [newLicenseCid, setNewLicenseCid] = useState("");
+  const [createBusy, setCreateBusy] = useState(false);
 
   useEffect(() => {
     if (!agent || !session) return;
     void (async () => {
       const list = await listListingRows(agent, session.did);
       setRows(list);
-      const t: Record<string, string> = {};
-      const dummyRow = devDummyListingRow(session.did);
-      const forTitles = list.length > 0 ? list : dummyRow ? [dummyRow] : [];
-      for (const r of forTitles) {
-        const item = await getRecordValue<CatalogItem>(
-          agent,
-          r.listing.item.uri,
-        );
-        t[r.uri] =
-          item?.title ??
-          (isDummyListingRow(r) ? "Sample listing (dev)" : r.listing.item.uri);
-      }
-      setTitles(t);
+      setTitles(await loadListingTitles(agent, session.did, list));
     })();
   }, [agent, session]);
+
+  useEffect(() => {
+    if (!agent || !session) return;
+    const q = new URLSearchParams(location.search);
+    const itemUri = q.get("prefillItemUri");
+    const licenseUri = q.get("licenseUri");
+    const licenseGrantCid = q.get("licenseGrantCid");
+    const priceUsd = q.get("priceUsd");
+    if (!itemUri || !licenseUri || !licenseGrantCid) return;
+
+    setNewItemUri(itemUri);
+    setNewLicenseUri(licenseUri);
+    setNewLicenseCid(licenseGrantCid);
+    setNewPrice(priceUsd ?? "9.99");
+    setCreateOpen(true);
+    void (async () => {
+      const item = await getRecordValue<CatalogItem>(agent, itemUri);
+      setNewTitle(item?.title ?? "");
+    })();
+    navigate("/merchant/listings", { replace: true });
+  }, [location.search, agent, session, navigate]);
 
   async function savePrice() {
     if (!agent || !editRow) return;
@@ -107,6 +145,44 @@ export function ListingsPage() {
       toast.error("Update failed", {
         description: e instanceof Error ? e.message : undefined,
       });
+    }
+  }
+
+  async function submitNewListing() {
+    if (!agent || !session) return;
+    const dollars = parseFloat(newPrice);
+    if (!Number.isFinite(dollars) || dollars < 0) {
+      toast.error("Invalid price");
+      return;
+    }
+    setCreateBusy(true);
+    try {
+      const itemRef = await buildItemRefFromUri(agent, newItemUri);
+      if (!itemRef?.cid) {
+        toast.error("Could not load catalog item");
+        return;
+      }
+      const cents = Math.round(dollars * 100);
+      await createListing(agent, {
+        item: itemRef,
+        price: { amount: cents, currency: "USD" },
+        status: "active",
+        licenseUri: newLicenseUri,
+        licenseGrantCid: newLicenseCid,
+      });
+      toast.success("Listing created");
+      setCreateOpen(false);
+      setNewItemUri("");
+      setNewTitle("");
+      const list = await listListingRows(agent, session.did);
+      setRows(list);
+      setTitles(await loadListingTitles(agent, session.did, list));
+    } catch (e) {
+      toast.error("Could not create listing", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setCreateBusy(false);
     }
   }
 
@@ -138,8 +214,8 @@ export function ListingsPage() {
         <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
           Preview row only (not stored in your repo). Uses your signed-in DID for the
           sample item URI unless <code className="text-xs">VITE_DEV_DUMMY_ITEM_URI</code>{" "}
-          or <code className="text-xs">VITE_ARTIST_DID</code> is set. Publish a real
-          listing from Upload to replace this.
+          or <code className="text-xs">VITE_ARTIST_DID</code> is set. Create a real
+          listing here after you publish catalog items from Upload.
         </p>
       ) : null}
       {displayRows.length === 0 ? (
@@ -265,6 +341,60 @@ export function ListingsPage() {
               onClick={() => void savePrice()}
             >
               Save
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet
+        open={createOpen}
+        onOpenChange={(o) => {
+          setCreateOpen(o);
+          if (!o) {
+            setNewItemUri("");
+            setNewTitle("");
+          }
+        }}
+      >
+        <SheetContent className="overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Create listing</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 space-y-4 text-sm">
+            <p className="text-muted-foreground">
+              Review the item, price, and license grant, then create the listing record
+              on your PDS.
+            </p>
+            <div>
+              <Label>Item</Label>
+              <p className="mt-1 font-medium">{newTitle || "…"}</p>
+              <p className="text-xs text-muted-foreground break-all mt-1">
+                {newItemUri}
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="new-listing-price">Price (USD)</Label>
+              <Input
+                id="new-listing-price"
+                inputMode="decimal"
+                value={newPrice}
+                onChange={(e) => setNewPrice(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>License URI</Label>
+              <p className="mt-1 text-xs text-muted-foreground break-all">
+                {newLicenseUri}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={createBusy || !newItemUri}
+              className={cn(buttonVariants())}
+              onClick={() => void submitNewListing()}
+            >
+              {createBusy ? "Creating…" : "Create listing"}
             </button>
           </div>
         </SheetContent>
