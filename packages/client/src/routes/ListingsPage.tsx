@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,8 +19,12 @@ import {
   buildItemRefFromUri,
   createListing,
   getRecordValue,
+  listCollectionRows,
+  listDigitalItemRows,
+  listLicenseTermsRows,
   listListingRows,
   putListing,
+  type LicenseTermsRow,
   type ListingRow,
 } from "@/lib/atproto/records";
 import {
@@ -56,6 +61,12 @@ function formatMoney(m: { amount: number; currency: string }): string {
   }).format(m.amount / 100);
 }
 
+type CatalogPick = {
+  uri: string;
+  title: string;
+  kind: "digital" | "collection";
+};
+
 async function loadListingTitles(
   agent: ATPRepoClient,
   sessionDid: string,
@@ -80,9 +91,10 @@ export function ListingsPage() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<ListingRow[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
+  const [catalogOptions, setCatalogOptions] = useState<CatalogPick[]>([]);
+  const [licenseRows, setLicenseRows] = useState<LicenseTermsRow[]>([]);
   const [editRow, setEditRow] = useState<ListingRow | null>(null);
   const [editDollars, setEditDollars] = useState("");
-  const [createOpen, setCreateOpen] = useState(false);
   const [newItemUri, setNewItemUri] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newPrice, setNewPrice] = useState("9.99");
@@ -90,14 +102,41 @@ export function ListingsPage() {
   const [newLicenseCid, setNewLicenseCid] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
 
-  useEffect(() => {
+  const refreshListingsAndCatalog = useCallback(async () => {
     if (!agent || !session) return;
-    void (async () => {
-      const list = await listListingRows(agent, session.did);
-      setRows(list);
-      setTitles(await loadListingTitles(agent, session.did, list));
-    })();
+    const [list, digital, collections, licenses] = await Promise.all([
+      listListingRows(agent, session.did),
+      listDigitalItemRows(agent, session.did),
+      listCollectionRows(agent, session.did),
+      listLicenseTermsRows(agent, session.did),
+    ]);
+    setRows(list);
+    setTitles(await loadListingTitles(agent, session.did, list));
+    setLicenseRows(licenses);
+    const listed = new Set(list.map((r) => r.listing.item.uri));
+    const opts: CatalogPick[] = [
+      ...digital
+        .filter((r) => !listed.has(r.uri))
+        .map((r) => ({
+          uri: r.uri,
+          title: r.item.title,
+          kind: "digital" as const,
+        })),
+      ...collections
+        .filter((r) => !listed.has(r.uri))
+        .map((r) => ({
+          uri: r.uri,
+          title: r.item.title,
+          kind: "collection" as const,
+        })),
+    ];
+    opts.sort((a, b) => a.title.localeCompare(b.title));
+    setCatalogOptions(opts);
   }, [agent, session]);
+
+  useEffect(() => {
+    void refreshListingsAndCatalog();
+  }, [refreshListingsAndCatalog]);
 
   useEffect(() => {
     if (!agent || !session) return;
@@ -112,13 +151,39 @@ export function ListingsPage() {
     setNewLicenseUri(licenseUri);
     setNewLicenseCid(licenseGrantCid);
     setNewPrice(priceUsd ?? "9.99");
-    setCreateOpen(true);
-    void (async () => {
-      const item = await getRecordValue<CatalogItem>(agent, itemUri);
-      setNewTitle(item?.title ?? "");
-    })();
     navigate("/merchant/listings", { replace: true });
   }, [location.search, agent, session, navigate]);
+
+  useEffect(() => {
+    if (!agent || !newItemUri) {
+      setNewTitle("");
+      return;
+    }
+    let cancelled = false;
+    void getRecordValue<CatalogItem>(agent, newItemUri).then((item) => {
+      if (!cancelled) setNewTitle(item?.title ?? "");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [agent, newItemUri]);
+
+  const selectCatalogOptions = useMemo(() => {
+    if (
+      newItemUri &&
+      !catalogOptions.some((o) => o.uri === newItemUri)
+    ) {
+      return [
+        {
+          uri: newItemUri,
+          title: newTitle || "(from link)",
+          kind: "digital" as const,
+        },
+        ...catalogOptions,
+      ];
+    }
+    return catalogOptions;
+  }, [catalogOptions, newItemUri, newTitle]);
 
   async function savePrice() {
     if (!agent || !editRow) return;
@@ -150,6 +215,14 @@ export function ListingsPage() {
 
   async function submitNewListing() {
     if (!agent || !session) return;
+    if (!newItemUri.trim()) {
+      toast.error("Choose a catalog item");
+      return;
+    }
+    if (!newLicenseUri || !newLicenseCid) {
+      toast.error("Choose a license");
+      return;
+    }
     const dollars = parseFloat(newPrice);
     if (!Number.isFinite(dollars) || dollars < 0) {
       toast.error("Invalid price");
@@ -171,12 +244,12 @@ export function ListingsPage() {
         licenseGrantCid: newLicenseCid,
       });
       toast.success("Listing created");
-      setCreateOpen(false);
       setNewItemUri("");
       setNewTitle("");
-      const list = await listListingRows(agent, session.did);
-      setRows(list);
-      setTitles(await loadListingTitles(agent, session.did, list));
+      setNewLicenseUri("");
+      setNewLicenseCid("");
+      setNewPrice("9.99");
+      await refreshListingsAndCatalog();
     } catch (e) {
       toast.error("Could not create listing", {
         description: e instanceof Error ? e.message : undefined,
@@ -206,12 +279,119 @@ export function ListingsPage() {
   const dummy = devDummyListingRow(session.did);
   const displayRows = rows.length > 0 ? rows : dummy ? [dummy] : [];
   const showingListingsDummy = rows.length === 0 && dummy != null;
+  const canSubmitCreate =
+    Boolean(newItemUri.trim() && newLicenseUri && newLicenseCid) &&
+    !createBusy;
 
   return (
-    <div className="w-full min-w-0">
-      <h1 className="text-2xl font-semibold mb-6">Listings</h1>
+    <div className="w-full min-w-0 space-y-8">
+      <h1 className="text-2xl font-semibold">Listings</h1>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">New listing</CardTitle>
+          <CardDescription>
+            Pick a catalog item that is not already listed, choose license terms, set
+            a price, then publish the listing to your PDS.{" "}
+            <Link
+              to="/merchant/inventory"
+              className="text-foreground underline underline-offset-2"
+            >
+              Inventory
+            </Link>{" "}
+            shows everything in your repo;{" "}
+            <Link
+              to="/merchant/upload/tracks"
+              className="text-foreground underline underline-offset-2"
+            >
+              Upload
+            </Link>{" "}
+            adds new tracks.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="new-listing-item">Catalog item</Label>
+            <select
+              id="new-listing-item"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={newItemUri}
+              onChange={(e) => setNewItemUri(e.target.value)}
+            >
+              <option value="">Select item…</option>
+              {selectCatalogOptions.map((o) => (
+                <option key={o.uri} value={o.uri}>
+                  {o.title} ({o.kind === "digital" ? "Digital" : "Collection"})
+                </option>
+              ))}
+            </select>
+            {newItemUri ? (
+              <p className="text-xs text-muted-foreground break-all">{newItemUri}</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <Label>License</Label>
+            {licenseRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Save templates on{" "}
+                <Link to="/merchant/license" className="underline underline-offset-2">
+                  License templates
+                </Link>
+                .
+              </p>
+            ) : (
+              <div className="grid gap-2 max-h-40 overflow-y-auto sm:grid-cols-2">
+                {licenseRows.map((row) => {
+                  const picked =
+                    newLicenseUri === row.uri && newLicenseCid === row.cid;
+                  return (
+                    <button
+                      key={row.uri}
+                      type="button"
+                      onClick={() => {
+                        setNewLicenseUri(row.uri);
+                        setNewLicenseCid(row.cid);
+                      }}
+                      className={cn(
+                        "rounded-lg border p-3 text-left text-sm transition-colors",
+                        picked && "ring-2 ring-ring bg-muted/40",
+                      )}
+                    >
+                      <span className="font-medium">{row.terms.title}</span>
+                      <span className="block text-xs text-muted-foreground mt-1">
+                        {row.terms.tier} · {row.terms.version}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="space-y-2 flex-1 min-w-[8rem] max-w-xs">
+              <Label htmlFor="new-listing-price">Price (USD)</Label>
+              <Input
+                id="new-listing-price"
+                inputMode="decimal"
+                value={newPrice}
+                onChange={(e) => setNewPrice(e.target.value)}
+              />
+            </div>
+            <Button
+              type="button"
+              disabled={!canSubmitCreate}
+              onClick={() => void submitNewListing()}
+            >
+              {createBusy ? "Creating…" : "Create listing"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {showingListingsDummy ? (
-        <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
           Preview row only (not stored in your repo). Uses your signed-in DID for the
           sample item URI unless <code className="text-xs">VITE_DEV_DUMMY_ITEM_URI</code>{" "}
           or <code className="text-xs">VITE_ARTIST_DID</code> is set. Create a real
@@ -341,60 +521,6 @@ export function ListingsPage() {
               onClick={() => void savePrice()}
             >
               Save
-            </button>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      <Sheet
-        open={createOpen}
-        onOpenChange={(o) => {
-          setCreateOpen(o);
-          if (!o) {
-            setNewItemUri("");
-            setNewTitle("");
-          }
-        }}
-      >
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Create listing</SheetTitle>
-          </SheetHeader>
-          <div className="mt-6 space-y-4 text-sm">
-            <p className="text-muted-foreground">
-              Review the item, price, and license grant, then create the listing record
-              on your PDS.
-            </p>
-            <div>
-              <Label>Item</Label>
-              <p className="mt-1 font-medium">{newTitle || "…"}</p>
-              <p className="text-xs text-muted-foreground break-all mt-1">
-                {newItemUri}
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="new-listing-price">Price (USD)</Label>
-              <Input
-                id="new-listing-price"
-                inputMode="decimal"
-                value={newPrice}
-                onChange={(e) => setNewPrice(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>License URI</Label>
-              <p className="mt-1 text-xs text-muted-foreground break-all">
-                {newLicenseUri}
-              </p>
-            </div>
-            <button
-              type="button"
-              disabled={createBusy || !newItemUri}
-              className={cn(buttonVariants())}
-              onClick={() => void submitNewListing()}
-            >
-              {createBusy ? "Creating…" : "Create listing"}
             </button>
           </div>
         </SheetContent>
