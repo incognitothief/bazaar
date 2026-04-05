@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
+import {
+  MerchantStripeConnectPanel,
+  type MerchantStripeSettings,
+} from "@/components/merchant/MerchantStripeConnectPanel";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { fetchActorAvatarByActor } from "@/lib/actorTypeahead";
@@ -18,11 +23,18 @@ import { browserApiUrl } from "@/lib/browserApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { pdslsRepoCollectionsUrl } from "@/lib/pdsls";
+import {
+  scrollStripeConnectPanelIntoView,
+  STRIPE_CONNECT_PANEL_ID,
+} from "@/lib/stripeConnectScroll";
 import { cn } from "@/lib/utils";
 import type { ActorMerchant, Listing } from "@/types/lexicons";
 import { toast } from "sonner";
 
+const STRIPE_HASH = `#${STRIPE_CONNECT_PANEL_ID}`;
+
 export function SettingsPage() {
+  const location = useLocation();
   const { session, signOut } = useAtpSession();
   const agent = useMerchantAgent(session);
   const [storefrontName, setStorefrontName] = useState("");
@@ -32,29 +44,61 @@ export function SettingsPage() {
   const [profileCreatedAt, setProfileCreatedAt] = useState<string>(() =>
     new Date().toISOString(),
   );
-  const [stripeConnected, setStripeConnected] = useState(false);
   const [unpub, setUnpub] = useState("");
+  const [stripeSettings, setStripeSettings] =
+    useState<MerchantStripeSettings | null>(null);
+  const [stripeLoading, setStripeLoading] = useState(true);
+  const [stripeSettingsError, setStripeSettingsError] = useState<string | null>(
+    null,
+  );
   const [relayAvatarUrl, setRelayAvatarUrl] = useState<string | null>(null);
   const [bazaarAvatarObjectUrl, setBazaarAvatarObjectUrl] = useState<
     string | null
   >(null);
   const [relayAvatarBroken, setRelayAvatarBroken] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const r = await fetch(browserApiUrl("/api/stripe/account-status"), {
-          credentials: "include",
-        });
-        if (r.ok) {
-          const j = (await r.json()) as { connected?: boolean };
-          setStripeConnected(!!j.connected);
-        }
-      } catch {
-        setStripeConnected(false);
+  const loadStripeState = useCallback(async () => {
+    setStripeLoading(true);
+    setStripeSettingsError(null);
+    try {
+      const settingsRes = await fetch(
+        browserApiUrl("/api/merchant/stripe-settings"),
+        { credentials: "include" },
+      );
+      if (settingsRes.ok) {
+        setStripeSettings((await settingsRes.json()) as MerchantStripeSettings);
+      } else {
+        setStripeSettings(null);
+        const j = (await settingsRes.json().catch(() => null)) as
+          | { error?: string; detail?: string }
+          | null;
+        const parts = [j?.error, j?.detail].filter(
+          (x): x is string => typeof x === "string" && x.length > 0,
+        );
+        setStripeSettingsError(
+          parts.join(": ") ||
+            (settingsRes.status === 401
+              ? "Sign in as the configured store owner to manage Stripe keys."
+              : `Could not load Stripe settings (HTTP ${settingsRes.status}).`),
+        );
       }
-    })();
+    } catch {
+      setStripeSettings(null);
+      setStripeSettingsError("Could not load Stripe settings.");
+    } finally {
+      setStripeLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadStripeState();
+  }, [loadStripeState]);
+
+  useLayoutEffect(() => {
+    if (!session || !agent) return;
+    if (location.hash !== STRIPE_HASH) return;
+    scrollStripeConnectPanelIntoView();
+  }, [session, agent, location.hash, stripeLoading]);
 
   useEffect(() => {
     if (!agent || !session) return;
@@ -299,23 +343,16 @@ export function SettingsPage() {
         >
           Disconnect
         </button>
-        <div className="border-t border-border pt-4 mt-4">
-          <p className="text-sm font-medium">Stripe</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {stripeConnected
-              ? "Connected (stub — manage in Stripe Dashboard)."
-              : "Not connected."}
-          </p>
-          <a
-            href={browserApiUrl("/api/stripe/connect")}
-            className={cn(
-              buttonVariants({ variant: "secondary" }),
-              "mt-2 inline-flex",
-            )}
-          >
-            Connect Stripe
-          </a>
-        </div>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-medium">Stripe</h2>
+        <MerchantStripeConnectPanel
+          settings={stripeSettings}
+          loading={stripeLoading}
+          loadError={stripeSettingsError}
+          onUpdated={() => void loadStripeState()}
+        />
       </section>
 
       <section className="space-y-4 rounded-lg border border-destructive/30 p-4">
