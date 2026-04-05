@@ -152,7 +152,7 @@ export function ListingsPage() {
             preview/production builds.
           </p>
           <Link
-            to="/merchant/upload/digital"
+            to="/merchant/upload/tracks"
             className={cn(buttonVariants(), "mt-4 inline-flex")}
           >
             Upload an item

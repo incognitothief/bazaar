@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /** Single-row Stripe API keys when not set via environment (see stripeCredentials). */
 export const merchantStripeConfig = sqliteTable("merchant_stripe_config", {
@@ -19,6 +19,67 @@ export const meta = sqliteTable("meta", {
 });
 
 /** Stripe PaymentIntent → PDS receipt/consent fulfillment state machine. */
+/** Resumable inventory uploads + deferred PDS publish (digital first; discriminator for future physical). */
+export const inventoryUploadSession = sqliteTable("inventory_upload_session", {
+  id: text("id").primaryKey(),
+  merchantDid: text("merchant_did").notNull(),
+  /** e.g. digital — reserved for physical expansion */
+  inventoryKind: text("inventory_kind").notNull().default("digital"),
+  status: text("status").notNull().default("active"),
+  draftJson: text("draft_json"),
+  publishedAt: integer("published_at", { mode: "timestamp" }),
+  publishError: text("publish_error"),
+  pdsSnapshotJson: text("pds_snapshot_json"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => inventoryUploadSession.id, { onDelete: "cascade" }),
+  slotId: text("slot_id").notNull(),
+  rkey: text("rkey").notNull(),
+  role: text("role").notNull(),
+  fileName: text("file_name").notNull(),
+  contentType: text("content_type"),
+  byteSize: integer("byte_size"),
+  uploadKind: text("upload_kind").notNull().default("single_put"),
+  s3UploadId: text("s3_upload_id"),
+  status: text("status").notNull().default("initiated"),
+  r2Key: text("r2_key").notNull(),
+  fileChecksum: text("file_checksum"),
+  fileCid: text("file_cid"),
+  durationMs: integer("duration_ms"),
+  error: text("error"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const inventoryUploadPart = sqliteTable(
+  "inventory_upload_part",
+  {
+    objectId: text("object_id")
+      .notNull()
+      .references(() => inventoryUploadObject.id, { onDelete: "cascade" }),
+    partNumber: integer("part_number").notNull(),
+    etag: text("etag").notNull(),
+    size: integer("size"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.objectId, t.partNumber] }),
+  }),
+);
+
 export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   paymentIntentId: text("payment_intent_id").primaryKey(),
   checkoutSessionId: text("checkout_session_id"),

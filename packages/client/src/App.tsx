@@ -3,11 +3,12 @@ import { Toaster } from "sonner";
 import { PublicLayout } from "@/routes/PublicLayout";
 import { HomePage } from "@/routes/HomePage";
 import { ItemDetailPage } from "@/routes/ItemDetailPage";
+import { PurchaseDetailPage } from "@/routes/PurchaseDetailPage";
 import { PurchaseSuccessPage } from "@/routes/PurchaseSuccessPage";
 import { MerchantLayout } from "@/routes/MerchantLayout";
 import { DashboardPage } from "@/routes/DashboardPage";
 import { CustomerDashboardPage } from "./routes/CustomerDashboardPage";
-import { UploadDigitalPage } from "@/routes/UploadDigitalPage";
+import { UploadTracksPage } from "@/routes/UploadTracksPage";
 import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
 import { ListingsPage } from "@/routes/ListingsPage";
 import { LicensePage } from "@/routes/LicensePage";
@@ -26,11 +27,19 @@ export function App() {
           <Route path="/purchase/success" element={<PurchaseSuccessPage />} />
           <Route path="/merchant/signin" element={<MerchantSignInPage />} />
           <Route path="/dashboard" element={<CustomerDashboardPage />} />
+          <Route
+            path="/dashboard/purchase/:receiptUri"
+            element={<PurchaseDetailPage />}
+          />
         </Route>
         <Route path="/merchant" element={<MerchantLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="upload/digital" element={<UploadDigitalPage />} />
+          <Route
+            path="upload/digital"
+            element={<Navigate to="/merchant/upload/tracks" replace />}
+          />
+          <Route path="upload/tracks" element={<UploadTracksPage />} />
           <Route path="upload/physical" element={<UploadPhysicalPage />} />
           <Route path="listings" element={<ListingsPage />} />
           <Route path="license" element={<LicensePage />} />

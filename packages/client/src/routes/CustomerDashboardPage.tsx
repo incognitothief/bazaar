@@ -8,8 +8,14 @@ import { getAuthRole } from "@/lib/auth";
 import { merchantSignInUrl } from "@/lib/signInReturn";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
-import type { Listing, PurchaseReceipt } from "@/types/lexicons";
-import { Button } from "@/components/ui/button";
+import {
+  getRecordValue,
+  listPurchaseReceiptRows,
+  type PurchaseReceiptRow,
+} from "@/lib/atproto/records";
+import type { CatalogItem, Listing, PurchaseReceipt } from "@/types/lexicons";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +50,10 @@ export function CustomerDashboardPage() {
   const [receiptUri, setReceiptUri] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ReceiptValidationResult | null>(null);
+  const [purchases, setPurchases] = useState<PurchaseReceiptRow[]>([]);
+  const [purchaseTitles, setPurchaseTitles] = useState<Record<string, string>>(
+    {},
+  );
 
   useEffect(() => {
     if (loading || !session) return;
@@ -51,6 +61,42 @@ export function CustomerDashboardPage() {
       navigate("/merchant/dashboard", { replace: true });
     }
   }, [loading, session, navigate]);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    void listPurchaseReceiptRows(agent, session.did)
+      .then((rows) => {
+        if (!cancelled) setPurchases(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setPurchases([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, agent]);
+
+  useEffect(() => {
+    if (!session || purchases.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const next: Record<string, string> = {};
+      for (const row of purchases) {
+        const uri = row.receipt.item.uri;
+        try {
+          const item = await getRecordValue<CatalogItem>(agent, uri);
+          if (item?.title) next[row.uri] = item.title;
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!cancelled) setPurchaseTitles((prev) => ({ ...prev, ...next }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [purchases, session, agent]);
 
   async function validate() {
     if (!session) return;
@@ -161,11 +207,10 @@ export function CustomerDashboardPage() {
     <div className="mx-auto w-full min-w-0 max-w-2xl space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2 min-w-0">
-          <h1 className="text-2xl font-semibold">Receipt validation</h1>
+          <h1 className="text-2xl font-semibold">Your purchases</h1>
           <p className="text-sm text-muted-foreground">
-            Paste your Bazaar <code className="text-xs">purchase.receipt</code>{" "}
-            URI. We will verify the receipt and confirm the referenced listing
-            is still available.
+            Downloads and terms for receipts in your repo. Validate a specific
+            receipt URI below if needed.
           </p>
         </div>
         <Button
@@ -178,6 +223,38 @@ export function CustomerDashboardPage() {
         </Button>
       </div>
 
+      {purchases.length > 0 ? (
+        <div className="rounded-lg border border-border divide-y">
+          {purchases.map((row) => (
+            <div
+              key={row.uri}
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+            >
+              <div className="min-w-0 space-y-0.5">
+                <p className="font-medium truncate">
+                  {purchaseTitles[row.uri] ?? row.receipt.item.uri}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {formatMoney(row.receipt.pricePaid)} ·{" "}
+                  {new Date(row.receipt.purchasedAt).toLocaleString()}
+                </p>
+              </div>
+              <Link
+                to={`/dashboard/purchase/${encodeURIComponent(row.uri)}`}
+                className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+              >
+                Open
+              </Link>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No purchase receipts found in your PDS yet.
+        </p>
+      )}
+
+      <h2 className="text-lg font-medium pt-4">Validate receipt URI</h2>
       <form
         className="space-y-4"
         onSubmit={(e) => {

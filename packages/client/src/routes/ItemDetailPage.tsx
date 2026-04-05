@@ -168,6 +168,7 @@ export function ItemDetailPage() {
             agent={agent}
             did={blobDid}
             cid={item.artworkCid}
+            itemUri={itemUri}
             alt=""
             className="h-full w-full"
           />
@@ -190,7 +191,7 @@ export function ItemDetailPage() {
                 <code className="text-xs">licenseGrantCid</code>) on the artist
                 repo, or use{" "}
                 <Link
-                  to="/merchant/upload/digital"
+                  to="/merchant/upload/tracks"
                   className="text-primary underline underline-offset-2"
                 >
                   Upload

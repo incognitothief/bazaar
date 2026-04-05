@@ -29,6 +29,13 @@
       "when": 1775200000000,
       "tag": "0003_merchant_stripe_config",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1775349317128,
+      "tag": "0004_inventory_upload",
+      "breakpoints": true
     }
   ]
 }

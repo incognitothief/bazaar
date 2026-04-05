@@ -182,11 +182,16 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
     const agent = await getSessionAgent(c);
     if (!agent) return c.json({ error: "Unauthorized" }, 401);
 
-    const body = await c.req.json<{ collection: string; record: unknown }>();
+    const body = await c.req.json<{
+      collection: string;
+      record: unknown;
+      rkey?: string;
+    }>();
     const res = await agent.com.atproto.repo.createRecord({
       repo: did,
       collection: body.collection,
       record: body.record as Record<string, unknown>,
+      ...(body.rkey ? { rkey: body.rkey } : {}),
     });
     return c.json({ uri: res.data.uri, cid: res.data.cid });
   });

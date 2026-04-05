@@ -5,6 +5,15 @@ import {
   verify as cryptoVerify,
 } from "node:crypto";
 
+/** SPKI PEM for verifyReceiptPayload / verifyConsentPayload when only APP_SERVICE_PRIVATE_KEY is configured. */
+export function appServicePublicKeyPemFromEnv(): string | null {
+  const raw = process.env.APP_SERVICE_PRIVATE_KEY?.trim();
+  if (!raw) return null;
+  const priv = createPrivateKey(normalizeAppServicePrivateKey(raw));
+  const pub = createPublicKey(priv);
+  return pub.export({ type: "spki", format: "pem" }) as string;
+}
+
 /**
  * `APP_SERVICE_PRIVATE_KEY` from `.env` is often a valid PEM that dotenv / shells mangle
  * (literal `\\n`, CRLF, or the whole base64 on one line). OpenSSL/Bun are picky.

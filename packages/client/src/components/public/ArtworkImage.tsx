@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Agent } from "@atproto/api";
+import { browserApiUrl } from "@/lib/browserApi";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import { cn } from "@/lib/utils";
 
@@ -7,12 +8,15 @@ export function ArtworkImage({
   agent,
   did,
   cid,
+  itemUri,
   alt,
   className,
 }: {
   agent: Agent;
   did: string;
   cid: string | undefined;
+  /** When set, try R2 presign for inventory artwork (active listing) before PDS blob. */
+  itemUri?: string;
   alt: string;
   className?: string;
 }) {
@@ -20,17 +24,33 @@ export function ArtworkImage({
 
   useEffect(() => {
     if (!cid) return;
-    let url: string | null = null;
+    let blobUrl: string | null = null;
     let cancelled = false;
     void (async () => {
-      url = await fetchBlobObjectUrl(agent, did, cid);
-      if (!cancelled && url) setSrc(url);
+      if (itemUri) {
+        try {
+          const u = new URL(browserApiUrl("/api/inventory-public/artwork-url"));
+          u.searchParams.set("itemUri", itemUri);
+          const r = await fetch(u.toString());
+          if (r.ok) {
+            const j = (await r.json()) as { url?: string };
+            if (j.url && !cancelled) {
+              setSrc(j.url);
+              return;
+            }
+          }
+        } catch {
+          /* fall through to blob */
+        }
+      }
+      blobUrl = await fetchBlobObjectUrl(agent, did, cid);
+      if (!cancelled && blobUrl) setSrc(blobUrl);
     })();
     return () => {
       cancelled = true;
-      if (url) URL.revokeObjectURL(url);
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
-  }, [agent, did, cid]);
+  }, [agent, did, cid, itemUri]);
 
   if (!cid || !src) {
     return (

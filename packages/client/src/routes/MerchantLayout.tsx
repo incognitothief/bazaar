@@ -19,49 +19,9 @@ const mainNav: { to: string; label: string }[] = [
   { to: "/merchant/settings", label: "Settings" },
 ];
 
-const inventoryLinks: { to: string; label: string; albumMode: boolean }[] = [
-  { to: "/merchant/upload/digital", label: "Upload track", albumMode: false },
-  {
-    to: "/merchant/upload/digital?class=album",
-    label: "Upload collection",
-    albumMode: true,
-  },
-];
-
 const salesLinks: { to: string; label: string }[] = [
   { to: "/merchant/transactions", label: "Payment activity" },
 ];
-
-function UploadDigitalNavLink({
-  to,
-  label,
-  albumMode,
-  onNavigate,
-}: {
-  to: string;
-  label: string;
-  albumMode: boolean;
-  onNavigate?: () => void;
-}) {
-  const loc = useLocation();
-  const onUpload = loc.pathname === "/merchant/upload/digital";
-  const classParam = new URLSearchParams(loc.search).get("class");
-  const isAlbum = classParam === "album";
-  const isActive = onUpload && (albumMode ? isAlbum : !isAlbum);
-
-  return (
-    <Link
-      to={to}
-      className={cn(
-        "rounded-md px-2 py-1.5 text-sm hover:bg-muted block",
-        isActive && "bg-muted font-medium",
-      )}
-      onClick={onNavigate}
-    >
-      {label}
-    </Link>
-  );
-}
 
 function MerchantNavPanel({
   inventoryOpen,
@@ -124,15 +84,17 @@ function MerchantNavPanel({
           </button>
           {inventoryOpen ? (
             <div className="mt-1 flex flex-col gap-0.5 border-l border-border ml-2 pl-2">
-              {inventoryLinks.map((l) => (
-                <UploadDigitalNavLink
-                  key={l.to}
-                  to={l.to}
-                  label={l.label}
-                  albumMode={l.albumMode}
-                  onNavigate={onNavigate}
-                />
-              ))}
+              <Link
+                to="/merchant/upload/tracks"
+                className={cn(
+                  "rounded-md px-2 py-1.5 text-sm hover:bg-muted block",
+                  location.pathname === "/merchant/upload/tracks" &&
+                    "bg-muted font-medium",
+                )}
+                onClick={onNavigate}
+              >
+                Upload tracks
+              </Link>
             </div>
           ) : null}
         </div>

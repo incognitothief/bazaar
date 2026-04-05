@@ -72,7 +72,7 @@ export function OnboardingChecklist({
       description: "Add a track or collection to your storefront.",
       complete: hasItem,
       blocking: false,
-      action: { label: "Upload", href: "/merchant/upload/digital" },
+      action: { label: "Upload", href: "/merchant/upload/tracks" },
     },
   ];
 
