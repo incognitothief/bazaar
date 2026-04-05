@@ -695,7 +695,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         });
       } catch (e) {
         console.error("buildBazaarRid:", e);
-        return c.json({ error: "identifier_sign_failed" }, 500);
+        return c.json({ error: "identifier_sign_failed", phase: "rid" }, 500);
       }
 
       const record: Record<string, unknown> = {
@@ -775,7 +775,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
           });
         } catch (e) {
           console.error("buildBazaarWid:", e);
-          return c.json({ error: "identifier_sign_failed" }, 500);
+          return c.json({ error: "identifier_sign_failed", phase: "wid" }, 500);
         }
         compositionBazaarWid = bazaarWid as unknown as Record<string, unknown>;
 
@@ -932,7 +932,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         });
       } catch (e) {
         console.error("buildBazaarPid:", e);
-        return c.json({ error: "identifier_sign_failed" }, 500);
+        return c.json({ error: "identifier_sign_failed", phase: "pid" }, 500);
       }
 
       const colFetched = await sess.agent.com.atproto.repo.getRecord({

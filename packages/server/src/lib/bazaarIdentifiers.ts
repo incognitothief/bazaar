@@ -37,11 +37,34 @@ export function base32LowerNoPad(buf: Buffer): string {
   return out;
 }
 
-/** Sign the 32-byte SHA-256 digest (pre-hashed identifier payload). */
-function signIdentifierDigest(digest: Buffer): string {
+/**
+ * Sign the identifier payload. `id` is still base32(SHA-256(canonical)).
+ *
+ * Never use `sign(null, digest, key)` on a pre-hashed buffer — OpenSSL 3 + Bun throw
+ * `ERR_OSSL_NO_DEFAULT_DIGEST` (NO_DEFAULT_DIGEST).
+ *
+ * - RSA / EC: `sign("sha256", canonicalUtf8, key)` (same hash input as `id`).
+ * - Ed25519 / Ed448: `sign(null, canonicalUtf8, key)` (one-shot; message is full canonical).
+ * - Unknown key types: try `sha256` first, then one-shot on the canonical bytes.
+ */
+function signIdentifierCanonical(canonical: string, _digest: Buffer): string {
   const key = appPrivateKey();
-  const sig = sign(null, digest, key);
-  return Buffer.from(sig).toString("base64url");
+  const msg = Buffer.from(canonical, "utf8");
+  const t = key.asymmetricKeyType;
+
+  if (t === "rsa" || t === "ec") {
+    return Buffer.from(sign("sha256", msg, key)).toString("base64url");
+  }
+
+  if (t === "ed25519" || t === "ed448") {
+    return Buffer.from(sign(null, msg, key)).toString("base64url");
+  }
+
+  try {
+    return Buffer.from(sign("sha256", msg, key)).toString("base64url");
+  } catch {
+    return Buffer.from(sign(null, msg, key)).toString("base64url");
+  }
 }
 
 /**
@@ -65,7 +88,7 @@ export function buildBazaarRid(params: {
   const digest = createHash("sha256").update(canonical, "utf8").digest();
   return {
     id: "bazaar:rid:" + base32LowerNoPad(digest),
-    sig: signIdentifierDigest(digest),
+    sig: signIdentifierCanonical(canonical, digest),
     generatedAt: params.createdAt,
   };
 }
@@ -109,7 +132,7 @@ export function buildBazaarWid(params: {
   const digest = createHash("sha256").update(canonical, "utf8").digest();
   return {
     id: "bazaar:wid:" + base32LowerNoPad(digest),
-    sig: signIdentifierDigest(digest),
+    sig: signIdentifierCanonical(canonical, digest),
     generatedAt: params.createdAt,
   };
 }
@@ -133,7 +156,7 @@ export function buildBazaarPid(params: {
   const generatedAt = new Date().toISOString();
   return {
     id: "bazaar:pid:" + base32LowerNoPad(digest),
-    sig: signIdentifierDigest(digest),
+    sig: signIdentifierCanonical(canonical, digest),
     generatedAt,
   };
 }
