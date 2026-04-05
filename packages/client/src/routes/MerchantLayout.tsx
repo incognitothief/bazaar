@@ -13,6 +13,13 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { cn } from "@/lib/utils";
 import { getAuthRole } from "@/lib/auth";
 
+function isMerchantInventorySection(path: string): boolean {
+  return (
+    path.startsWith("/merchant/upload") ||
+    path.startsWith("/merchant/inventory")
+  );
+}
+
 const mainNav: { to: string; label: string }[] = [
   { to: "/merchant/listings", label: "Listings" },
   { to: "/merchant/license", label: "License templates" },
@@ -84,6 +91,17 @@ function MerchantNavPanel({
           </button>
           {inventoryOpen ? (
             <div className="mt-1 flex flex-col gap-0.5 border-l border-border ml-2 pl-2">
+              <Link
+                to="/merchant/inventory"
+                className={cn(
+                  "rounded-md px-2 py-1.5 text-sm hover:bg-muted block",
+                  location.pathname.startsWith("/merchant/inventory") &&
+                    "bg-muted font-medium",
+                )}
+                onClick={onNavigate}
+              >
+                All items
+              </Link>
               <Link
                 to="/merchant/upload/tracks"
                 className={cn(
@@ -159,10 +177,9 @@ export function MerchantLayout() {
   const { session, loading, signOut } = useAtpSession();
   const navigate = useNavigate();
   const location = useLocation();
-  const inventoryPathPrefix = "/merchant/upload";
   const salesPathPrefix = "/merchant/transactions";
   const [inventoryOpen, setInventoryOpen] = useState(() =>
-    location.pathname.startsWith(inventoryPathPrefix),
+    isMerchantInventorySection(location.pathname),
   );
   const [salesOpen, setSalesOpen] = useState(() =>
     location.pathname.startsWith(salesPathPrefix),
@@ -170,10 +187,10 @@ export function MerchantLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
-    if (location.pathname.startsWith(inventoryPathPrefix)) {
+    if (isMerchantInventorySection(location.pathname)) {
       setInventoryOpen(true);
     }
-  }, [location.pathname, inventoryPathPrefix]);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (location.pathname.startsWith(salesPathPrefix)) {

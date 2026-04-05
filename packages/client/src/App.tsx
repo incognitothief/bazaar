@@ -8,6 +8,7 @@ import { PurchaseSuccessPage } from "@/routes/PurchaseSuccessPage";
 import { MerchantLayout } from "@/routes/MerchantLayout";
 import { DashboardPage } from "@/routes/DashboardPage";
 import { CustomerDashboardPage } from "./routes/CustomerDashboardPage";
+import { MerchantInventoryPage } from "@/routes/MerchantInventoryPage";
 import { UploadTracksPage } from "@/routes/UploadTracksPage";
 import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
 import { ListingsPage } from "@/routes/ListingsPage";
@@ -39,6 +40,7 @@ export function App() {
             path="upload/digital"
             element={<Navigate to="/merchant/upload/tracks" replace />}
           />
+          <Route path="inventory" element={<MerchantInventoryPage />} />
           <Route path="upload/tracks" element={<UploadTracksPage />} />
           <Route path="upload/physical" element={<UploadPhysicalPage />} />
           <Route path="listings" element={<ListingsPage />} />
