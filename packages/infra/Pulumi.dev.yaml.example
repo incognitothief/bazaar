@@ -1,6 +1,7 @@
+# Stack `dev` creates only the primary bucket (bazaar-dev). Pulumi state bucket is owned by stack `prod`.
 config:
   bazaar-infra:cloudflareAccountId: YOUR_ACCOUNT_ID
   # Optional overrides:
   # bazaar-infra:bucketName: my-unique-bucket
-  # bazaar-infra:pulumiStateBucketName: my-pulumi-state-bucket
+  # bazaar-infra:sharedPulumiStateBucketName: bazaar-pulumi-state-prod  # if prod used a custom state bucket name
   # bazaar-infra:location: WNAM
