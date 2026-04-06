@@ -26,6 +26,7 @@ import {
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
 import {
   createInventorySession,
+  inventoryUserFacingError,
   publishInventorySession,
   registerInventoryObjects,
   saveInventoryDraft,
@@ -103,6 +104,8 @@ function stripExtension(fileName: string): string {
   const base = fileName.replace(/\.[^.]+$/, "").trim();
   return base || fileName.trim() || "Untitled";
 }
+
+const INVENTORY_MULTIPART_MIN_BYTES = 8 * 1024 * 1024;
 
 /** Pills for file/upload rows (tracks, extras, artwork) — shared look. */
 function fileRowStatusBadge(
@@ -467,6 +470,13 @@ export function UploadTracksPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [artworkFile, setArtworkFile] = useState<File | null>(null);
   const [artworkObjectId, setArtworkObjectId] = useState<string | null>(null);
+  /** Set when an inventory object is registered for the current cover file (batch or early upload). */
+  const [artworkUploadKind, setArtworkUploadKind] = useState<string | null>(
+    null,
+  );
+  /** True once bytes for `artworkObjectId` are on R2 (early upload or batch tail). */
+  const [artworkInventoryUploadDone, setArtworkInventoryUploadDone] =
+    useState(false);
 
   const [releaseTitle, setReleaseTitle] = useState("");
   const [collectionType, setCollectionType] =
@@ -517,6 +527,8 @@ export function UploadTracksPage() {
   const sessionIdRef = useRef<string | null>(null);
   const sessionInflightRef = useRef<Promise<string> | null>(null);
   const skipLeaveGuardRef = useRef(false);
+  const audioRowsRef = useRef<AudioRowState[]>([]);
+  const extraRowsRef = useRef<ExtraRowState[]>([]);
 
   const artworkPreviewUrl = useMemo(
     () => (artworkFile ? URL.createObjectURL(artworkFile) : null),
@@ -573,6 +585,14 @@ export function UploadTracksPage() {
   }, [sessionId]);
 
   useEffect(() => {
+    audioRowsRef.current = audioRows;
+  }, [audioRows]);
+
+  useEffect(() => {
+    extraRowsRef.current = extraRows;
+  }, [extraRows]);
+
+  useEffect(() => {
     if (!compositionPickerObjectId || !agent || !session) return;
     let cancelled = false;
     void (async () => {
@@ -621,6 +641,8 @@ export function UploadTracksPage() {
       if (!art) throw new Error("Artwork registration failed");
       await uploadFileToInventoryObject(art.objectId, file, art.uploadKind);
       setArtworkObjectId(art.objectId);
+      setArtworkUploadKind(art.uploadKind);
+      setArtworkInventoryUploadDone(true);
       setArtworkFile(file);
       return art.objectId;
     },
@@ -639,6 +661,8 @@ export function UploadTracksPage() {
     (f: File) => {
       setArtworkFile(f);
       setArtworkObjectId(null);
+      setArtworkUploadKind(null);
+      setArtworkInventoryUploadDone(false);
       if (audioRows.length > 0) {
         setArtworkUploadBusy(true);
         void (async () => {
@@ -646,9 +670,7 @@ export function UploadTracksPage() {
             await uploadArtworkFile(f);
             toast.success("Cover art saved to your upload session");
           } catch (e) {
-            toast.error(
-              e instanceof Error ? e.message : "Could not upload cover art",
-            );
+            toast.error(inventoryUserFacingError(e));
           } finally {
             setArtworkUploadBusy(false);
           }
@@ -665,9 +687,7 @@ export function UploadTracksPage() {
         try {
           await ensureSession();
         } catch (e) {
-          toast.error(
-            e instanceof Error ? e.message : "Could not start upload session",
-          );
+          toast.error(inventoryUserFacingError(e));
           return;
         }
         setStagedAudio((prev) => {
@@ -698,6 +718,12 @@ export function UploadTracksPage() {
     audioRows.length > 0 &&
     audioRows.every((r) => r.status === "done") &&
     extraRows.every((r) => r.status === "done");
+
+  const needsResumeUpload =
+    (audioRows.length > 0 || extraRows.length > 0) &&
+    (audioRows.some((r) => r.status !== "done") ||
+      extraRows.some((r) => r.status !== "done") ||
+      !!(artworkFile && artworkObjectId && !artworkInventoryUploadDone));
 
   const tracksMetaValid =
     uploadsComplete &&
@@ -803,6 +829,138 @@ export function UploadTracksPage() {
     setExtraRows((prev) => prev.filter((r) => r.objectId !== objectId));
   }, []);
 
+  const runInventoryUploads = useCallback(
+    async (opts: {
+      totalBytes: number;
+      nextAudio: AudioRowState[];
+      nextExtra: ExtraRowState[];
+      artwork: {
+        objectId: string;
+        uploadKind: string;
+        file: File;
+      } | null;
+    }) => {
+      const { totalBytes, nextAudio, nextExtra, artwork } = opts;
+      let doneBase = 0;
+      for (const r of [...nextAudio, ...nextExtra]) {
+        if (r.status === "done") doneBase += r.file.size;
+      }
+
+      const allMasters = [...nextAudio, ...nextExtra];
+      const uploadItemsTotal = allMasters.length + (artwork ? 1 : 0);
+
+      for (let i = 0; i < allMasters.length; i++) {
+        const row = allMasters[i]!;
+        if (row.status === "done") continue;
+
+        const itemIndex = i + 1;
+        if (i < nextAudio.length) {
+          const idx = i;
+          setAudioRows((prev) =>
+            prev.map((r, j) =>
+              j === idx
+                ? { ...r, status: "uploading" as const, error: undefined }
+                : r,
+            ),
+          );
+          try {
+            await uploadFileToInventoryObject(
+              row.objectId,
+              row.file,
+              row.uploadKind,
+              (pe) => {
+                setUploadBatchProgress({
+                  loaded: doneBase + pe.loaded,
+                  total: Math.max(1, totalBytes),
+                  label: row.file.name,
+                  itemIndex,
+                  itemTotal: uploadItemsTotal,
+                });
+              },
+            );
+            doneBase += row.file.size;
+            setAudioRows((prev) =>
+              prev.map((r, j) =>
+                j === idx
+                  ? { ...r, status: "done" as const, error: undefined }
+                  : r,
+              ),
+            );
+          } catch (err) {
+            const msg = inventoryUserFacingError(err);
+            setAudioRows((prev) =>
+              prev.map((r, j) =>
+                j === idx ? { ...r, status: "error" as const, error: msg } : r,
+              ),
+            );
+            throw err;
+          }
+        } else {
+          const idx = i - nextAudio.length;
+          setExtraRows((prev) =>
+            prev.map((r, j) =>
+              j === idx
+                ? { ...r, status: "uploading" as const, error: undefined }
+                : r,
+            ),
+          );
+          try {
+            await uploadFileToInventoryObject(
+              row.objectId,
+              row.file,
+              row.uploadKind,
+              (pe) => {
+                setUploadBatchProgress({
+                  loaded: doneBase + pe.loaded,
+                  total: Math.max(1, totalBytes),
+                  label: row.file.name,
+                  itemIndex,
+                  itemTotal: uploadItemsTotal,
+                });
+              },
+            );
+            doneBase += row.file.size;
+            setExtraRows((prev) =>
+              prev.map((r, j) =>
+                j === idx
+                  ? { ...r, status: "done" as const, error: undefined }
+                  : r,
+              ),
+            );
+          } catch (err) {
+            const msg = inventoryUserFacingError(err);
+            setExtraRows((prev) =>
+              prev.map((r, j) =>
+                j === idx ? { ...r, status: "error" as const, error: msg } : r,
+              ),
+            );
+            throw err;
+          }
+        }
+      }
+
+      if (artwork) {
+        const artItemIndex = allMasters.length + 1;
+        await uploadFileToInventoryObject(
+          artwork.objectId,
+          artwork.file,
+          artwork.uploadKind,
+          (pe) => {
+            setUploadBatchProgress({
+              loaded: doneBase + pe.loaded,
+              total: Math.max(1, totalBytes),
+              label: artwork.file.name,
+              itemIndex: artItemIndex,
+              itemTotal: uploadItemsTotal,
+            });
+          },
+        );
+        setArtworkInventoryUploadDone(true);
+      }
+    },
+    [],
+  );
+
   const registerAndUploadAll = useCallback(async () => {
     if (!session?.did) {
       toast.error("Sign in to upload");
@@ -824,7 +982,6 @@ export function UploadTracksPage() {
       total: Math.max(1, totalBytes),
       label: "Preparing upload…",
     });
-    let doneBase = 0;
     try {
       setUploadBatchProgress({
         loaded: 0,
@@ -870,6 +1027,10 @@ export function UploadTracksPage() {
           ? reg.objects[nAudio + nExtra]
           : null;
       setArtworkObjectId((prev) => artReg?.objectId ?? prev);
+      if (artReg) {
+        setArtworkUploadKind(artReg.uploadKind);
+        setArtworkInventoryUploadDone(false);
+      }
 
       const nextAudio: AudioRowState[] = audioFiles.map((file, i) => {
         const meta = stagedAudio[i]?.meta;
@@ -909,121 +1070,226 @@ export function UploadTracksPage() {
       setStagedAudio([]);
       setStagedExtra([]);
 
-      const allMasters = [...nextAudio, ...nextExtra];
-      const uploadItemsTotal = allMasters.length + (artReg ? 1 : 0);
-      for (let i = 0; i < allMasters.length; i++) {
-        const row = allMasters[i]!;
-        const itemIndex = i + 1;
-        if (i < nextAudio.length) {
-          const idx = i;
-          setAudioRows((prev) =>
-            prev.map((r, j) =>
-              j === idx ? { ...r, status: "uploading" as const } : r,
-            ),
-          );
-          try {
-            await uploadFileToInventoryObject(
-              row.objectId,
-              row.file,
-              row.uploadKind,
-              (pe) => {
-                setUploadBatchProgress({
-                  loaded: doneBase + pe.loaded,
-                  total: Math.max(1, totalBytes),
-                  label: row.file.name,
-                  itemIndex,
-                  itemTotal: uploadItemsTotal,
-                });
-              },
-            );
-            doneBase += row.file.size;
-            setAudioRows((prev) =>
-              prev.map((r, j) =>
-                j === idx ? { ...r, status: "done" as const } : r,
-              ),
-            );
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            setAudioRows((prev) =>
-              prev.map((r, j) =>
-                j === idx ? { ...r, status: "error" as const, error: msg } : r,
-              ),
-            );
-            throw err;
-          }
-        } else {
-          const idx = i - nextAudio.length;
-          setExtraRows((prev) =>
-            prev.map((r, j) =>
-              j === idx ? { ...r, status: "uploading" as const } : r,
-            ),
-          );
-          try {
-            await uploadFileToInventoryObject(
-              row.objectId,
-              row.file,
-              row.uploadKind,
-              (pe) => {
-                setUploadBatchProgress({
-                  loaded: doneBase + pe.loaded,
-                  total: Math.max(1, totalBytes),
-                  label: row.file.name,
-                  itemIndex,
-                  itemTotal: uploadItemsTotal,
-                });
-              },
-            );
-            doneBase += row.file.size;
-            setExtraRows((prev) =>
-              prev.map((r, j) =>
-                j === idx ? { ...r, status: "done" as const } : r,
-              ),
-            );
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            setExtraRows((prev) =>
-              prev.map((r, j) =>
-                j === idx ? { ...r, status: "error" as const, error: msg } : r,
-              ),
-            );
-            throw err;
-          }
-        }
-      }
+      const artworkTarget =
+        artworkFile && artReg
+          ? {
+              objectId: artReg.objectId,
+              uploadKind: artReg.uploadKind,
+              file: artworkFile,
+            }
+          : artworkFile &&
+              artworkObjectId &&
+              !artworkInventoryUploadDone
+            ? {
+                objectId: artworkObjectId,
+                uploadKind:
+                  artworkUploadKind ??
+                  (artworkFile.size >= INVENTORY_MULTIPART_MIN_BYTES
+                    ? "multipart"
+                    : "single_put"),
+                file: artworkFile,
+              }
+            : null;
 
-      if (artworkFile && artReg) {
-        const artItemIndex = allMasters.length + 1;
-        await uploadFileToInventoryObject(
-          artReg.objectId,
-          artworkFile,
-          artReg.uploadKind,
-          (pe) => {
-            setUploadBatchProgress({
-              loaded: doneBase + pe.loaded,
-              total: Math.max(1, totalBytes),
-              label: artworkFile.name,
-              itemIndex: artItemIndex,
-              itemTotal: uploadItemsTotal,
-            });
-          },
-        );
-      }
+      await runInventoryUploads({
+        totalBytes,
+        nextAudio,
+        nextExtra,
+        artwork: artworkTarget,
+      });
 
       toast.success("Files uploaded — continue to license.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Upload failed");
+      toast.error(inventoryUserFacingError(e));
     } finally {
       setUploadBatchProgress(null);
       setBusy(false);
     }
   }, [
     ensureSession,
+    runInventoryUploads,
     stagedAudio,
     stagedExtra,
     artworkFile,
     artworkObjectId,
+    artworkUploadKind,
+    artworkInventoryUploadDone,
     session,
   ]);
+
+  const resumeInventoryUploads = useCallback(async () => {
+    if (!session?.did) {
+      toast.error("Sign in to upload");
+      return;
+    }
+    const snapA = audioRowsRef.current;
+    const snapE = extraRowsRef.current;
+    if (snapA.length === 0 && snapE.length === 0) return;
+
+    let totalNeed = 0;
+    for (const r of [...snapA, ...snapE]) {
+      if (r.status !== "done") totalNeed += r.file.size;
+    }
+    const artNeed =
+      artworkFile && artworkObjectId && !artworkInventoryUploadDone
+        ? artworkFile.size
+        : 0;
+    const totalBytes = Math.max(1, totalNeed + artNeed);
+
+    setBusy(true);
+    setUploadBatchProgress({
+      loaded: 0,
+      total: totalBytes,
+      label: "Resuming upload…",
+    });
+    try {
+      await ensureSession();
+      const artworkTarget =
+        artworkFile &&
+        artworkObjectId &&
+        !artworkInventoryUploadDone
+          ? {
+              objectId: artworkObjectId,
+              uploadKind:
+                artworkUploadKind ??
+                (artworkFile.size >= INVENTORY_MULTIPART_MIN_BYTES
+                  ? "multipart"
+                  : "single_put"),
+              file: artworkFile,
+            }
+          : null;
+
+      await runInventoryUploads({
+        totalBytes,
+        nextAudio: snapA,
+        nextExtra: snapE,
+        artwork: artworkTarget,
+      });
+
+      toast.success("Files uploaded — continue to license.");
+    } catch (e) {
+      toast.error(inventoryUserFacingError(e));
+    } finally {
+      setUploadBatchProgress(null);
+      setBusy(false);
+    }
+  }, [
+    session?.did,
+    ensureSession,
+    runInventoryUploads,
+    artworkFile,
+    artworkObjectId,
+    artworkUploadKind,
+    artworkInventoryUploadDone,
+  ]);
+
+  const retryOneAudioUpload = useCallback(async (objectId: string) => {
+    const row = audioRowsRef.current.find((r) => r.objectId === objectId);
+    if (!row || row.status !== "error") return;
+    setBusy(true);
+    const totalBytes = Math.max(1, row.file.size);
+    setUploadBatchProgress({
+      loaded: 0,
+      total: totalBytes,
+      label: row.file.name,
+    });
+    try {
+      setAudioRows((prev) =>
+        prev.map((r) =>
+          r.objectId === objectId
+            ? { ...r, status: "uploading" as const, error: undefined }
+            : r,
+        ),
+      );
+      await uploadFileToInventoryObject(
+        row.objectId,
+        row.file,
+        row.uploadKind,
+        (pe) => {
+          setUploadBatchProgress({
+            loaded: pe.loaded,
+            total: Math.max(1, totalBytes),
+            label: row.file.name,
+          });
+        },
+      );
+      setAudioRows((prev) =>
+        prev.map((r) =>
+          r.objectId === objectId
+            ? { ...r, status: "done" as const, error: undefined }
+            : r,
+        ),
+      );
+      toast.success(`Uploaded: ${row.file.name}`);
+    } catch (e) {
+      const msg = inventoryUserFacingError(e);
+      setAudioRows((prev) =>
+        prev.map((r) =>
+          r.objectId === objectId
+            ? { ...r, status: "error" as const, error: msg }
+            : r,
+        ),
+      );
+      toast.error(msg);
+    } finally {
+      setUploadBatchProgress(null);
+      setBusy(false);
+    }
+  }, []);
+
+  const retryOneExtraUpload = useCallback(async (objectId: string) => {
+    const row = extraRowsRef.current.find((r) => r.objectId === objectId);
+    if (!row || row.status !== "error") return;
+    setBusy(true);
+    const totalBytes = Math.max(1, row.file.size);
+    setUploadBatchProgress({
+      loaded: 0,
+      total: totalBytes,
+      label: row.file.name,
+    });
+    try {
+      setExtraRows((prev) =>
+        prev.map((r) =>
+          r.objectId === objectId
+            ? { ...r, status: "uploading" as const, error: undefined }
+            : r,
+        ),
+      );
+      await uploadFileToInventoryObject(
+        row.objectId,
+        row.file,
+        row.uploadKind,
+        (pe) => {
+          setUploadBatchProgress({
+            loaded: pe.loaded,
+            total: Math.max(1, totalBytes),
+            label: row.file.name,
+          });
+        },
+      );
+      setExtraRows((prev) =>
+        prev.map((r) =>
+          r.objectId === objectId
+            ? { ...r, status: "done" as const, error: undefined }
+            : r,
+        ),
+      );
+      toast.success(`Uploaded: ${row.file.name}`);
+    } catch (e) {
+      const msg = inventoryUserFacingError(e);
+      setExtraRows((prev) =>
+        prev.map((r) =>
+          r.objectId === objectId
+            ? { ...r, status: "error" as const, error: msg }
+            : r,
+        ),
+      );
+      toast.error(msg);
+    } finally {
+      setUploadBatchProgress(null);
+      setBusy(false);
+    }
+  }, []);
 
   const resolveLicense = useCallback(async (): Promise<{
     uri: string;
@@ -1145,7 +1411,7 @@ export function UploadTracksPage() {
       skipLeaveGuardRef.current = true;
       navigate("/merchant/listings?source=upload");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Publish failed");
+      toast.error(inventoryUserFacingError(e));
     } finally {
       setBusy(false);
     }
@@ -1404,6 +1670,8 @@ export function UploadTracksPage() {
                         onClick={() => {
                           setArtworkFile(null);
                           setArtworkObjectId(null);
+                          setArtworkUploadKind(null);
+                          setArtworkInventoryUploadDone(false);
                         }}
                       >
                         Remove artwork
@@ -1595,6 +1863,18 @@ export function UploadTracksPage() {
                             >
                               {uploadBadge.text}
                             </span>
+                            {r.status === "error" ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8"
+                                disabled={busy}
+                                onClick={() => void retryOneAudioUpload(r.objectId)}
+                              >
+                                Retry
+                              </Button>
+                            ) : null}
                             <Button
                               type="button"
                               variant="ghost"
@@ -2856,6 +3136,8 @@ export function UploadTracksPage() {
                           onClick={() => {
                             setArtworkFile(null);
                             setArtworkObjectId(null);
+                            setArtworkUploadKind(null);
+                            setArtworkInventoryUploadDone(false);
                           }}
                         >
                           Remove
@@ -3065,6 +3347,18 @@ export function UploadTracksPage() {
                             >
                               {uploadBadge.text}
                             </span>
+                            {r.status === "error" ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8"
+                                disabled={busy}
+                                onClick={() => void retryOneExtraUpload(r.objectId)}
+                              >
+                                Retry
+                              </Button>
+                            ) : null}
                             <Button
                               type="button"
                               variant="ghost"
@@ -3204,17 +3498,28 @@ export function UploadTracksPage() {
             ) : null}
           </section>
 
-          {audioRows.length === 0 ? (
-            <Button
-              type="button"
-              disabled={
-                busy || stagedAudio.length === 0 || audioRows.length > 0
-              }
-              onClick={() => void registerAndUploadAll()}
-            >
-              Upload files to storage
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {audioRows.length === 0 ? (
+              <Button
+                type="button"
+                disabled={
+                  busy || stagedAudio.length === 0 || audioRows.length > 0
+                }
+                onClick={() => void registerAndUploadAll()}
+              >
+                Upload files to storage
+              </Button>
+            ) : needsResumeUpload ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => void resumeInventoryUploads()}
+              >
+                Resume upload
+              </Button>
+            ) : null}
+          </div>
 
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(1)}>

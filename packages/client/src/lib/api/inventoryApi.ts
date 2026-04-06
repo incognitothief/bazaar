@@ -1,5 +1,56 @@
 import { browserApiUrl } from "@/lib/browserApi";
 
+function looksLikeHtml(s: string): boolean {
+  const t = s.trimStart().slice(0, 64).toLowerCase();
+  return t.startsWith("<!doctype") || t.startsWith("<html");
+}
+
+/**
+ * Human-readable, non-empty message for failed inventory HTTP responses
+ * (empty Fly/proxy bodies, HTML error pages, JSON `{ error, message }`).
+ */
+export async function inventoryHttpErrorMessage(res: Response): Promise<string> {
+  const text = await res.text();
+  const status = res.status;
+  const statusText = res.statusText || "Error";
+  if (text) {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        const j = JSON.parse(trimmed) as Record<string, unknown>;
+        const msg = j.message;
+        const err = j.error;
+        const parts: string[] = [];
+        if (typeof err === "string" && err) parts.push(err);
+        if (typeof msg === "string" && msg) parts.push(msg);
+        if (parts.length) return parts.join(": ");
+      } catch {
+        /* fall through */
+      }
+    }
+    if (!looksLikeHtml(trimmed) && trimmed.length > 0) {
+      return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed;
+    }
+  }
+  let base = `HTTP ${status} ${statusText}`;
+  if (status === 502 || status === 503)
+    base += " (server error — try again)";
+  return base;
+}
+
+/** Safe string for toasts / row errors when catching inventory upload failures. */
+export function inventoryUserFacingError(e: unknown): string {
+  if (e instanceof Error) {
+    const m = e.message.trim();
+    if (m) return m;
+  }
+  if (typeof e === "string") {
+    const m = e.trim();
+    if (m) return m;
+  }
+  return "Something went wrong";
+}
+
 async function invFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (
@@ -23,7 +74,7 @@ export async function createInventorySession(inventoryKind = "digital"): Promise
     method: "POST",
     body: JSON.stringify({ inventoryKind }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{ sessionId: string }>;
 }
 
@@ -49,7 +100,7 @@ export async function registerInventoryObjects(
     method: "POST",
     body: JSON.stringify({ objects }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{
     objects: Array<{
       objectId: string;
@@ -70,7 +121,7 @@ export async function uploadInventorySingle(
     method: "POST",
     body: fd,
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{
     fileChecksum: string;
     fileCid: string;
@@ -82,7 +133,7 @@ export async function multipartInit(objectId: string): Promise<{ uploadId: strin
   const res = await invFetch(`/objects/${objectId}/multipart/init`, {
     method: "POST",
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{ uploadId: string }>;
 }
 
@@ -95,7 +146,7 @@ export async function multipartPartUrl(
     method: "POST",
     body: JSON.stringify({ partNumber }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{ url: string }>;
 }
 
@@ -129,7 +180,7 @@ export async function multipartUploadPart(
     },
     body,
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{ partNumber: number; etag: string }>;
 }
 
@@ -141,7 +192,7 @@ export async function multipartComplete(
     method: "POST",
     body: JSON.stringify({ parts }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{
     fileChecksum: string;
     fileCid: string;
@@ -154,7 +205,7 @@ export async function saveInventoryDraft(sessionId: string, draft: unknown): Pro
     method: "PUT",
     body: JSON.stringify({ draft }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
 }
 
 export type PublishInventorySnapshot = {
@@ -168,7 +219,7 @@ export async function publishInventorySession(
   const res = await invFetch(`/sessions/${sessionId}/publish`, {
     method: "POST",
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<PublishInventorySnapshot>;
 }
 
@@ -188,7 +239,7 @@ export async function fetchLatestInventoryPrefill(): Promise<{
   createdAt?: string | null;
 }> {
   const res = await invFetch("/prefill/latest");
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{
     prefill: InventoryPrefillPayload | null;
     id?: string;

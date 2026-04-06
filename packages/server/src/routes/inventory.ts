@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import {
+  AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CopyObjectCommand,
   CreateMultipartUploadCommand,
@@ -287,7 +288,16 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ error: "forbidden" }, 403);
     if (obj.uploadKind !== "single_put")
       return c.json({ error: "use_multipart" }, 400);
-    if (obj.status === "completed") return c.json({ error: "already_completed" }, 400);
+    if (obj.status === "completed") {
+      if (!obj.fileChecksum || !obj.fileCid)
+        return c.json({ error: "already_completed_inconsistent" }, 500);
+      return c.json({
+        fileChecksum: obj.fileChecksum,
+        fileCid: obj.fileCid,
+        fileFormat: obj.contentType || "application/octet-stream",
+        r2Key: obj.r2Key,
+      });
+    }
 
     const form = await c.req.formData();
     const file = form.get("file");
@@ -386,6 +396,22 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ error: "forbidden" }, 403);
     if (obj.uploadKind !== "multipart")
       return c.json({ error: "not_multipart" }, 400);
+
+    if (obj.s3UploadId && obj.status !== "completed") {
+      try {
+        await client.send(
+          new AbortMultipartUploadCommand({
+            Bucket: cfg.bucket,
+            Key: obj.r2Key,
+            UploadId: obj.s3UploadId,
+          }),
+        );
+      } catch (e) {
+        const name = e instanceof Error ? e.name : "Error";
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn("inventory multipart init abort prior upload:", name, msg);
+      }
+    }
 
     const ct = obj.contentType || "application/octet-stream";
     const created = await client.send(
@@ -530,61 +556,117 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       .where(eq(inventoryUploadSession.id, obj.sessionId));
     if (!session || session.merchantDid !== sess.did)
       return c.json({ error: "forbidden" }, 403);
-    if (!obj.s3UploadId) return c.json({ error: "multipart_not_init" }, 400);
 
-    const sorted = [...body.parts].sort((a, b) => a.partNumber - b.partNumber);
-    await client.send(
-      new CompleteMultipartUploadCommand({
-        Bucket: cfg.bucket,
-        Key: obj.r2Key,
-        UploadId: obj.s3UploadId,
-        MultipartUpload: {
-          Parts: sorted.map((p) => ({
-            PartNumber: p.partNumber,
-            ETag: p.etag,
-          })),
-        },
-      }),
-    );
-
-    const getObj = await client.send(
-      new GetObjectCommand({ Bucket: cfg.bucket, Key: obj.r2Key }),
-    );
-    const bodyStream = getObj.Body;
-    if (!bodyStream || typeof (bodyStream as { transformToByteArray?: unknown }).transformToByteArray !== "function") {
-      return c.json({ error: "get_object_failed" }, 500);
-    }
-    const bytes = await (bodyStream as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
-    const digest = createHash("sha256").update(Buffer.from(bytes)).digest();
-    const fileChecksum = digest.toString("hex");
-    const fileCid = cidFromSha256Digest32(new Uint8Array(digest));
-    const fileFormat = obj.contentType || "application/octet-stream";
-
-    await db.delete(inventoryUploadPart).where(eq(inventoryUploadPart.objectId, objectId));
-    for (const p of sorted) {
-      await db.insert(inventoryUploadPart).values({
-        objectId,
-        partNumber: p.partNumber,
-        etag: p.etag,
+    if (
+      obj.status === "completed" &&
+      obj.fileChecksum &&
+      obj.fileCid
+    ) {
+      return c.json({
+        fileChecksum: obj.fileChecksum,
+        fileCid: obj.fileCid,
+        fileFormat: obj.contentType || "application/octet-stream",
+        r2Key: obj.r2Key,
       });
     }
 
-    await db
-      .update(inventoryUploadObject)
-      .set({
-        status: "completed",
-        fileChecksum,
-        fileCid,
-        error: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(inventoryUploadObject.id, objectId));
-    await db
-      .update(inventoryUploadSession)
-      .set({ updatedAt: new Date() })
-      .where(eq(inventoryUploadSession.id, obj.sessionId));
+    if (!obj.s3UploadId) return c.json({ error: "multipart_not_init" }, 400);
 
-    return c.json({ fileChecksum, fileCid, fileFormat, r2Key: obj.r2Key });
+    const sorted = [...body.parts].sort((a, b) => a.partNumber - b.partNumber);
+
+    try {
+      await client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: cfg.bucket,
+          Key: obj.r2Key,
+          UploadId: obj.s3UploadId,
+          MultipartUpload: {
+            Parts: sorted.map((p) => ({
+              PartNumber: p.partNumber,
+              ETag: p.etag,
+            })),
+          },
+        }),
+      );
+
+      const getObj = await client.send(
+        new GetObjectCommand({ Bucket: cfg.bucket, Key: obj.r2Key }),
+      );
+      const bodyStream = getObj.Body;
+      if (
+        !bodyStream ||
+        typeof (bodyStream as { transformToByteArray?: unknown }).transformToByteArray !==
+          "function"
+      ) {
+        const short = "Could not read object from storage after upload";
+        await db
+          .update(inventoryUploadObject)
+          .set({
+            status: "failed",
+            error: short,
+            updatedAt: new Date(),
+          })
+          .where(eq(inventoryUploadObject.id, objectId));
+        return c.json(
+          { error: "multipart_complete_failed", message: short },
+          500,
+        );
+      }
+      const bytes = await (
+        bodyStream as { transformToByteArray: () => Promise<Uint8Array> }
+      ).transformToByteArray();
+      const digest = createHash("sha256").update(Buffer.from(bytes)).digest();
+      const fileChecksum = digest.toString("hex");
+      const fileCid = cidFromSha256Digest32(new Uint8Array(digest));
+      const fileFormat = obj.contentType || "application/octet-stream";
+
+      await db.delete(inventoryUploadPart).where(eq(inventoryUploadPart.objectId, objectId));
+      for (const p of sorted) {
+        await db.insert(inventoryUploadPart).values({
+          objectId,
+          partNumber: p.partNumber,
+          etag: p.etag,
+        });
+      }
+
+      await db
+        .update(inventoryUploadObject)
+        .set({
+          status: "completed",
+          fileChecksum,
+          fileCid,
+          error: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(inventoryUploadObject.id, objectId));
+      await db
+        .update(inventoryUploadSession)
+        .set({ updatedAt: new Date() })
+        .where(eq(inventoryUploadSession.id, obj.sessionId));
+
+      return c.json({ fileChecksum, fileCid, fileFormat, r2Key: obj.r2Key });
+    } catch (e) {
+      const name = e instanceof Error ? e.name : "Error";
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("inventory multipart complete:", name, msg, objectId);
+      const short =
+        msg && msg.length < 400 ? `${name}: ${msg}` : `${name} (see server logs)`;
+      await db
+        .update(inventoryUploadObject)
+        .set({
+          status: "failed",
+          error: short,
+          updatedAt: new Date(),
+        })
+        .where(eq(inventoryUploadObject.id, objectId));
+      return c.json(
+        {
+          error: "multipart_complete_failed",
+          message: short || "Multipart complete failed",
+        },
+        502,
+      );
+    }
   });
 
   r.put("/sessions/:sessionId/draft", async (c) => {
