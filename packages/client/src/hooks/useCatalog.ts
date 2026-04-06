@@ -3,14 +3,17 @@ import {
   listCollectionRows,
   listDigitalItemRows,
   listListingRows,
+  listPhysicalItemRows,
   type ListingRow,
 } from "@/lib/atproto/records";
+import { sortCatalogEntriesByRelease } from "@/lib/catalogSort";
 import { createPublicAgent } from "@/lib/atproto/session";
-import type { Collection, DigitalItem, Listing } from "@/types/lexicons";
+import type { Collection, DigitalItem, Listing, PhysicalItem } from "@/types/lexicons";
 
 export type CatalogEntry =
   | { uri: string; cid: string; item: DigitalItem }
-  | { uri: string; cid: string; item: Collection };
+  | { uri: string; cid: string; item: Collection }
+  | { uri: string; cid: string; item: PhysicalItem };
 
 export type CatalogState = {
   entries: CatalogEntry[];
@@ -53,11 +56,13 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
     setError(null);
     try {
       const agent = createPublicAgent();
-      const [digitalRows, collectionRows, listings] = await Promise.all([
-        listDigitalItemRows(agent, artistDid),
-        listCollectionRows(agent, artistDid),
-        listListingRows(agent, artistDid),
-      ]);
+      const [digitalRows, collectionRows, physicalRows, listings] =
+        await Promise.all([
+          listDigitalItemRows(agent, artistDid),
+          listCollectionRows(agent, artistDid),
+          listPhysicalItemRows(agent, artistDid),
+          listListingRows(agent, artistDid),
+        ]);
       const byItem = indexActiveListings(listings);
       const merged: CatalogEntry[] = [
         ...digitalRows.map((r) => ({
@@ -70,10 +75,15 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
           cid: r.cid,
           item: r.item,
         })),
+        ...physicalRows.map((r) => ({
+          uri: r.uri,
+          cid: r.cid,
+          item: r.item,
+        })),
       ];
       setListingRows(listings);
       setListingsByItemUri(byItem);
-      setEntries(merged);
+      setEntries(sortCatalogEntriesByRelease(merged));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load catalog");
       setEntries([]);

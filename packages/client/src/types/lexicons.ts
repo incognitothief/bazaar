@@ -98,6 +98,29 @@ export type Composition = {
   createdAt: string;
 };
 
+export type PhysicalItem = {
+  $type: "diamonds.whereditgo.bazaar.catalog.item.physical";
+  title: string;
+  artistDid: string;
+  itemClass:
+    | "clothing"
+    | "vinyl"
+    | "cd"
+    | "cassette"
+    | "poster"
+    | "print"
+    | "accessory"
+    | "hardGood"
+    | "other";
+  description?: string;
+  variants: Variant[];
+  artworkCid?: string;
+  countryOfOrigin?: string;
+  harmonizedCode?: string;
+  requiresShipping?: boolean;
+  createdAt: string;
+};
+
 export type DigitalItem = {
   $type: "diamonds.whereditgo.bazaar.catalog.item.digital";
   title: string;
@@ -317,7 +340,7 @@ export type ActorMerchant = {
   createdAt: string;
 };
 
-export type CatalogItem = DigitalItem | Collection;
+export type CatalogItem = DigitalItem | Collection | PhysicalItem;
 
 export type CompletenessScore = {
   score: number;

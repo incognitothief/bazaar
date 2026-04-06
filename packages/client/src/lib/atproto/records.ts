@@ -16,6 +16,7 @@ import type {
   ItemRef,
   LicenseTerms,
   Listing,
+  PhysicalItem,
   PurchaseConsent,
   PurchaseReceipt,
   Recording,
@@ -189,6 +190,15 @@ function isDigitalItem(v: unknown): v is DigitalItem {
   );
 }
 
+function isPhysicalItem(v: unknown): v is PhysicalItem {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as PhysicalItem).$type ===
+      "diamonds.whereditgo.bazaar.catalog.item.physical"
+  );
+}
+
 function isRecording(v: unknown): v is Recording {
   return (
     typeof v === "object" &&
@@ -341,6 +351,7 @@ export async function listPurchaseConsentRows(
 }
 
 export type DigitalItemRow = { uri: string; cid: string; item: DigitalItem };
+export type PhysicalItemRow = { uri: string; cid: string; item: PhysicalItem };
 export type CollectionRow = { uri: string; cid: string; item: Collection };
 
 export async function listDigitalItemRows(
@@ -358,6 +369,24 @@ export async function listDigitalItemRows(
       uri: r.uri,
       cid: r.cid,
       item: r.value as DigitalItem,
+    }));
+}
+
+export async function listPhysicalItemRows(
+  agent: ATPRepoClient,
+  did: string,
+): Promise<PhysicalItemRow[]> {
+  const res = (await agent.com.atproto.repo.listRecords({
+    repo: did,
+    collection: BAZAAR_COLLECTION.physicalItem,
+    limit: 100,
+  })) as ListRecordsResponse;
+  return res.data.records
+    .filter((r) => isPhysicalItem(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      item: r.value as PhysicalItem,
     }));
 }
 
