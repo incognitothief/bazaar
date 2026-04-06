@@ -471,7 +471,10 @@ export function ItemDetailPage() {
       <section className="flex flex-wrap gap-2" aria-label="Metadata">
         {"releaseDate" in item && item.releaseDate ? (
           <MetadataChip>
-            Released: {new Date(item.releaseDate).toLocaleDateString()}
+            Released:{" "}
+            {new Date(item.releaseDate).toLocaleDateString("en-US", {
+              timeZone: "UTC",
+            })}
           </MetadataChip>
         ) : null}
         {"durationMs" in item && item.durationMs ? (
