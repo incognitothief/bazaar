@@ -6,7 +6,10 @@ import {
   catalogDummyEnabled,
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
-import { InventoryGrid, InventoryGridSkeleton } from "@/components/public/InventoryGrid";
+import {
+  InventoryGrid,
+  InventoryGridSkeleton,
+} from "@/components/public/InventoryGrid";
 import { useActorMerchantProfile } from "@/hooks/useActorMerchantProfile";
 import { useCatalog } from "@/hooks/useCatalog";
 import type { CatalogEntry } from "@/hooks/useCatalog";
@@ -17,10 +20,8 @@ const DEFAULT_STOREFRONT_DESCRIPTION =
 
 export function HomePage() {
   const artistDid = import.meta.env.VITE_ARTIST_DID;
-  const {
-    profile: merchantProfile,
-    loading: merchantProfileLoading,
-  } = useActorMerchantProfile(artistDid);
+  const { profile: merchantProfile, loading: merchantProfileLoading } =
+    useActorMerchantProfile(artistDid);
   const { entries, listingsByItemUri, loading, error } = useCatalog(artistDid);
   const agent = createPublicAgent();
 
@@ -33,7 +34,8 @@ export function HomePage() {
   const hasActive = entries.some((e) => listingsByItemUri[e.uri]);
 
   const dummyItemUri = useMemo(
-    () => (artistDid?.startsWith("did:") ? resolveDummyItemAtUri(artistDid) : null),
+    () =>
+      artistDid?.startsWith("did:") ? resolveDummyItemAtUri(artistDid) : null,
     [artistDid],
   );
   const showStorefrontDummy =
@@ -106,14 +108,11 @@ export function HomePage() {
         </p>
       ) : !hasActive && !showStorefrontDummy ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center text-muted-foreground">
-          <p className="font-medium text-foreground">Coming soon — check back soon</p>
+          <p className="font-medium text-foreground">
+            Coming soon — check back later
+          </p>
           <p className="mt-2 text-sm">
             No active listings for this artist yet.
-          </p>
-          <p className="mt-3 text-xs">
-            In dev, run <code className="text-foreground">npm run dev</code> or set{" "}
-            <code className="text-foreground">VITE_SHOW_LISTINGS_DUMMY=true</code>{" "}
-            to show a preview card.
           </p>
         </div>
       ) : (
@@ -122,8 +121,8 @@ export function HomePage() {
             <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
               Preview-only item: not on your PDS. For test checkout without real
               listings, set{" "}
-              <code className="text-xs">BAZAAR_DEV_CHECKOUT_STUB=true</code> on the
-              server; otherwise publish real catalog records. Optional:{" "}
+              <code className="text-xs">BAZAAR_DEV_CHECKOUT_STUB=true</code> on
+              the server; otherwise publish real catalog records. Optional:{" "}
               <code className="text-xs">VITE_DEV_DUMMY_ITEM_URI</code>.
             </p>
           ) : null}
