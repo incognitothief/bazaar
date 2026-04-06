@@ -13,7 +13,10 @@ import type { Db } from "../db";
 import { getAgent } from "../lib/atproto/client";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { storefrontWebOrigin } from "../lib/atproto/oauth-url";
-import { fulfillCheckoutSession } from "../lib/stripe/fulfillCheckoutSession";
+import {
+  fulfillCheckoutSession,
+  parentListingAllowsSale,
+} from "../lib/stripe/fulfillCheckoutSession";
 import { getStripe } from "../lib/stripe/getStripe";
 import {
   resolveStripeWebhookSecret,
@@ -121,6 +124,13 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     const st = listing.status as string | undefined;
     if (st && st !== "active") {
       return c.json({ error: "Listing is not active" }, 400);
+    }
+    const parentListingUri = listing.parentListing as string | undefined;
+    if (typeof parentListingUri === "string" && parentListingUri.length > 0) {
+      const parentOk = await parentListingAllowsSale(parentListingUri);
+      if (!parentOk) {
+        return c.json({ error: "Parent collection listing is not active" }, 400);
+      }
     }
     let item = await getRecordJson(itemUri);
     if (

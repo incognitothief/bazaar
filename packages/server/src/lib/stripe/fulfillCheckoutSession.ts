@@ -45,6 +45,62 @@ function trimError(e: unknown): string {
   return raw.length > LAST_ERROR_CAP ? `${raw.slice(0, LAST_ERROR_CAP)}…` : raw;
 }
 
+/**
+ * Idempotent fulfillment: client /fulfill-session and the Stripe webhook can run concurrently;
+ * both may pass the DB claim while status is receipt_written with consentUri still null.
+ */
+async function findBuyerReceiptByPaymentRef(
+  agent: Agent,
+  buyerDid: string,
+  paymentRef: string,
+): Promise<{ uri: string; cid: string } | null> {
+  let cursor: string | undefined;
+  for (;;) {
+    const res = await agent.com.atproto.repo.listRecords({
+      repo: buyerDid,
+      collection: COL_RECEIPT,
+      limit: 100,
+      cursor,
+    });
+    for (const row of res.data.records) {
+      const v = row.value as { paymentRef?: string };
+      if (v?.paymentRef === paymentRef && row.uri) {
+        return { uri: row.uri, cid: row.cid };
+      }
+    }
+    const cur = res.data.cursor as string | undefined;
+    if (!cur) break;
+    cursor = cur;
+  }
+  return null;
+}
+
+async function findBuyerConsentByReceiptUri(
+  agent: Agent,
+  buyerDid: string,
+  receiptUri: string,
+): Promise<{ uri: string } | null> {
+  let cursor: string | undefined;
+  for (;;) {
+    const res = await agent.com.atproto.repo.listRecords({
+      repo: buyerDid,
+      collection: COL_CONSENT,
+      limit: 100,
+      cursor,
+    });
+    for (const row of res.data.records) {
+      const v = row.value as { receiptUri?: string };
+      if (v?.receiptUri === receiptUri && row.uri) {
+        return { uri: row.uri };
+      }
+    }
+    const cur = res.data.cursor as string | undefined;
+    if (!cur) break;
+    cursor = cur;
+  }
+  return null;
+}
+
 async function getRecordJson(uri: string): Promise<Record<string, unknown> | null> {
   try {
     const at = new AtUri(uri);
@@ -93,6 +149,28 @@ function listingHasV5License(listing: Record<string, unknown>): boolean {
     typeof licCid === "string" &&
     licCid.length > 0
   );
+}
+
+/** Child singles require an active parent collection listing when parentListing is set. */
+export async function parentListingAllowsSale(
+  parentListingUri: string,
+): Promise<boolean> {
+  if (isDevStubListingUri(parentListingUri)) return true;
+  try {
+    const at = new AtUri(parentListingUri);
+    if (!at.rkey) return false;
+    const agent = getAgent();
+    const res = await agent.com.atproto.repo.getRecord({
+      repo: at.hostname,
+      collection: at.collection,
+      rkey: at.rkey,
+    });
+    const parent = res.data.value as Record<string, unknown>;
+    const st = parent.status as string | undefined;
+    return st === "active";
+  } catch {
+    return false;
+  }
 }
 
 async function persistReceiptMeta(
@@ -398,6 +476,15 @@ export async function fulfillCheckoutSession(opts: {
     await markDeadLetter(db, paymentRef, "listing_not_active");
     return;
   }
+  const parentListingUri = listing.parentListing as string | undefined;
+  if (typeof parentListingUri === "string" && parentListingUri.length > 0) {
+    const parentOk = await parentListingAllowsSale(parentListingUri);
+    if (!parentOk) {
+      console.warn("Parent listing not active:", parentListingUri);
+      await markDeadLetter(db, paymentRef, "listing_parent_not_active");
+      return;
+    }
+  }
   if (!listingHasV5License(listing)) {
     console.warn("Listing missing license fields:", listingUri);
     await markDeadLetter(db, paymentRef, "listing_missing_license");
@@ -571,42 +658,65 @@ export async function fulfillCheckoutSession(opts: {
   const writeAgent = new Agent(buyerSession);
 
   if (!receiptUri) {
-    try {
-      const created = await writeAgent.com.atproto.repo.createRecord({
-        repo: buyerDid,
-        collection: COL_RECEIPT,
-        record: receiptRecord,
-      });
-      receiptUri = created.data.uri;
-      const rcid = created.data.cid;
-      receiptCidStr = typeof rcid === "string" ? rcid : String(rcid);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      receiptPayload.pdsError = `receipt createRecord failed: ${msg}`;
-      console.error(receiptPayload.pdsError);
-      await persistReceiptMeta(db, paymentRef, receiptPayload);
-      const ac = (await readFulfillmentRow(db, paymentRef))?.attemptCount ?? 1;
-      if (isRetryableFulfillmentError(e)) {
-        await markFailedRetryable(db, paymentRef, ac, trimError(e));
-      } else {
-        await markDeadLetter(db, paymentRef, trimError(e));
+    const preExisting = await findBuyerReceiptByPaymentRef(
+      writeAgent,
+      buyerDid,
+      paymentRef,
+    );
+    if (preExisting) {
+      receiptUri = preExisting.uri;
+      receiptCidStr = preExisting.cid;
+    } else {
+      try {
+        const created = await writeAgent.com.atproto.repo.createRecord({
+          repo: buyerDid,
+          collection: COL_RECEIPT,
+          record: receiptRecord,
+        });
+        receiptUri = created.data.uri;
+        const rcid = created.data.cid;
+        receiptCidStr = typeof rcid === "string" ? rcid : String(rcid);
+      } catch (e) {
+        const recovered = await findBuyerReceiptByPaymentRef(
+          writeAgent,
+          buyerDid,
+          paymentRef,
+        );
+        if (recovered) {
+          receiptUri = recovered.uri;
+          receiptCidStr = recovered.cid;
+        } else {
+          const msg = e instanceof Error ? e.message : String(e);
+          receiptPayload.pdsError = `receipt createRecord failed: ${msg}`;
+          console.error(receiptPayload.pdsError);
+          await persistReceiptMeta(db, paymentRef, receiptPayload);
+          const ac = (await readFulfillmentRow(db, paymentRef))?.attemptCount ?? 1;
+          if (isRetryableFulfillmentError(e)) {
+            await markFailedRetryable(db, paymentRef, ac, trimError(e));
+          } else {
+            await markDeadLetter(db, paymentRef, trimError(e));
+          }
+          return;
+        }
       }
-      return;
     }
 
-    const now = new Date();
+    const nowReceipt = new Date();
     db.update(paymentFulfillment)
       .set({
         receiptUri,
         receiptCid: receiptCidStr,
         status: "receipt_written",
-        updatedAt: now,
+        updatedAt: nowReceipt,
       })
       .where(eq(paymentFulfillment.paymentIntentId, paymentRef))
       .run();
   }
 
   receiptPayload.receiptUri = receiptUri;
+
+  const rowMid = await readFulfillmentRow(db, paymentRef);
+  let consentUri = rowMid?.consentUri?.trim() ?? "";
 
   let consentSig = "";
   if (privateKeyRaw && !privateKeyRaw.includes("PLACEHOLDER")) {
@@ -634,27 +744,46 @@ export async function fulfillCheckoutSession(opts: {
     appSig: consentSig,
   };
 
-  let consentUri = "";
-  try {
-    if (!consentSig) throw new Error("consent appSig empty");
-    const createdConsent = await writeAgent.com.atproto.repo.createRecord({
-      repo: buyerDid,
-      collection: COL_CONSENT,
-      record: consentRecord,
-    });
-    consentUri = createdConsent.data.uri;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    receiptPayload.pdsError = `consent createRecord failed: ${msg}`;
-    console.error(receiptPayload.pdsError);
-    await persistReceiptMeta(db, paymentRef, receiptPayload);
-    const ac = (await readFulfillmentRow(db, paymentRef))?.attemptCount ?? 1;
-    if (isRetryableFulfillmentError(e)) {
-      await markFailedRetryable(db, paymentRef, ac, trimError(e));
+  if (!consentUri) {
+    const preConsent = await findBuyerConsentByReceiptUri(
+      writeAgent,
+      buyerDid,
+      receiptUri,
+    );
+    if (preConsent) {
+      consentUri = preConsent.uri;
     } else {
-      await markDeadLetter(db, paymentRef, trimError(e));
+      try {
+        if (!consentSig) throw new Error("consent appSig empty");
+        const createdConsent = await writeAgent.com.atproto.repo.createRecord({
+          repo: buyerDid,
+          collection: COL_CONSENT,
+          record: consentRecord,
+        });
+        consentUri = createdConsent.data.uri;
+      } catch (e) {
+        const recovered = await findBuyerConsentByReceiptUri(
+          writeAgent,
+          buyerDid,
+          receiptUri,
+        );
+        if (recovered) {
+          consentUri = recovered.uri;
+        } else {
+          const msg = e instanceof Error ? e.message : String(e);
+          receiptPayload.pdsError = `consent createRecord failed: ${msg}`;
+          console.error(receiptPayload.pdsError);
+          await persistReceiptMeta(db, paymentRef, receiptPayload);
+          const ac = (await readFulfillmentRow(db, paymentRef))?.attemptCount ?? 1;
+          if (isRetryableFulfillmentError(e)) {
+            await markFailedRetryable(db, paymentRef, ac, trimError(e));
+          } else {
+            await markDeadLetter(db, paymentRef, trimError(e));
+          }
+          return;
+        }
+      }
     }
-    return;
   }
 
   receiptPayload.consentUri = consentUri;

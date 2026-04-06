@@ -16,6 +16,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db";
 import {
+  inventoryPrefillLog,
   inventoryUploadObject,
   inventoryUploadPart,
   inventoryUploadSession,
@@ -121,6 +122,30 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       status: "active",
     });
     return c.json({ sessionId: id });
+  });
+
+  r.get("/prefill/latest", async (c) => {
+    const sess = await getSessionAgent(c, oauthClient);
+    if (!sess) return c.json({ error: "Unauthorized" }, 401);
+    const row = await db
+      .select()
+      .from(inventoryPrefillLog)
+      .where(eq(inventoryPrefillLog.merchantDid, sess.did))
+      .orderBy(desc(inventoryPrefillLog.createdAt))
+      .limit(1)
+      .get();
+    if (!row) return c.json({ prefill: null });
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(row.payloadJson);
+    } catch {
+      return c.json({ error: "prefill_corrupt" }, 500);
+    }
+    return c.json({
+      prefill: parsed,
+      id: row.id,
+      createdAt: row.createdAt?.toISOString?.() ?? null,
+    });
   });
 
   r.get("/sessions", async (c) => {
@@ -888,7 +913,6 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
           uri: u.uri,
           cid: u.cid,
           role: slot.role,
-          essential: slot.essential !== false,
         };
         if (slot.trackNumber != null) entry.trackNumber = slot.trackNumber;
         if (slot.discNumber != null) entry.discNumber = slot.discNumber;
@@ -917,6 +941,26 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       });
       primaryItemUri = colRes.data.uri;
       const collectionUri = colRes.data.uri;
+
+      const individualPurchaseTrackUris: string[] = [];
+      for (const slot of slots) {
+        if (slot.allowIndividualPurchase !== true) continue;
+        const u = uriByObjectId.get(slot.objectId);
+        if (u) individualPurchaseTrackUris.push(u.uri);
+      }
+      await db.insert(inventoryPrefillLog).values({
+        id: randomUUID(),
+        merchantDid: sess.did,
+        payloadJson: JSON.stringify({
+          v: 1,
+          primaryItemUri: collectionUri,
+          collectionUri,
+          licenseUri: draft.licenseUri,
+          licenseGrantCid: draft.licenseGrantCid,
+          priceUsd: "9.99",
+          individualPurchaseTrackUris,
+        }),
+      });
       const colAtUri = new AtUri(collectionUri);
       const collectionRkeyForPid = colAtUri.rkey;
       if (!collectionRkeyForPid) {
@@ -1039,7 +1083,8 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
 type CollectionItemSlotV1 = {
   objectId: string;
   role: "track" | "video" | "document" | "artwork" | "bonus" | "other";
-  essential?: boolean;
+  /** When true, merchant intends per-track listings; stored in prefill log only. */
+  allowIndividualPurchase?: boolean;
   trackNumber?: number;
   discNumber?: number;
   title?: string;
@@ -1052,7 +1097,6 @@ function buildLegacyTrackSlots(
   return trackObjectIds.map((objectId, i) => ({
     objectId,
     role: "track" as const,
-    essential: true,
     trackNumber: i + 1,
   }));
 }

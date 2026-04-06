@@ -5,6 +5,7 @@ import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
 
 import { ArtworkImage } from "@/components/public/ArtworkImage";
+import { CollectionMemberDownloads } from "@/components/public/TrackList";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { Button } from "@/components/ui/button";
@@ -78,7 +79,10 @@ export function PurchaseDetailPage() {
   const [consent, setConsent] = useState<PurchaseConsent | null>(null);
   const [item, setItem] = useState<CatalogItem | null>(null);
   const [license, setLicense] = useState<LicenseTerms | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [zipBusy, setZipBusy] = useState(false);
+  const [itemDownloadingUri, setItemDownloadingUri] = useState<string | null>(
+    null,
+  );
   const [pageLoading, setPageLoading] = useState(true);
 
   useEffect(() => {
@@ -136,7 +140,7 @@ export function PurchaseDetailPage() {
 
   async function downloadDigitalItemUri(itemUri: string) {
     if (!session) return;
-    setBusy(true);
+    setItemDownloadingUri(itemUri);
     try {
       const url = createBrowserApiURL("/api/download");
       url.searchParams.set("itemUri", itemUri);
@@ -150,7 +154,34 @@ export function PurchaseDetailPage() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Download failed");
     } finally {
-      setBusy(false);
+      setItemDownloadingUri(null);
+    }
+  }
+
+  async function downloadCollectionZip(collectionUri: string) {
+    if (!session) return;
+    setZipBusy(true);
+    try {
+      const url = createBrowserApiURL("/api/download/collection-zip");
+      url.searchParams.set("collectionUri", collectionUri);
+      const res = await fetch(url.href, { credentials: "include" });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || res.statusText);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get("Content-Disposition");
+      const match = dispo?.match(/filename="([^"]+)"/);
+      const name = match?.[1] ?? "collection.zip";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setZipBusy(false);
     }
   }
 
@@ -291,27 +322,17 @@ export function PurchaseDetailPage() {
 
       {isCollection ? (
         <section className="space-y-3">
-          <h2 className="text-lg font-medium">Tracks</h2>
-          <ul className="space-y-2">
-            {(item as Collection).items
-              .filter((i) => i.essential !== false)
-              .map((track) => (
-                <li key={track.uri} className="flex flex-wrap items-center gap-2">
-                  <code className="text-xs truncate max-w-[min(100%,20rem)]">
-                    {track.uri}
-                  </code>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() => void downloadDigitalItemUri(track.uri)}
-                  >
-                    Download
-                  </Button>
-                </li>
-              ))}
-          </ul>
+          <h2 className="text-lg font-medium">Downloads</h2>
+          <CollectionMemberDownloads
+            agent={agent}
+            collection={item as Collection}
+            onDownloadItem={(u) => void downloadDigitalItemUri(u)}
+            onDownloadZip={() =>
+              void downloadCollectionZip(receipt.item.uri)
+            }
+            zipBusy={zipBusy}
+            itemBusyUri={itemDownloadingUri}
+          />
         </section>
       ) : null}
 
@@ -319,10 +340,10 @@ export function PurchaseDetailPage() {
         <section>
           <Button
             type="button"
-            disabled={busy}
+            disabled={itemDownloadingUri !== null}
             onClick={() => void downloadDigitalItemUri(receipt.item.uri)}
           >
-            {busy ? "Preparing…" : "Download"}
+            {itemDownloadingUri ? "Preparing…" : "Download"}
           </Button>
         </section>
       ) : null}

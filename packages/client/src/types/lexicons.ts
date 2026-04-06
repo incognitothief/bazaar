@@ -59,7 +59,6 @@ export type CollectionItemEntry = {
   uri: string;
   cid?: string;
   role: CollectionItemRole;
-  essential?: boolean;
   trackNumber?: number;
   discNumber?: number;
   title?: string;
@@ -160,6 +159,8 @@ export type Listing = {
     | "superseded";
   licenseUri: string;
   licenseGrantCid: string;
+  /** Parent collection listing AT-URI when this listing is a per-track single under that album. */
+  parentListing?: string;
   supersededBy?: string;
   availableFrom?: string;
   availableUntil?: string;
