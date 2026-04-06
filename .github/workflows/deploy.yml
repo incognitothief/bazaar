@@ -10,7 +10,7 @@
 # has no duplicate; see https://docs.github.com/en/actions/deployment/targeting-different-environments
 #
 # Repository variable (Settings → Secrets and variables → Actions → Variables):
-#   DEPLOY_STG — set to true to enable staging deploys on PRs. Not read by the app.
+#   DEPLOY_STG — set to true or 1 to enable staging deploys on PRs. Not read by the app.
 #
 # Secrets (environment or repository):
 #   CLOUDFLARE_API_TOKEN — Cloudflare API (Pulumi provider)
@@ -114,7 +114,7 @@ jobs:
     name: Deploy staging
     if: >-
       github.event_name == 'pull_request' &&
-      vars.DEPLOY_STG == 'true' &&
+      (vars.DEPLOY_STG == 'true' || vars.DEPLOY_STG == '1') &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment: staging

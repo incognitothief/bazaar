@@ -3,8 +3,12 @@
 # Optional (not checked): PULUMI_CONFIG_PASSPHRASE — only when the Pulumi stack uses passphrase-encrypted config.
 #
 # Production preflight: push to main (and workflow_dispatch on main).
-# Staging preflight: pull_request from the same repo when repository variable DEPLOY_STG=true.
-# See deploy.yml for DEPLOY_STG and environment setup.
+# Staging preflight runs only when ALL hold:
+#   - event is pull_request
+#   - repository variable DEPLOY_STG is exactly true or 1 (Settings → Secrets and variables → Actions → Variables)
+#   - PR branch is from this repo (not a fork)
+# Otherwise the staging job is skipped by design so PRs do not fail when staging is off.
+# See deploy.yml (same gates for deploy-staging).
 
 name: Deploy preflight
 
@@ -75,11 +79,24 @@ jobs:
           done
           exit 1
 
+  staging-preflight-skipped-hint:
+    name: Staging preflight (not enabled)
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.DEPLOY_STG != 'true' &&
+      vars.DEPLOY_STG != '1'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain skip
+        run: |
+          echo "::notice::Staging preflight and deploy-staging are skipped. Set repository variable DEPLOY_STG to true (or 1) under Settings → Secrets and variables → Actions → Variables. Fork PRs never run staging jobs."
+
   required-secrets-staging:
     name: Required secrets (staging)
     if: >-
       github.event_name == 'pull_request' &&
-      vars.DEPLOY_STG == 'true' &&
+      (vars.DEPLOY_STG == 'true' || vars.DEPLOY_STG == '1') &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment: staging
