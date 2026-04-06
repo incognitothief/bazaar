@@ -36,6 +36,16 @@ function trunc(s: string, max: number): string {
   return `${s.slice(0, max - 1)}…`;
 }
 
+/** First non-empty line of item description for link previews (matches client seo.ts). */
+function firstLineForItemMeta(s: string | null | undefined): string | null {
+  if (s == null) return null;
+  const first = s
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  return first ?? null;
+}
+
 function slugifyItemTitle(title: string): string {
   const s = title
     .trim()
@@ -91,8 +101,8 @@ async function getItemOg(
     const v = rec.data.value as { title?: string; description?: string };
     const title = typeof v.title === "string" ? v.title.trim() : "";
     if (!title) return null;
-    const description =
-      typeof v.description === "string" ? v.description.trim() : null;
+    const rawDesc = typeof v.description === "string" ? v.description : "";
+    const description = firstLineForItemMeta(rawDesc);
     return { title, description };
   } catch {
     return null;

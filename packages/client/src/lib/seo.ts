@@ -25,6 +25,18 @@ export function truncMeta(s: string, max: number): string {
   return `${s.slice(0, max - 1)}…`;
 }
 
+/** First non-empty line of catalog description for link previews (og:description, etc.). */
+export function firstLineForItemMeta(
+  description: string | null | undefined,
+): string | null {
+  if (description == null) return null;
+  const first = description
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  return first ?? null;
+}
+
 export function defaultOgImageAbsolute(): string {
   const custom = import.meta.env.VITE_PUBLIC_OG_DEFAULT_IMAGE?.trim();
   if (custom) return custom;

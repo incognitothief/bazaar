@@ -37,6 +37,7 @@ import {
 import { createPublicAgent } from "@/lib/atproto/session";
 import {
   defaultOgImageAbsolute,
+  firstLineForItemMeta,
   itemSupportsOgArtwork,
   publicSiteOrigin,
   siteBrandName,
@@ -482,7 +483,8 @@ export function ItemDetailPage() {
   const canonicalRel = itemPathPretty(pageRkey, item.title);
   const canonicalAbs = `${publicSiteOrigin()}${canonicalRel}`;
   const metaDesc =
-    item.description?.trim() || `Available on ${siteBrandName()}.`;
+    firstLineForItemMeta(item.description) ||
+    `Available on ${siteBrandName()}.`;
   const ogImage = itemSupportsOgArtwork(item)
     ? stableArtworkOpenUrl(itemUri)
     : defaultOgImageAbsolute();
