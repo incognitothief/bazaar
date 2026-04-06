@@ -1,13 +1,18 @@
-# Fail fast before deploy if required repository secrets are missing.
+# Fail fast before deploy if required secrets are missing.
 # Only secret *names* are printed when something is wrong; values are never echoed.
 # Optional (not checked): PULUMI_CONFIG_PASSPHRASE — only when the Pulumi stack uses passphrase-encrypted config.
-# See deploy.yml for secret descriptions.
+#
+# Production preflight: push to main (and workflow_dispatch on main).
+# Staging preflight: pull_request from the same repo when repository variable DEPLOY_STG=true.
+# See deploy.yml for DEPLOY_STG and environment setup.
 
 name: Deploy preflight
 
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -18,8 +23,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  required-secrets:
+  required-secrets-production:
+    name: Required secrets (production)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Verify required deploy secrets
         env:
@@ -58,10 +66,65 @@ jobs:
             fi
           done
           if [ "${#missing[@]}" -eq 0 ]; then
-            echo "All required deploy secrets are non-empty (values are not logged)."
+            echo "All required production deploy secrets are non-empty (values are not logged)."
             exit 0
           fi
-          echo "::error::Missing or empty required GitHub Actions secrets. Set these names under Settings → Secrets and variables → Actions (values are never printed by this job):"
+          echo "::error::Missing or empty required GitHub Actions secrets for production. Set these under the production environment or repository secrets (values are never printed by this job):"
+          for name in "${missing[@]}"; do
+            echo "::error::  - ${name}"
+          done
+          exit 1
+
+  required-secrets-staging:
+    name: Required secrets (staging)
+    if: >-
+      github.event_name == 'pull_request' &&
+      vars.DEPLOY_STG == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Verify required deploy secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PULUMI_BACKEND_URL: ${{ secrets.PULUMI_BACKEND_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
+          VITE_APP_DID: ${{ secrets.VITE_APP_DID }}
+          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
+          VITE_LEXICON_NAMESPACE: ${{ secrets.VITE_LEXICON_NAMESPACE }}
+          VITE_ARTIST_DID: ${{ secrets.VITE_ARTIST_DID }}
+          VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
+        run: |
+          set -euo pipefail
+          required=(
+            CLOUDFLARE_API_TOKEN
+            CLOUDFLARE_ACCOUNT_ID
+            PULUMI_BACKEND_URL
+            AWS_ACCESS_KEY_ID
+            AWS_SECRET_ACCESS_KEY
+            FLY_API_TOKEN
+            VITE_ATPROTO_SERVICE
+            VITE_APP_DID
+            VITE_APP_URL
+            VITE_LEXICON_NAMESPACE
+            VITE_ARTIST_DID
+            VITE_API_ORIGIN
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "All required staging deploy secrets are non-empty (values are not logged)."
+            exit 0
+          fi
+          echo "::error::Missing or empty required GitHub Actions secrets for staging. Set these under the staging environment or repository secrets (values are never printed by this job):"
           for name in "${missing[@]}"; do
             echo "::error::  - ${name}"
           done

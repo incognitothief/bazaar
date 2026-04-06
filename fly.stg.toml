@@ -1,0 +1,27 @@
+# Staging Fly app — rename `app` before first deploy: fly apps create <name>
+app = "bazaar-jwkvxw"
+primary_region = "iad"
+
+[build]
+
+# Same as prod: set ARTIST_DID (and other server secrets) on this app via fly secrets set.
+[env]
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  cpus = 1
+  cpu_kind = "shared"
+  memory = "512mb"
+
+# Create once (staging only; do not reuse prod volume):
+#   fly volumes create bazaar_data_stg --region iad --size 1 -a bazaar-stg
+[[mounts]]
+  source = "bazaar_data"
+  destination = "/data"

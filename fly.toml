@@ -1,6 +1,7 @@
 # Rename `app` to your Fly app name before the first deploy.
-app = "bazaar-jwkvxw"
-primary_region = "iad"
+# Staging uses fly.stg.toml (separate app and volume).
+app = "bazaar-g5nqca"
+primary_region = "ams"
 
 [build]
 
@@ -21,7 +22,7 @@ primary_region = "iad"
   cpu_kind = "shared"
   memory = "512mb"
 
-# Create once: fly volumes create bazaar_data --region iad --size 1
+# Create once: fly volumes create bazaar_data_prod --region ams --size 1
 [[mounts]]
-  source = "bazaar_data"
+  source = "bazaar_data_prd"
   destination = "/data"

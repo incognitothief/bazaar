@@ -1,37 +1,53 @@
 # Deploy: Pulumi (state in Cloudflare R2) then Fly.io.
 #
-# GitHub repository secrets (Settings → Secrets and variables → Actions):
+# Triggers:
+#   - push to main → production (Pulumi stack prod, fly.toml)
+#   - pull_request (opened / synchronize / reopened) → staging when repository variable DEPLOY_STG=true
+#     and the PR branch is from this repo (not a fork). Uses Pulumi stack stg and fly.stg.toml.
+#
+# GitHub Environments (recommended): create `production` and `staging` and attach the same secret names
+# to each (values differ per env). Repository-level secrets are still visible to jobs if an environment
+# has no duplicate; see https://docs.github.com/en/actions/deployment/targeting-different-environments
+#
+# Repository variable (Settings → Secrets and variables → Actions → Variables):
+#   DEPLOY_STG — set to true to enable staging deploys on PRs. Not read by the app.
+#
+# Secrets (environment or repository):
 #   CLOUDFLARE_API_TOKEN — Cloudflare API (Pulumi provider)
 #   CLOUDFLARE_ACCOUNT_ID — same as bazaar-infra:cloudflareAccountId
 #   PULUMI_CONFIG_PASSPHRASE — if the stack uses passphrase-encrypted config secrets
 #   PULUMI_BACKEND_URL — s3://… R2 backend URL (query params for endpoint/region)
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 S3 API keys (R2 → Manage R2 API Tokens), NOT the Cloudflare API token.
 #     Must allow read+write on the SAME bucket as PULUMI_BACKEND_URL (incl. ListBucket). Scoped-only-to-primary-bucket tokens → 403 on .pulumi/meta.yaml.
-#   FLY_API_TOKEN — deploy token for the Fly org that owns `app` in fly.toml (`fly tokens create deploy`, or https://fly.io/dashboard/personal/tokens ). Wrong/missing token → `unauthorized`.
-#   On the Fly app, set runtime secret ARTIST_DID (server) to the store owner did — same value as VITE_ARTIST_DID in the client build. Without it, /api/merchant/* returns server_misconfigured.
+#   FLY_API_TOKEN — deploy token for the Fly org that owns the app in fly.toml / fly.stg.toml (`fly tokens create deploy`).
+#   VITE_* — passed as Docker build-args (see Fly deploy step).
 #
-# Optional repository variable: PULUMI_STACK (defaults to prod).
+# On each Fly app, set runtime secret ARTIST_DID (server) to the store owner did — same value as VITE_ARTIST_DID in the client build.
 
 name: Deploy
 
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  deploy:
+  deploy-production:
+    name: Deploy production
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     env:
       NODE_ENV: production
-      PULUMI_STACK: ${{ vars.PULUMI_STACK || 'prod' }}
+      PULUMI_STACK: prod
 
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +57,6 @@ jobs:
           node-version: "22"
           cache: npm
 
-      # Install Pulumi CLI only (omit `command`); see https://github.com/pulumi/actions
       - uses: pulumi/actions@v6
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
@@ -88,6 +103,82 @@ jobs:
           fi
 
           flyctl deploy --remote-only \
+            --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
+            --build-arg VITE_APP_DID="${VITE_APP_DID:-}" \
+            --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
+            --build-arg VITE_LEXICON_NAMESPACE="${VITE_LEXICON_NAMESPACE:-}" \
+            --build-arg VITE_ARTIST_DID="${VITE_ARTIST_DID:-}" \
+            --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"
+
+  deploy-staging:
+    name: Deploy staging
+    if: >-
+      github.event_name == 'pull_request' &&
+      vars.DEPLOY_STG == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: true
+    env:
+      NODE_ENV: production
+      PULUMI_STACK: stg
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: pulumi/actions@v6
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pulumi up (Cloudflare R2)
+        working-directory: packages/infra
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+          PULUMI_BACKEND_URL: ${{ secrets.PULUMI_BACKEND_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "CLOUDFLARE_API_TOKEN secret is not set."
+            exit 1
+          fi
+          if [ -z "${PULUMI_BACKEND_URL:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "Set PULUMI_BACKEND_URL, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY secrets."
+            exit 1
+          fi
+          pulumi up --yes --stack "${PULUMI_STACK}"
+
+      - name: Fly deploy (staging)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
+          VITE_APP_DID: ${{ secrets.VITE_APP_DID }}
+          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
+          VITE_LEXICON_NAMESPACE: ${{ secrets.VITE_LEXICON_NAMESPACE }}
+          VITE_ARTIST_DID: ${{ secrets.VITE_ARTIST_DID }}
+          VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "FLY_API_TOKEN secret is not set."
+            exit 1
+          fi
+
+          flyctl deploy --remote-only --config fly.stg.toml \
             --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
             --build-arg VITE_APP_DID="${VITE_APP_DID:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
