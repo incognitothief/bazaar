@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import Markdown from "react-markdown";
 import { toast } from "sonner";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
@@ -28,6 +27,7 @@ import { createPublicAgent } from "@/lib/atproto/session";
 import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { BuyButton } from "@/components/public/BuyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
+import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import {
   CollectionMemberDownloads,
@@ -515,9 +515,9 @@ export function ItemDetailPage() {
       ) : null}
 
       {"description" in item && item.description ? (
-        <section className="prose prose-neutral dark:prose-invert max-w-none text-sm">
-          <h2 className="text-lg font-medium mb-2 not-prose">Description</h2>
-          <Markdown>{item.description}</Markdown>
+        <section className="max-w-none text-sm text-foreground">
+          <h2 className="mb-2 text-lg font-medium">Description</h2>
+          <MarkdownBody>{item.description}</MarkdownBody>
         </section>
       ) : null}
 

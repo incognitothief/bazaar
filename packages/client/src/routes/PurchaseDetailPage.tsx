@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import Markdown from "react-markdown";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
 
 import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { CollectionMemberDownloads } from "@/components/public/TrackList";
 import { FormatBadge } from "@/components/shared/FormatBadge";
+import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { Button } from "@/components/ui/button";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -295,9 +295,9 @@ export function PurchaseDetailPage() {
       </section>
 
       {"description" in item && item.description ? (
-        <section className="prose prose-neutral dark:prose-invert max-w-none text-sm">
-          <h2 className="text-lg font-medium mb-2 not-prose">Description</h2>
-          <Markdown>{item.description}</Markdown>
+        <section className="max-w-none text-sm text-foreground">
+          <h2 className="mb-2 text-lg font-medium">Description</h2>
+          <MarkdownBody>{item.description}</MarkdownBody>
         </section>
       ) : null}
 
