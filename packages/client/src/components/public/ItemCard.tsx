@@ -76,7 +76,7 @@ export function ItemCard({
             <span className="font-medium">{formatMoney(listing.price)}</span>
             {trackCount !== undefined ? (
               <span className="text-xs text-muted-foreground">
-                {trackCount} tracks
+                {trackCount} {trackCount === 1 ? "track" : "tracks"}
               </span>
             ) : null}
           </div>
