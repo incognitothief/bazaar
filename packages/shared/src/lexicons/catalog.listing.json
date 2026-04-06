@@ -46,6 +46,11 @@
             "format": "cid",
             "description": "CID of the license.terms record at time of listing creation. Anchors the offered terms so that receipt and consent record resolution is consistent even if the license.terms record is later updated."
           },
+          "parentListing": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "When this listing sells a member digital item as an individual single, the AT-URI of the parent catalog.listing for the collection. Absent for standalone singles and for the collection listing itself. Used for storefront grouping and cascade pause when the collection listing is paused."
+          },
           "supersededBy": {
             "type": "string",
             "format": "at-uri",

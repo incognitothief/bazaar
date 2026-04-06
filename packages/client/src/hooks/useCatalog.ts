@@ -25,6 +25,7 @@ function indexActiveListings(rows: ListingRow[]): Record<string, Listing> {
   const map: Record<string, Listing> = {};
   for (const { listing } of rows) {
     if (listing.status !== "active") continue;
+    if (listing.parentListing) continue;
     map[listing.item.uri] = listing;
   }
   return map;

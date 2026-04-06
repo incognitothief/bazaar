@@ -75,11 +75,6 @@
                   ],
                   "description": "The function of this item within the release. track = music recording. document = liner notes, lyrics, zine, PDF. video = music video or visual album component. artwork = supplementary visual asset. bonus = promotional or discretionary extra."
                 },
-                "essential": {
-                  "type": "boolean",
-                  "default": true,
-                  "description": "If true, this item is a core component of the release — included in the collection zip and per-item download entitlement. If false, the item is supplementary and delivery is at the backend's discretion."
-                },
                 "trackNumber": {
                   "type": "integer",
                   "description": "Position in the tracklist. Meaningful only for role: track."

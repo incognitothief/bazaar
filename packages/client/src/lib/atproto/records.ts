@@ -256,6 +256,28 @@ export type PurchaseReceiptRow = {
   receipt: PurchaseReceipt;
 };
 
+/** One row per Stripe payment (or per record URI if paymentRef missing). */
+function dedupePurchaseReceiptRows(rows: PurchaseReceiptRow[]): PurchaseReceiptRow[] {
+  const byKey = new Map<string, PurchaseReceiptRow>();
+  for (const row of rows) {
+    const pr = row.receipt.paymentRef?.trim();
+    const key = pr && pr.length > 0 ? pr : row.uri;
+    const prev = byKey.get(key);
+    if (
+      !prev ||
+      new Date(row.receipt.purchasedAt).getTime() >=
+        new Date(prev.receipt.purchasedAt).getTime()
+    ) {
+      byKey.set(key, row);
+    }
+  }
+  return Array.from(byKey.values()).sort(
+    (a, b) =>
+      new Date(b.receipt.purchasedAt).getTime() -
+      new Date(a.receipt.purchasedAt).getTime(),
+  );
+}
+
 export async function listPurchaseReceiptRows(
   agent: ATPRepoClient,
   did: string,
@@ -265,13 +287,14 @@ export async function listPurchaseReceiptRows(
     collection: BAZAAR_COLLECTION.receipt,
     limit: 100,
   })) as ListRecordsResponse;
-  return res.data.records
+  const rows = res.data.records
     .filter((r) => isPurchaseReceipt(r.value))
     .map((r) => ({
       uri: r.uri,
       cid: r.cid,
       receipt: r.value as PurchaseReceipt,
     }));
+  return dedupePurchaseReceiptRows(rows);
 }
 
 export type PurchaseConsentRow = {
@@ -279,6 +302,24 @@ export type PurchaseConsentRow = {
   cid: string;
   consent: PurchaseConsent;
 };
+
+/** One consent per receipt URI (latest consentedAt wins). */
+function dedupePurchaseConsentRows(rows: PurchaseConsentRow[]): PurchaseConsentRow[] {
+  const byReceipt = new Map<string, PurchaseConsentRow>();
+  for (const row of rows) {
+    const ru = row.consent.receiptUri?.trim();
+    if (!ru) continue;
+    const prev = byReceipt.get(ru);
+    if (
+      !prev ||
+      new Date(row.consent.consentedAt).getTime() >=
+        new Date(prev.consent.consentedAt).getTime()
+    ) {
+      byReceipt.set(ru, row);
+    }
+  }
+  return Array.from(byReceipt.values());
+}
 
 export async function listPurchaseConsentRows(
   agent: ATPRepoClient,
@@ -289,13 +330,14 @@ export async function listPurchaseConsentRows(
     collection: BAZAAR_COLLECTION.consent,
     limit: 100,
   })) as ListRecordsResponse;
-  return res.data.records
+  const rows = res.data.records
     .filter((r) => isPurchaseConsent(r.value))
     .map((r) => ({
       uri: r.uri,
       cid: r.cid,
       consent: r.value as PurchaseConsent,
     }));
+  return dedupePurchaseConsentRows(rows);
 }
 
 export type DigitalItemRow = { uri: string; cid: string; item: DigitalItem };
