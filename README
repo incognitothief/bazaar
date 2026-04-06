@@ -83,3 +83,5 @@ make sure you have a domain for your store. If have a domain registered elsewher
 ## Allowing multipart uploads direct to R2
 
 Set CORS settings on bucket to point to your bazaar instance. This will speed up upload times. Defaults to uploading files through backend proxy
+
+## GH level secrets are half for client injection, half for CICD (not to be confused with inventory bucket/server config)
