@@ -7,13 +7,24 @@ import {
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
 import { InventoryGrid, InventoryGridSkeleton } from "@/components/public/InventoryGrid";
+import { useActorMerchantProfile } from "@/hooks/useActorMerchantProfile";
 import { useCatalog } from "@/hooks/useCatalog";
 import type { CatalogEntry } from "@/hooks/useCatalog";
 
+const DEFAULT_STOREFRONT_TITLE = "Storefront";
+const DEFAULT_STOREFRONT_DESCRIPTION =
+  "Music and releases from the artist catalog. Only items with an active listing are shown.";
+
 export function HomePage() {
   const artistDid = import.meta.env.VITE_ARTIST_DID;
+  const { profile: merchantProfile } = useActorMerchantProfile(artistDid);
   const { entries, listingsByItemUri, loading, error } = useCatalog(artistDid);
   const agent = createPublicAgent();
+
+  const storefrontTitle =
+    merchantProfile?.displayName?.trim() || DEFAULT_STOREFRONT_TITLE;
+  const storefrontDescription =
+    merchantProfile?.description?.trim() || DEFAULT_STOREFRONT_DESCRIPTION;
   const hasActive = entries.some((e) => listingsByItemUri[e.uri]);
 
   const dummyItemUri = useMemo(
@@ -48,10 +59,11 @@ export function HomePage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Storefront</h1>
-        <p className="mt-2 text-muted-foreground max-w-prose">
-          Music and releases from the artist catalog. Only items with an active
-          listing are shown.
+        <h1 className="text-3xl font-semibold tracking-tight">
+          {storefrontTitle}
+        </h1>
+        <p className="mt-2 text-muted-foreground max-w-prose whitespace-pre-wrap">
+          {storefrontDescription}
         </p>
       </div>
       {error ? (
