@@ -18,9 +18,9 @@ primary_region = "ams"
   min_machines_running = 0
 
 [[vm]]
-  cpus = 1
+  cpus = 2
   cpu_kind = "shared"
-  memory = "512mb"
+  memory = "2048mb"
 
 # Create once: fly volumes create bazaar_data_prod --region ams --size 1
 [[mounts]]

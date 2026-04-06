@@ -1,11 +1,14 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { AtUri } from "@atproto/syntax";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { createApiRouter } from "./api";
 import { createDb } from "./db";
 import { createOAuthClient } from "./lib/atproto/oauth";
+import { injectSpaHead } from "./lib/spaHtmlMeta";
 import {
   backfillPaymentFulfillmentFromMeta,
   sweepPaymentFulfillment,
@@ -61,6 +64,52 @@ app.get("/xrpc/com.atproto.lexicon.get", (c) => {
 
 app.route("/api", api);
 
+/** Legacy share links: `/item/<encodeURIComponent(at-uri)>` → `/item/<rkey>` */
+app.use("/item/*", async (c, next) => {
+  if (c.req.method !== "GET" && c.req.method !== "HEAD") return next();
+  const path = c.req.path;
+  const rest = path.slice("/item/".length);
+  const segs = rest.split("/").filter(Boolean);
+  if (segs.length !== 1) return next();
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(segs[0]);
+  } catch {
+    return next();
+  }
+  if (!decoded.startsWith("at://")) return next();
+  try {
+    const at = new AtUri(decoded);
+    if (!at.rkey) return next();
+    const target = new URL(c.req.url);
+    target.pathname = `/item/${encodeURIComponent(at.rkey)}`;
+    target.search = "";
+    target.hash = "";
+    return c.redirect(target.toString(), 301);
+  } catch {
+    return next();
+  }
+});
+
+async function htmlWithMeta(
+  c: Context,
+  pathname: string,
+): Promise<Response | null> {
+  const indexPath = join(staticRoot, "index.html");
+  const file = Bun.file(indexPath);
+  if (!(await file.exists())) return null;
+  let html = await file.text();
+  html = await injectSpaHead(html, pathname);
+  return c.html(html);
+}
+
+if (existsSync(staticRoot)) {
+  app.get("/", async (c) => {
+    const out = await htmlWithMeta(c, "/");
+    return out ?? c.text("Not found", 404);
+  });
+}
+
 if (existsSync(staticRoot)) {
   app.use("/*", serveStatic({ root: staticRoot }));
 }
@@ -69,9 +118,12 @@ app.notFound(async (c) => {
   if (c.req.path.startsWith("/api")) {
     return c.json({ error: "not_found" }, 404);
   }
-  if (existsSync(staticRoot)) {
-    const file = Bun.file(join(staticRoot, "index.html"));
-    if (await file.exists()) return c.html(await file.text());
+  if (
+    existsSync(staticRoot) &&
+    (c.req.method === "GET" || c.req.method === "HEAD")
+  ) {
+    const out = await htmlWithMeta(c, c.req.path);
+    if (out) return out;
   }
   if (c.req.path === "/") {
     return c.text(

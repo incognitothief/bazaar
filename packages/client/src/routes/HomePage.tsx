@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Helmet } from "react-helmet-async";
 import { createPublicAgent } from "@/lib/atproto/session";
 import {
   buildDummyDigitalItem,
@@ -13,6 +14,12 @@ import {
 import { useActorMerchantProfile } from "@/hooks/useActorMerchantProfile";
 import { useCatalog } from "@/hooks/useCatalog";
 import type { CatalogEntry } from "@/hooks/useCatalog";
+import {
+  defaultOgImageAbsolute,
+  publicSiteOrigin,
+  siteBrandName,
+  truncMeta,
+} from "@/lib/seo";
 
 const DEFAULT_STOREFRONT_TITLE = "Storefront";
 const DEFAULT_STOREFRONT_DESCRIPTION =
@@ -63,8 +70,43 @@ export function HomePage() {
     };
   }, [showStorefrontDummy, dummyItemUri, listingsByItemUri]);
 
+  const pageTitle = `${storefrontTitle} · ${siteBrandName()}`;
+  const canonicalAbs = `${publicSiteOrigin()}/`;
+  const ogImage = defaultOgImageAbsolute();
+  const twSite = import.meta.env.VITE_PUBLIC_TWITTER_SITE?.trim();
+
   return (
     <div className="space-y-8">
+      <Helmet>
+        <title>{pageTitle}</title>
+        <meta
+          name="description"
+          content={truncMeta(storefrontDescription, 160)}
+        />
+        <link rel="canonical" href={canonicalAbs} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content={siteBrandName()} />
+        <meta property="og:title" content={pageTitle} />
+        <meta
+          property="og:description"
+          content={truncMeta(storefrontDescription, 200)}
+        />
+        <meta property="og:url" content={canonicalAbs} />
+        <meta property="og:image" content={ogImage} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={pageTitle} />
+        <meta
+          name="twitter:description"
+          content={truncMeta(storefrontDescription, 200)}
+        />
+        <meta name="twitter:image" content={ogImage} />
+        {twSite ? (
+          <meta
+            name="twitter:site"
+            content={twSite.startsWith("@") ? twSite : `@${twSite}`}
+          />
+        ) : null}
+      </Helmet>
       <div aria-busy={merchantHeaderPending || undefined}>
         {merchantHeaderPending ? (
           <div className="space-y-3">

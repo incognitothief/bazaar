@@ -3,6 +3,7 @@ import {
   RouterProvider,
   createBrowserRouter,
 } from "react-router-dom";
+import { HelmetProvider } from "react-helmet-async";
 import { Toaster } from "sonner";
 import { AtpSessionProvider } from "@/hooks/useAtpSession";
 import { PublicLayout } from "@/routes/PublicLayout";
@@ -32,7 +33,8 @@ const router = createBrowserRouter([
       { path: "/", element: <HomePage /> },
       { path: "/terms", element: <TermsPage /> },
       { path: "/refunds", element: <RefundsPage /> },
-      { path: "/item/:uri", element: <ItemDetailPage /> },
+      { path: "/item/:rkey/:slug", element: <ItemDetailPage /> },
+      { path: "/item/:rkey", element: <ItemDetailPage /> },
       { path: "/purchase/success", element: <PurchaseSuccessPage /> },
       { path: "/merchant/signin", element: <MerchantSignInPage /> },
       { path: "/dashboard", element: <CustomerDashboardPage /> },
@@ -70,9 +72,11 @@ const router = createBrowserRouter([
 
 export function App() {
   return (
-    <AtpSessionProvider>
-      <Toaster richColors position="top-center" />
-      <RouterProvider router={router} />
-    </AtpSessionProvider>
+    <HelmetProvider>
+      <AtpSessionProvider>
+        <Toaster richColors position="top-center" />
+        <RouterProvider router={router} />
+      </AtpSessionProvider>
+    </HelmetProvider>
   );
 }

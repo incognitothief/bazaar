@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { AtUri } from "@atproto/syntax";
+import { Helmet } from "react-helmet-async";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   getRecordValue,
   listListingRows,
   listPurchaseReceiptRows,
+  resolveCatalogItemUriFromRkey,
   type ListingRow,
 } from "@/lib/atproto/records";
 import { createBrowserApiURL, triggerFileDownload } from "@/lib/browserApi";
@@ -19,11 +22,28 @@ import {
   buildDummyListing,
   buildDummyLicenseTerms,
   catalogDummyEnabled,
+  DUMMY_ITEM_RKEY,
   DUMMY_LISTING_AT,
   isDummyStorefrontItem,
+  resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
 import { resolveStorefrontArtistDid } from "@/lib/atUri";
+import {
+  catalogItemRkey,
+  isLegacyItemPathSegment,
+  itemPathCanonical,
+  itemPathPretty,
+} from "@/lib/itemPath";
 import { createPublicAgent } from "@/lib/atproto/session";
+import {
+  defaultOgImageAbsolute,
+  firstLineForItemMeta,
+  itemSupportsOgArtwork,
+  publicSiteOrigin,
+  siteBrandName,
+  stableArtworkOpenUrl,
+  truncMeta,
+} from "@/lib/seo";
 import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { BuyButton } from "@/components/public/BuyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
@@ -50,12 +70,20 @@ function formatMoney(m: { amount: number; currency: string }): string {
 }
 
 export function ItemDetailPage() {
-  const { uri: uriParam } = useParams<{ uri: string }>();
-  const itemUri = uriParam ? decodeURIComponent(uriParam) : "";
-  const artistDid = resolveStorefrontArtistDid(itemUri);
+  const { rkey: rkeyParam, slug: _slugParam } = useParams<{
+    rkey: string;
+    slug?: string;
+  }>();
+  const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
+  const legacySegment =
+    !!rkeyParam && isLegacyItemPathSegment(rkeyParam);
+
   const agent = useMemo(() => createPublicAgent(), []);
   const { session } = useAtpSession();
   const buyerAgent = useMerchantAgent(session);
+
+  const [resolvedItemUri, setResolvedItemUri] = useState<string | null>(null);
+  const [rkeyResolved, setRkeyResolved] = useState(false);
 
   const [item, setItem] = useState<CatalogItem | null>(null);
   const [listing, setListing] = useState<Listing | null>(null);
@@ -75,6 +103,53 @@ export function ItemDetailPage() {
   const [authorDisplayName, setAuthorDisplayName] = useState<string | null>(
     null,
   );
+
+  useEffect(() => {
+    if (!rkeyParam) {
+      setResolvedItemUri(null);
+      setRkeyResolved(true);
+      return;
+    }
+    if (legacySegment) {
+      setResolvedItemUri(null);
+      setRkeyResolved(true);
+      return;
+    }
+    setResolvedItemUri(null);
+    setRkeyResolved(false);
+    let cancelled = false;
+    void (async () => {
+      if (!storefrontDid.startsWith("did:")) {
+        if (!cancelled) {
+          setResolvedItemUri(null);
+          setRkeyResolved(true);
+        }
+        return;
+      }
+      let uri = await resolveCatalogItemUriFromRkey(
+        agent,
+        storefrontDid,
+        rkeyParam,
+      );
+      if (
+        !uri &&
+        catalogDummyEnabled() &&
+        rkeyParam === DUMMY_ITEM_RKEY
+      ) {
+        uri = resolveDummyItemAtUri(storefrontDid);
+      }
+      if (!cancelled) {
+        setResolvedItemUri(uri);
+        setRkeyResolved(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agent, rkeyParam, storefrontDid, legacySegment]);
+
+  const itemUri = legacySegment ? "" : (resolvedItemUri ?? "");
+  const artistDid = resolveStorefrontArtistDid(itemUri);
 
   useEffect(() => {
     if (!itemUri) {
@@ -264,19 +339,53 @@ export function ItemDetailPage() {
     return m;
   }, [isCollection, listingUri, allArtistListings]);
 
-  if (!itemUri) {
+  if (legacySegment && rkeyParam) {
+    try {
+      const at = new AtUri(decodeURIComponent(rkeyParam));
+      if (at.rkey) {
+        return <Navigate to={itemPathCanonical(at.rkey)} replace />;
+      }
+    } catch {
+      /* invalid legacy segment */
+    }
+  }
+
+  if (!rkeyParam) {
     return <p className="text-muted-foreground">Missing item.</p>;
+  }
+
+  void _slugParam;
+
+  if (!rkeyResolved) {
+    return (
+      <div className="space-y-6 animate-pulse" aria-busy>
+        <Helmet>
+          <title>{`Item · ${siteBrandName()}`}</title>
+        </Helmet>
+        <div className="aspect-[21/9] w-full rounded-xl bg-muted" />
+        <div className="h-8 bg-muted rounded w-1/2" />
+        <div className="h-4 bg-muted rounded w-1/3" />
+      </div>
+    );
+  }
+
+  if (!legacySegment && !itemUri) {
+    return <p className="text-muted-foreground">Item not found.</p>;
+  }
+
+  if (legacySegment) {
+    return (
+      <p className="text-muted-foreground">Invalid item link.</p>
+    );
   }
 
   if (!artistDid.startsWith("did:")) {
     return (
       <p className="text-muted-foreground">
-        Invalid item URL. Use an AT-URI such as{" "}
-        <code className="text-xs">
-          at://did:plc:…/diamonds.whereditgo.bazaar.catalog.item.digital/…
-        </code>
-        , or set <code className="text-xs">VITE_ARTIST_DID</code> in{" "}
-        <code className="text-xs">.env</code>.
+        Set <code className="text-xs">VITE_ARTIST_DID</code> in{" "}
+        <code className="text-xs">packages/client/.env</code> to load catalog
+        items. Item URLs use the record TID, e.g.{" "}
+        <code className="text-xs">/item/3jui7kd5z2f2x</code>.
       </p>
     );
   }
@@ -284,6 +393,9 @@ export function ItemDetailPage() {
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse" aria-busy>
+        <Helmet>
+          <title>{`Item · ${siteBrandName()}`}</title>
+        </Helmet>
         <div className="aspect-[21/9] w-full rounded-xl bg-muted" />
         <div className="h-8 bg-muted rounded w-1/2" />
         <div className="h-4 bg-muted rounded w-1/3" />
@@ -367,8 +479,49 @@ export function ItemDetailPage() {
   const showDummyBanner =
     catalogDummyEnabled() && isDummyStorefrontItem(itemUri, artistDid);
 
+  const pageRkey = catalogItemRkey(itemUri);
+  const canonicalRel = itemPathPretty(pageRkey, item.title);
+  const canonicalAbs = `${publicSiteOrigin()}${canonicalRel}`;
+  const metaDesc =
+    firstLineForItemMeta(item.description) ||
+    `Available on ${siteBrandName()}.`;
+  const ogImage = itemSupportsOgArtwork(item)
+    ? stableArtworkOpenUrl(itemUri)
+    : defaultOgImageAbsolute();
+  const twSite = import.meta.env.VITE_PUBLIC_TWITTER_SITE?.trim();
+
   return (
     <article className="space-y-10">
+      <Helmet>
+        <title>{`${item.title} · ${siteBrandName()}`}</title>
+        <meta name="description" content={truncMeta(metaDesc, 160)} />
+        <link rel="canonical" href={canonicalAbs} />
+        <meta property="og:type" content="article" />
+        <meta property="og:site_name" content={siteBrandName()} />
+        <meta property="og:title" content={`${item.title} · ${siteBrandName()}`} />
+        <meta
+          property="og:description"
+          content={truncMeta(metaDesc, 200)}
+        />
+        <meta property="og:url" content={canonicalAbs} />
+        <meta property="og:image" content={ogImage} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta
+          name="twitter:title"
+          content={`${item.title} · ${siteBrandName()}`}
+        />
+        <meta
+          name="twitter:description"
+          content={truncMeta(metaDesc, 200)}
+        />
+        <meta name="twitter:image" content={ogImage} />
+        {twSite ? (
+          <meta
+            name="twitter:site"
+            content={twSite.startsWith("@") ? twSite : `@${twSite}`}
+          />
+        ) : null}
+      </Helmet>
       {showDummyBanner ? (
         <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
           Preview catalog: listing and license are synthetic. For Stripe without

@@ -564,6 +564,36 @@ export async function listLicenseTerms(
   return rows.map((r) => r.terms);
 }
 
+/**
+ * Resolve storefront catalog item AT-URI from record key (TID) in the artist repo.
+ * Tries digital → collection → physical (same order as storefront catalog).
+ */
+export async function resolveCatalogItemUriFromRkey(
+  agent: ATPRepoClient,
+  repoDid: string,
+  rkey: string,
+): Promise<string | null> {
+  if (!repoDid.startsWith("did:") || !rkey) return null;
+  const collections = [
+    BAZAAR_COLLECTION.digitalItem,
+    BAZAAR_COLLECTION.collection,
+    BAZAAR_COLLECTION.physicalItem,
+  ] as const;
+  for (const collection of collections) {
+    try {
+      await agent.com.atproto.repo.getRecord({
+        repo: repoDid,
+        collection,
+        rkey,
+      });
+      return `at://${repoDid}/${collection}/${rkey}`;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 export async function getRecordValue<T>(
   agent: ATPRepoClient,
   uri: string,

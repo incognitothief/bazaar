@@ -15,6 +15,12 @@ interface ImportMetaEnv {
   readonly VITE_SHOW_LISTINGS_DUMMY?: string;
   /** Contact email on /terms and /refunds (defaults if unset). */
   readonly VITE_CONTACT_EMAIL?: string;
+  /** Public product name for `<title>` / `og:site_name` (whitelabel). */
+  readonly VITE_PUBLIC_SITE_NAME?: string;
+  /** Absolute URL for default `og:image` when item art is missing. */
+  readonly VITE_PUBLIC_OG_DEFAULT_IMAGE?: string;
+  /** Twitter @handle for `twitter:site` (no @ required). */
+  readonly VITE_PUBLIC_TWITTER_SITE?: string;
 }
 
 interface ImportMeta {
