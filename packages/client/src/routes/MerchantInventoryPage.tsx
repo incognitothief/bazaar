@@ -7,19 +7,23 @@ import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
   listCollectionRows,
   listDigitalItemRows,
+  listPhysicalItemRows,
   type CollectionRow,
   type DigitalItemRow,
+  type PhysicalItemRow,
 } from "@/lib/atproto/records";
 import { cn } from "@/lib/utils";
-import type { Collection, DigitalItem } from "@/types/lexicons";
+import type { Collection, DigitalItem, PhysicalItem } from "@/types/lexicons";
 
 type InventoryRow =
   | { kind: "digital"; uri: string; item: DigitalItem }
-  | { kind: "collection"; uri: string; item: Collection };
+  | { kind: "collection"; uri: string; item: Collection }
+  | { kind: "physical"; uri: string; item: PhysicalItem };
 
 function mergeRows(
   digital: DigitalItemRow[],
   collections: CollectionRow[],
+  physical: PhysicalItemRow[],
 ): InventoryRow[] {
   const merged: InventoryRow[] = [
     ...digital.map((r) => ({
@@ -29,6 +33,11 @@ function mergeRows(
     })),
     ...collections.map((r) => ({
       kind: "collection" as const,
+      uri: r.uri,
+      item: r.item,
+    })),
+    ...physical.map((r) => ({
+      kind: "physical" as const,
       uri: r.uri,
       item: r.item,
     })),
@@ -49,6 +58,16 @@ function formatDigitalDetail(item: DigitalItem): string {
   return parts.filter(Boolean).join(" · ");
 }
 
+function formatPhysicalDetail(item: PhysicalItem): string {
+  const parts: string[] = [item.itemClass];
+  if (item.variants?.length) {
+    parts.push(
+      `${item.variants.length} variant${item.variants.length === 1 ? "" : "s"}`,
+    );
+  }
+  return parts.filter(Boolean).join(" · ");
+}
+
 export function MerchantInventoryPage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
@@ -63,12 +82,13 @@ export function MerchantInventoryPage() {
       setLoading(true);
       setLoadError(null);
       try {
-        const [digital, collections] = await Promise.all([
+        const [digital, collections, physical] = await Promise.all([
           listDigitalItemRows(agent, session.did),
           listCollectionRows(agent, session.did),
+          listPhysicalItemRows(agent, session.did),
         ]);
         if (!cancelled) {
-          setRows(mergeRows(digital, collections));
+          setRows(mergeRows(digital, collections, physical));
         }
       } catch (e) {
         if (!cancelled) {
@@ -97,8 +117,8 @@ export function MerchantInventoryPage() {
     <div className="w-full min-w-0">
       <h1 className="text-2xl font-semibold mb-6">Inventory</h1>
       <p className="mb-6 text-sm text-muted-foreground max-w-2xl">
-        Digital items and collections in your repo. To set prices and publish to
-        the storefront, use{" "}
+        Catalog items in your repo. To set prices and publish to the
+        storefront, use{" "}
         <Link to="/merchant/listings" className="underline underline-offset-2">
           Listings
         </Link>
@@ -145,18 +165,24 @@ export function MerchantInventoryPage() {
                   <td className="p-3 font-medium">{row.item.title}</td>
                   <td className="p-3">
                     <Badge variant="outline">
-                      {row.kind === "digital" ? "Digital" : "Collection"}
+                      {row.kind === "digital"
+                        ? "Digital"
+                        : row.kind === "collection"
+                          ? "Collection"
+                          : "Physical"}
                     </Badge>
                   </td>
                   <td className="p-3 text-muted-foreground">
                     {row.kind === "digital"
                       ? formatDigitalDetail(row.item)
-                      : [
-                          row.item.collectionType ?? "collection",
-                          `${row.item.items.length} item${
-                            row.item.items.length === 1 ? "" : "s"
-                          }`,
-                        ].join(" · ")}
+                      : row.kind === "physical"
+                        ? formatPhysicalDetail(row.item)
+                        : [
+                            row.item.collectionType ?? "collection",
+                            `${row.item.items.length} item${
+                              row.item.items.length === 1 ? "" : "s"
+                            }`,
+                          ].join(" · ")}
                   </td>
                   <td className="p-3 text-muted-foreground whitespace-nowrap">
                     {new Date(row.item.createdAt).toLocaleDateString(undefined, {
@@ -164,15 +190,26 @@ export function MerchantInventoryPage() {
                     })}
                   </td>
                   <td className="p-3 text-right">
-                    <Link
-                      to={`/item/${encodeURIComponent(row.uri)}`}
-                      className={cn(
-                        buttonVariants({ size: "sm", variant: "ghost" }),
-                        "inline-flex",
-                      )}
-                    >
-                      Storefront
-                    </Link>
+                    <div className="inline-flex flex-wrap items-center justify-end gap-1">
+                      <Link
+                        to={`/merchant/inventory/edit?uri=${encodeURIComponent(row.uri)}`}
+                        className={cn(
+                          buttonVariants({ size: "sm", variant: "secondary" }),
+                          "inline-flex",
+                        )}
+                      >
+                        Edit
+                      </Link>
+                      <Link
+                        to={`/item/${encodeURIComponent(row.uri)}`}
+                        className={cn(
+                          buttonVariants({ size: "sm", variant: "ghost" }),
+                          "inline-flex",
+                        )}
+                      >
+                        Storefront
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
