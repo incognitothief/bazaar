@@ -1,27 +1,27 @@
-# Rename `app` to your Fly app name before the first deploy.
-app = "bazaar-jwkvxw"
-primary_region = "iad"
+# fly.toml app configuration file generated for bazaar-g5nqca on 2026-04-06T02:39:00Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'bazaar-g5nqca'
+primary_region = 'ams'
 
 [build]
 
-# Server env for Bun (not Vite): merchant routes need ARTIST_DID == store owner did (same as VITE_ARTIST_DID).
-#   fly secrets set ARTIST_DID=did:plc:…
-[env]
-  PORT = "3000"
+[[mounts]]
+  source = 'data'
+  destination = '/data'
 
 [http_service]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
   cpus = 1
-  cpu_kind = "shared"
-  memory = "512mb"
-
-# Create once: fly volumes create bazaar_data --region iad --size 1
-[[mounts]]
-  source = "bazaar_data"
-  destination = "/data"
+  memory_mb = 256
