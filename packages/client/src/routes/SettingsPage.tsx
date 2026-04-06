@@ -33,6 +33,17 @@ import { toast } from "sonner";
 
 const STRIPE_HASH = `#${STRIPE_CONNECT_PANEL_ID}`;
 
+type MerchantBusinessSettingsResponse = {
+  db: {
+    businessName: string | null;
+    businessState: string | null;
+    businessEmail: string | null;
+  };
+  canEditBusinessName: boolean;
+  canEditBusinessState: boolean;
+  canEditBusinessEmail: boolean;
+};
+
 export function SettingsPage() {
   const location = useLocation();
   const { session, signOut } = useAtpSession();
@@ -56,6 +67,14 @@ export function SettingsPage() {
     string | null
   >(null);
   const [relayAvatarBroken, setRelayAvatarBroken] = useState(false);
+  const [bizName, setBizName] = useState("");
+  const [bizState, setBizState] = useState("");
+  const [bizEmail, setBizEmail] = useState("");
+  const [bizCanEditName, setBizCanEditName] = useState(true);
+  const [bizCanEditState, setBizCanEditState] = useState(true);
+  const [bizCanEditEmail, setBizCanEditEmail] = useState(true);
+  const [bizLoading, setBizLoading] = useState(true);
+  const [bizError, setBizError] = useState<string | null>(null);
 
   const loadStripeState = useCallback(async () => {
     setStripeLoading(true);
@@ -93,6 +112,47 @@ export function SettingsPage() {
   useEffect(() => {
     void loadStripeState();
   }, [loadStripeState]);
+
+  const loadBusinessSettings = useCallback(async () => {
+    setBizLoading(true);
+    setBizError(null);
+    try {
+      const res = await fetch(browserApiUrl("/api/merchant/business-settings"), {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as
+          | { error?: string; detail?: string }
+          | null;
+        const parts = [j?.error, j?.detail].filter(
+          (x): x is string => typeof x === "string" && x.length > 0,
+        );
+        setBizError(
+          parts.join(": ") ||
+            (res.status === 401
+              ? "Sign in as the configured store owner to manage business details."
+              : `Could not load business settings (HTTP ${res.status}).`),
+        );
+        return;
+      }
+      const data = (await res.json()) as MerchantBusinessSettingsResponse;
+      setBizName(data.db.businessName ?? "");
+      setBizState(data.db.businessState ?? "");
+      setBizEmail(data.db.businessEmail ?? "");
+      setBizCanEditName(data.canEditBusinessName);
+      setBizCanEditState(data.canEditBusinessState);
+      setBizCanEditEmail(data.canEditBusinessEmail);
+    } catch {
+      setBizError("Could not load business settings.");
+    } finally {
+      setBizLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!session || !agent) return;
+    void loadBusinessSettings();
+  }, [session, agent, loadBusinessSettings]);
 
   useLayoutEffect(() => {
     if (!session || !agent) return;
@@ -196,6 +256,45 @@ export function SettingsPage() {
     };
   }, [session?.did]);
 
+  async function saveBusinessDetails() {
+    try {
+      const res = await fetch(browserApiUrl("/api/merchant/business-settings"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessName: bizName.trim() === "" ? "" : bizName.trim(),
+          businessState: bizState.trim() === "" ? "" : bizState.trim(),
+          businessEmail: bizEmail.trim() === "" ? "" : bizEmail.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as
+          | { error?: string; detail?: string }
+          | null;
+        const parts = [j?.error, j?.detail].filter(
+          (x): x is string => typeof x === "string" && x.length > 0,
+        );
+        toast.error("Could not save business details", {
+          description: parts.join(": ") || `HTTP ${res.status}`,
+        });
+        return;
+      }
+      const data = (await res.json()) as MerchantBusinessSettingsResponse;
+      setBizName(data.db.businessName ?? "");
+      setBizState(data.db.businessState ?? "");
+      setBizEmail(data.db.businessEmail ?? "");
+      setBizCanEditName(data.canEditBusinessName);
+      setBizCanEditState(data.canEditBusinessState);
+      setBizCanEditEmail(data.canEditBusinessEmail);
+      toast.success("Business details saved");
+    } catch (e) {
+      toast.error("Could not save business details", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  }
+
   async function saveProfile() {
     if (!agent || !session) return;
     const record: ActorMerchant = {
@@ -292,6 +391,89 @@ export function SettingsPage() {
         >
           Save profile
         </button>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-medium">Business details</h2>
+        <p className="text-sm text-muted-foreground">
+          Shown on the public Terms and Refunds pages. Optional fields can also
+          be set as{" "}
+          <code className="text-xs rounded bg-muted px-1 py-0.5">
+            BUSINESS_NAME
+          </code>
+          ,{" "}
+          <code className="text-xs rounded bg-muted px-1 py-0.5">
+            BUSINESS_STATE
+          </code>
+          , and{" "}
+          <code className="text-xs rounded bg-muted px-1 py-0.5">
+            BUSINESS_EMAIL
+          </code>{" "}
+          on the server (each overrides the value saved here).
+        </p>
+        {bizLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : bizError ? (
+          <p className="text-sm text-destructive">{bizError}</p>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="biz-name">Business name</Label>
+              <Input
+                id="biz-name"
+                value={bizName}
+                disabled={!bizCanEditName}
+                onChange={(e) => setBizName(e.target.value)}
+              />
+              {!bizCanEditName ? (
+                <p className="text-xs text-muted-foreground">
+                  Managed by <code className="text-xs">BUSINESS_NAME</code> in
+                  the server environment.
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="biz-state">Business state / region</Label>
+              <Input
+                id="biz-state"
+                value={bizState}
+                disabled={!bizCanEditState}
+                onChange={(e) => setBizState(e.target.value)}
+                placeholder="e.g. CA or California"
+              />
+              {!bizCanEditState ? (
+                <p className="text-xs text-muted-foreground">
+                  Managed by <code className="text-xs">BUSINESS_STATE</code> in
+                  the server environment.
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="biz-email">Business email</Label>
+              <Input
+                id="biz-email"
+                type="email"
+                autoComplete="email"
+                value={bizEmail}
+                disabled={!bizCanEditEmail}
+                onChange={(e) => setBizEmail(e.target.value)}
+              />
+              {!bizCanEditEmail ? (
+                <p className="text-xs text-muted-foreground">
+                  Managed by <code className="text-xs">BUSINESS_EMAIL</code> in
+                  the server environment.
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className={cn(buttonVariants())}
+              onClick={() => void saveBusinessDetails()}
+            >
+              Save business details
+            </button>
+          </>
+        )}
       </section>
 
       <section className="space-y-4">

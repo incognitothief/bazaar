@@ -7,13 +7,29 @@ import {
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
 import { InventoryGrid, InventoryGridSkeleton } from "@/components/public/InventoryGrid";
+import { useActorMerchantProfile } from "@/hooks/useActorMerchantProfile";
 import { useCatalog } from "@/hooks/useCatalog";
 import type { CatalogEntry } from "@/hooks/useCatalog";
 
+const DEFAULT_STOREFRONT_TITLE = "Storefront";
+const DEFAULT_STOREFRONT_DESCRIPTION =
+  "Music and releases from the artist catalog. Only items with an active listing are shown.";
+
 export function HomePage() {
   const artistDid = import.meta.env.VITE_ARTIST_DID;
+  const {
+    profile: merchantProfile,
+    loading: merchantProfileLoading,
+  } = useActorMerchantProfile(artistDid);
   const { entries, listingsByItemUri, loading, error } = useCatalog(artistDid);
   const agent = createPublicAgent();
+
+  const merchantHeaderPending =
+    merchantProfileLoading && artistDid?.startsWith("did:");
+  const storefrontTitle =
+    merchantProfile?.displayName?.trim() || DEFAULT_STOREFRONT_TITLE;
+  const storefrontDescription =
+    merchantProfile?.description?.trim() || DEFAULT_STOREFRONT_DESCRIPTION;
   const hasActive = entries.some((e) => listingsByItemUri[e.uri]);
 
   const dummyItemUri = useMemo(
@@ -47,12 +63,34 @@ export function HomePage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Storefront</h1>
-        <p className="mt-2 text-muted-foreground max-w-prose">
-          Music and releases from the artist catalog. Only items with an active
-          listing are shown.
-        </p>
+      <div aria-busy={merchantHeaderPending || undefined}>
+        {merchantHeaderPending ? (
+          <div className="space-y-3">
+            <div
+              className="h-9 max-w-xs animate-pulse rounded-md bg-muted"
+              aria-hidden
+            />
+            <div className="max-w-prose space-y-2">
+              <div
+                className="h-4 w-full animate-pulse rounded bg-muted"
+                aria-hidden
+              />
+              <div
+                className="h-4 w-4/5 animate-pulse rounded bg-muted"
+                aria-hidden
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              {storefrontTitle}
+            </h1>
+            <p className="mt-2 max-w-prose whitespace-pre-wrap text-muted-foreground">
+              {storefrontDescription}
+            </p>
+          </>
+        )}
       </div>
       {error ? (
         <p className="text-destructive text-sm" role="alert">

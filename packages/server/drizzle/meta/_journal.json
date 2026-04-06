@@ -43,6 +43,13 @@
       "when": 1775400000000,
       "tag": "0005_inventory_prefill_log",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1775453019837,
+      "tag": "0006_merchant_business_profile",
+      "breakpoints": true
     }
   ]
 }

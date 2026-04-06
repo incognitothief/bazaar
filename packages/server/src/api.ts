@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "./db";
 import { meta } from "./db/schema";
+import { getEffectiveBusinessProfile } from "./lib/businessProfile";
 import { createAtprotoRouter } from "./routes/atproto";
 import { createCatalogRouter } from "./routes/catalog";
 import { createDownloadRouter } from "./routes/download";
@@ -27,6 +28,16 @@ export function createApiRouter(db: Db, oauthClient: OAuthClient) {
       key: row.key,
       value: row.value,
       updatedAt: row.updatedAt,
+    });
+  });
+
+  /** Public KYC / legal: merged BUSINESS_* env + SQLite (no auth). */
+  api.get("/business-profile", (c) => {
+    const p = getEffectiveBusinessProfile(db);
+    return c.json({
+      businessName: p.businessName,
+      businessState: p.businessState,
+      businessEmail: p.businessEmail,
     });
   });
 

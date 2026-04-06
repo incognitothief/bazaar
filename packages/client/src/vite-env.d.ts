@@ -13,6 +13,8 @@ interface ImportMetaEnv {
   readonly VITE_DEV_DUMMY_ITEM_URI?: string;
   /** When "true", show the Listings dummy row even outside Vite dev (e.g. preview). */
   readonly VITE_SHOW_LISTINGS_DUMMY?: string;
+  /** Contact email on /terms and /refunds (defaults if unset). */
+  readonly VITE_CONTACT_EMAIL?: string;
 }
 
 interface ImportMeta {
