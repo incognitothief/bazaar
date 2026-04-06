@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Agent } from "@atproto/api";
+import { ARTWORK_LOADING_SVG_URLS } from "@/lib/artworkLoadingUrls";
 import { createBrowserApiURL } from "@/lib/browserApi";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,58 @@ function logArtwork(step: string, detail?: Record<string, unknown>) {
   }
 }
 
+type LoadPhase = "missing" | "loading" | "ready";
+
+function ArtworkLoadingSkeleton({ className }: { className?: string }) {
+  const urls = ARTWORK_LOADING_SVG_URLS;
+  const count = urls.length;
+  const cols = count <= 1 ? 1 : count === 2 ? 2 : 3;
+
+  if (count === 0) {
+    return (
+      <div
+        className={cn("animate-pulse bg-muted-foreground/20", className)}
+        role="status"
+        aria-busy="true"
+        aria-label="Loading artwork"
+      >
+        <span className="sr-only">Loading artwork</span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <span className="sr-only">Loading artwork</span>
+      <div
+        className={cn(
+          "grid h-full w-full min-h-0 gap-1.5 bg-muted p-2 [grid-auto-rows:minmax(0,1fr)]",
+          className,
+        )}
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        role="status"
+        aria-busy="true"
+        aria-label="Loading artwork"
+      >
+        {urls.map((src) => (
+          <div
+            key={src}
+            className="flex min-h-0 min-w-0 items-center justify-center"
+          >
+            <img
+              src={src}
+              alt=""
+              className="max-h-full max-w-full object-contain animate-pulse"
+              draggable={false}
+              decoding="async"
+            />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function ArtworkImage({
   agent,
   did,
@@ -36,15 +89,21 @@ export function ArtworkImage({
   className?: string;
 }) {
   const [src, setSrc] = useState<string | null>(null);
+  const [phase, setPhase] = useState<LoadPhase>(() => (cid ? "loading" : "missing"));
 
   useEffect(() => {
     if (!cid) {
       logArtwork("skip: no cid");
+      setSrc(null);
+      setPhase("missing");
       return;
     }
     let blobUrl: string | null = null;
     let cancelled = false;
     const catalogItemUri = itemUri?.trim();
+
+    setSrc(null);
+    setPhase("loading");
 
     void (async () => {
       logArtwork("start", {
@@ -70,9 +129,13 @@ export function ArtworkImage({
                 urlPrefix: j.url.slice(0, 48) + "…",
               });
               setSrc(j.url);
+              setPhase("ready");
               return;
             }
-            logArtwork("inventory-public: 200 but no url in JSON", { keys: Object.keys(j) });
+            logArtwork("inventory-public: 200 but no url in JSON", {
+              keys: Object.keys(j),
+            });
+            if (!cancelled) setPhase("missing");
             return;
           }
 
@@ -97,17 +160,21 @@ export function ArtworkImage({
             if (!cancelled && blobUrl) {
               logArtwork("legacy: getBlob ok (object URL set)");
               setSrc(blobUrl);
+              setPhase("ready");
             } else {
               logArtwork("legacy: getBlob miss or cancelled", { cancelled });
+              if (!cancelled) setPhase("missing");
             }
           } else {
             logArtwork("done: no image (inventory error did not allow PDS blob)");
+            if (!cancelled) setPhase("missing");
           }
           return;
         } catch (e) {
           logArtwork("inventory-public: fetch threw (no PDS fallback)", {
             message: e instanceof Error ? e.message : String(e),
           });
+          if (!cancelled) setPhase("missing");
           return;
         }
       }
@@ -117,8 +184,10 @@ export function ArtworkImage({
       if (!cancelled && blobUrl) {
         logArtwork("getBlob ok (object URL set)");
         setSrc(blobUrl);
+        setPhase("ready");
       } else {
         logArtwork("getBlob miss or cancelled", { cancelled });
+        if (!cancelled) setPhase("missing");
       }
     })();
     return () => {
@@ -127,21 +196,25 @@ export function ArtworkImage({
     };
   }, [agent, did, cid, itemUri]);
 
-  if (!cid || !src) {
+  if (phase === "ready" && src) {
     return (
-      <div
-        className={cn(
-          "flex items-center justify-center bg-muted text-muted-foreground",
-          className,
-        )}
-        aria-hidden
-      >
-        No artwork
-      </div>
+      <img src={src} alt={alt} className={cn("object-cover", className)} />
     );
   }
 
+  if (phase === "loading") {
+    return <ArtworkLoadingSkeleton className={className} />;
+  }
+
   return (
-    <img src={src} alt={alt} className={cn("object-cover", className)} />
+    <div
+      className={cn(
+        "flex items-center justify-center bg-muted text-muted-foreground",
+        className,
+      )}
+      aria-hidden
+    >
+      No artwork
+    </div>
   );
 }
