@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Agent } from "@atproto/api";
 import { Link } from "react-router-dom";
 import { getRecordValue } from "@/lib/atproto/records";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Collection, DigitalItem, Listing } from "@/types/lexicons";
 
@@ -134,7 +134,13 @@ export function CollectionMemberDownloads({
   itemBusyUri: string | null;
 }) {
   const [rows, setRows] = useState<
-    { uri: string; title: string; role: string; trackNumber: number | null }[]
+    {
+      uri: string;
+      title: string;
+      role: string;
+      trackNumber: number | null;
+      durationMs?: number;
+    }[]
   >([]);
 
   useEffect(() => {
@@ -145,6 +151,7 @@ export function CollectionMemberDownloads({
         title: string;
         role: string;
         trackNumber: number | null;
+        durationMs?: number;
       }[] = [];
       let trackSeq = 0;
       for (const entry of collection.items) {
@@ -156,6 +163,7 @@ export function CollectionMemberDownloads({
           title: entry.title ?? v?.title ?? entry.uri,
           role: entry.role,
           trackNumber: isTrack ? (entry.trackNumber ?? trackSeq) : null,
+          durationMs: v?.durationMs,
         });
       }
       if (!cancelled) setRows(out);
@@ -167,50 +175,53 @@ export function CollectionMemberDownloads({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
-          disabled={zipBusy}
-          onClick={() => onDownloadZip()}
-        >
-          {zipBusy ? "Preparing zip…" : "Download full collection (zip)"}
-        </button>
-      </div>
-      <ul className="space-y-2 text-sm border rounded-lg divide-y">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={zipBusy}
+        onClick={() => onDownloadZip()}
+      >
+        {zipBusy ? "Preparing zip…" : "Download full collection (zip)"}
+      </Button>
+      <ol className="list-none space-y-3 text-sm m-0 p-0">
         {rows.map((r) => (
-          <li
-            key={r.uri}
-            className="flex flex-wrap items-center justify-between gap-2 p-3"
-          >
-            <div className="min-w-0 flex items-baseline gap-2">
-              {r.trackNumber != null ? (
-                <span className="tabular-nums text-muted-foreground shrink-0 w-7 text-right">
-                  {r.trackNumber}.
-                </span>
-              ) : (
-                <span className="w-7 shrink-0" aria-hidden />
-              )}
-              <span className="min-w-0">
-                <span className="font-medium">{r.title}</span>
-                {r.role !== "track" ? (
-                  <span className="text-muted-foreground text-xs ml-2">
-                    {r.role}
+          <li key={r.uri} className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="flex min-w-0 items-baseline gap-2">
+                {r.trackNumber != null ? (
+                  <span className="tabular-nums text-muted-foreground shrink-0 w-7 text-right">
+                    {r.trackNumber}.
                   </span>
-                ) : null}
+                ) : (
+                  <span className="w-7 shrink-0" aria-hidden />
+                )}
+                <span className="min-w-0">
+                  <span className="font-medium">{r.title}</span>
+                  {r.role !== "track" ? (
+                    <span className="text-muted-foreground text-xs ml-2">
+                      {r.role}
+                    </span>
+                  ) : null}
+                  <span className="text-muted-foreground tabular-nums ml-2">
+                    {formatDuration(r.durationMs)}
+                  </span>
+                </span>
               </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                disabled={itemBusyUri === r.uri}
+                onClick={() => onDownloadItem(r.uri)}
+              >
+                {itemBusyUri === r.uri ? "…" : "Download"}
+              </Button>
             </div>
-            <button
-              type="button"
-              className="text-sm rounded-md border border-input bg-background px-3 py-1.5"
-              disabled={itemBusyUri === r.uri}
-              onClick={() => onDownloadItem(r.uri)}
-            >
-              {itemBusyUri === r.uri ? "…" : "Download"}
-            </button>
           </li>
         ))}
-      </ul>
+      </ol>
     </div>
   );
 }

@@ -321,8 +321,8 @@ export function PurchaseDetailPage() {
       </section>
 
       {isCollection ? (
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">Downloads</h2>
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium">Your downloads</h2>
           <CollectionMemberDownloads
             agent={agent}
             collection={item as Collection}
