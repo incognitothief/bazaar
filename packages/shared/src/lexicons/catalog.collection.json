@@ -103,7 +103,7 @@
           },
           "bazaarPid": {
             "$ref": "diamonds.whereditgo.bazaar.defs#bazaarIdentifier",
-            "description": "Self-issued Product Identifier. Generated as base32(SHA-256(artistDid + collectionUri + releaseDate)). Shadows UPC. supersededByUpc populated when a proper UPC is obtained."
+            "description": "Self-issued Product Identifier. Generated as base32(SHA-256(artistDid + collectionUri + releaseDate)). Shadows UPC. id, sig, and generatedAt are immutable; supersededByUpc is populated when a proper UPC is obtained."
           },
           "artworkCid": {
             "type": "string",

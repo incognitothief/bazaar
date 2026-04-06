@@ -19,11 +19,13 @@
         "properties": {
           "title": {
             "type": "string",
-            "maxLength": 512
+            "maxLength": 512,
+            "description": "Freely mutable via putRecord."
           },
           "artistDid": {
             "type": "string",
-            "format": "did"
+            "format": "did",
+            "description": "Immutable. Ownership transfer is not supported."
           },
           "itemClass": {
             "type": "string",
@@ -37,11 +39,13 @@
               "document",
               "ebook",
               "other"
-            ]
+            ],
+            "description": "Immutable. A class change is a new publishing act requiring a new record."
           },
           "description": {
             "type": "string",
-            "maxLength": 4096
+            "maxLength": 4096,
+            "description": "Freely mutable via putRecord."
           },
           "formats": {
             "type": "array",
@@ -98,7 +102,7 @@
           },
           "bazaarRid": {
             "$ref": "diamonds.whereditgo.bazaar.defs#bazaarIdentifier",
-            "description": "Self-issued Recording Identifier. Generated as base32(SHA-256(artistDid + fileCid + fileChecksum + createdAt)). Shadows ISRC. supersededByIsrc populated when a proper ISRC is obtained."
+            "description": "Self-issued Recording Identifier. Generated as base32(SHA-256(artistDid + fileCid + fileChecksum + createdAt)). Shadows ISRC. id, sig, and generatedAt are immutable; supersededByIsrc is populated when a proper ISRC is obtained."
           },
           "collectionUri": {
             "type": "string",
@@ -112,7 +116,8 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           }
         }
       }
