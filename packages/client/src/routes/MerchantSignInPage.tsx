@@ -32,11 +32,8 @@ export function MerchantSignInPage() {
             </>
           ) : (
             <>
-              Enter your ATProto handle (for example{" "}
-              <span className="font-mono text-foreground">you.bsky.social</span>
-              ). You will be redirected to your host to authorize Bazaar. After
-              OAuth, you are a merchant only if your account DID equals{" "}
-              <span className="font-mono text-foreground">VITE_ARTIST_DID</span>.
+              Enter your ATProto handle. You will be redirected to your host PDS
+              to authorize Bazaar.
             </>
           )}
         </p>
@@ -67,7 +64,10 @@ export function MerchantSignInPage() {
         </Button>
       </form>
       <p className="text-center text-sm text-muted-foreground">
-        <Link to="/" className="underline underline-offset-4 hover:text-foreground">
+        <Link
+          to="/"
+          className="underline underline-offset-4 hover:text-foreground"
+        >
           Back to storefront
         </Link>
       </p>
