@@ -2,6 +2,7 @@ import { AtUri } from "@atproto/syntax";
 import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Hono } from "hono";
+import { getAgent } from "../lib/atproto/client";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import {
   INVENTORY_ARTWORK_OBJECT_NAME,
@@ -41,12 +42,54 @@ export function createInventoryPublicRouter() {
     const cfg = r2ConfigFromEnv();
     if (!cfg.ok) return c.json({ error: "r2_unconfigured" }, 503);
     const client = getR2S3Client(cfg);
-    const key = inventoryObjectKey(artistDid, at.rkey, INVENTORY_ARTWORK_OBJECT_NAME);
+    let key = inventoryObjectKey(artistDid, at.rkey, INVENTORY_ARTWORK_OBJECT_NAME);
 
     try {
       await client.send(new HeadObjectCommand({ Bucket: cfg.bucket, Key: key }));
     } catch {
-      return c.json({ error: "artwork_not_in_r2" }, 404);
+      if (at.collection === COL_DIGITAL) {
+        try {
+          const agent = getAgent();
+          const rec = await agent.com.atproto.repo.getRecord({
+            repo: artistDid,
+            collection: COL_DIGITAL,
+            rkey: at.rkey,
+          });
+          const val = rec.data.value as { collectionUri?: string };
+          const colUri =
+            typeof val.collectionUri === "string" ? val.collectionUri.trim() : "";
+          if (colUri) {
+            const colAt = new AtUri(colUri);
+            if (
+              colAt.rkey &&
+              colAt.hostname === artistDid &&
+              colAt.collection === COL_COLLECTION
+            ) {
+              const colKey = inventoryObjectKey(
+                artistDid,
+                colAt.rkey,
+                INVENTORY_ARTWORK_OBJECT_NAME,
+              );
+              try {
+                await client.send(
+                  new HeadObjectCommand({ Bucket: cfg.bucket, Key: colKey }),
+                );
+                key = colKey;
+              } catch {
+                return c.json({ error: "artwork_not_in_r2" }, 404);
+              }
+            } else {
+              return c.json({ error: "artwork_not_in_r2" }, 404);
+            }
+          } else {
+            return c.json({ error: "artwork_not_in_r2" }, 404);
+          }
+        } catch {
+          return c.json({ error: "artwork_not_in_r2" }, 404);
+        }
+      } else {
+        return c.json({ error: "artwork_not_in_r2" }, 404);
+      }
     }
 
     const cmd = new GetObjectCommand({ Bucket: cfg.bucket, Key: key });

@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Markdown from "react-markdown";
+import { toast } from "sonner";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   getRecordValue,
   listListingRows,
+  listPurchaseReceiptRows,
+  type ListingRow,
 } from "@/lib/atproto/records";
+import { createBrowserApiURL, triggerFileDownload } from "@/lib/browserApi";
+import { useAtpSession } from "@/hooks/useAtpSession";
+import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import { fetchActorPublicProfile } from "@/lib/actorTypeahead";
 import { pdslsRepoCollectionsUrl } from "@/lib/pdsls";
@@ -23,7 +29,10 @@ import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { BuyButton } from "@/components/public/BuyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MetadataChip } from "@/components/shared/MetadataChip";
-import { TrackList } from "@/components/public/TrackList";
+import {
+  CollectionMemberDownloads,
+  TrackList,
+} from "@/components/public/TrackList";
 import { Button } from "@/components/ui/button";
 import type {
   ActorMerchant,
@@ -45,12 +54,18 @@ export function ItemDetailPage() {
   const itemUri = uriParam ? decodeURIComponent(uriParam) : "";
   const artistDid = resolveStorefrontArtistDid(itemUri);
   const agent = useMemo(() => createPublicAgent(), []);
+  const { session } = useAtpSession();
+  const buyerAgent = useMerchantAgent(session);
 
   const [item, setItem] = useState<CatalogItem | null>(null);
   const [listing, setListing] = useState<Listing | null>(null);
   const [listingUri, setListingUri] = useState<string | null>(null);
+  const [allArtistListings, setAllArtistListings] = useState<ListingRow[]>([]);
+  const [ownsCollection, setOwnsCollection] = useState(false);
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloadBusyUri, setDownloadBusyUri] = useState<string | null>(null);
+  const [zipBusy, setZipBusy] = useState(false);
   const [legalOpen, setLegalOpen] = useState(false);
   const [relayAvatarUrl, setRelayAvatarUrl] = useState<string | null>(null);
   const [relayAvatarBroken, setRelayAvatarBroken] = useState(false);
@@ -85,6 +100,7 @@ export function ItemDetailPage() {
 
         const rows = await listListingRows(agent, artistDid);
         if (cancelled) return;
+        setAllArtistListings(rows);
         const row = rows.find((r) => r.listing.item.uri === itemUri);
         let listingRow: Listing | null = row?.listing ?? null;
         let listingUriVal: string | null = row?.uri ?? null;
@@ -94,6 +110,30 @@ export function ItemDetailPage() {
         }
         setListing(listingRow);
         setListingUri(listingUriVal);
+
+        if (
+          v &&
+          "$type" in v &&
+          v.$type === "diamonds.whereditgo.bazaar.catalog.collection" &&
+          buyerAgent &&
+          session?.did
+        ) {
+          const receipts = await listPurchaseReceiptRows(
+            buyerAgent,
+            session.did,
+          );
+          if (!cancelled) {
+            setOwnsCollection(
+              receipts.some(
+                (r) =>
+                  r.receipt.item.uri === itemUri &&
+                  r.receipt.item.itemType === BAZAAR_COLLECTION.collection,
+              ),
+            );
+          }
+        } else if (!cancelled) {
+          setOwnsCollection(false);
+        }
 
         let licUri = listingRow?.licenseUri;
         if (
@@ -120,7 +160,7 @@ export function ItemDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [agent, itemUri, artistDid]);
+  }, [agent, itemUri, artistDid, buyerAgent, session?.did]);
 
   useEffect(() => {
     setRelayAvatarBroken(false);
@@ -210,6 +250,22 @@ export function ItemDetailPage() {
     };
   }, [agent, item?.artistDid]);
 
+  const isCollection =
+    item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
+
+  const purchaseByTrackUri = useMemo(() => {
+    const m = new Map<string, { listingUri: string; listing: Listing }>();
+    if (!isCollection || !listingUri) return m;
+    for (const row of allArtistListings) {
+      const L = row.listing;
+      if (L.status !== "active") continue;
+      if (L.parentListing !== listingUri) continue;
+      if (L.item.itemType !== BAZAAR_COLLECTION.digitalItem) continue;
+      m.set(L.item.uri, { listingUri: row.uri, listing: L });
+    }
+    return m;
+  }, [isCollection, listingUri, allArtistListings]);
+
   if (!itemUri) {
     return <p className="text-muted-foreground">Missing item.</p>;
   }
@@ -243,8 +299,63 @@ export function ItemDetailPage() {
   const authorDid = item.artistDid;
   const authorInitial =
     authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
-  const isCollection =
-    item.$type === "diamonds.whereditgo.bazaar.catalog.collection";
+
+  async function downloadDigitalItemUri(targetUri: string) {
+    if (!session) {
+      toast.error("Sign in to download");
+      return;
+    }
+    setDownloadBusyUri(targetUri);
+    try {
+      const url = createBrowserApiURL("/api/download");
+      url.searchParams.set("itemUri", targetUri);
+      const res = await fetch(url.href, { credentials: "include" });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || res.statusText);
+      }
+      const { url: signed, filename } = (await res.json()) as {
+        url: string;
+        filename?: string;
+      };
+      triggerFileDownload(signed, filename);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setDownloadBusyUri(null);
+    }
+  }
+
+  async function downloadCollectionZip() {
+    if (!session) {
+      toast.error("Sign in to download");
+      return;
+    }
+    setZipBusy(true);
+    try {
+      const url = createBrowserApiURL("/api/download/collection-zip");
+      url.searchParams.set("collectionUri", itemUri);
+      const res = await fetch(url.href, { credentials: "include" });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || res.statusText);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get("Content-Disposition");
+      const match = dispo?.match(/filename="([^"]+)"/);
+      const name = match?.[1] ?? "collection.zip";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setZipBusy(false);
+    }
+  }
+
   const blobDid =
     item.$type === "diamonds.whereditgo.bazaar.catalog.item.digital"
       ? item.artistDid
@@ -378,9 +489,26 @@ export function ItemDetailPage() {
       </section>
 
       {isCollection ? (
-        <section>
-          <h2 className="text-lg font-medium mb-3">Tracks</h2>
-          <TrackList agent={agent} collection={item} />
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium">
+            {ownsCollection ? "Your downloads" : "Tracks"}
+          </h2>
+          {ownsCollection ? (
+            <CollectionMemberDownloads
+              agent={agent}
+              collection={item}
+              onDownloadItem={(u) => void downloadDigitalItemUri(u)}
+              onDownloadZip={() => void downloadCollectionZip()}
+              zipBusy={zipBusy}
+              itemBusyUri={downloadBusyUri}
+            />
+          ) : (
+            <TrackList
+              agent={agent}
+              collection={item}
+              purchaseByTrackUri={purchaseByTrackUri}
+            />
+          )}
         </section>
       ) : null}
 
@@ -419,7 +547,7 @@ export function ItemDetailPage() {
         </section>
       ) : null}
 
-      {listing && listingUri ? (
+      {listing && listingUri && !(isCollection && ownsCollection) ? (
         <section>
           <BuyButton
             listingUri={listingUri}

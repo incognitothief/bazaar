@@ -36,6 +36,13 @@
       "when": 1775349317128,
       "tag": "0004_inventory_upload",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775400000000,
+      "tag": "0005_inventory_prefill_log",
+      "breakpoints": true
     }
   ]
 }

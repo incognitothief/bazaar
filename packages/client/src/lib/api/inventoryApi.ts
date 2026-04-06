@@ -172,6 +172,30 @@ export async function publishInventorySession(
   return res.json() as Promise<PublishInventorySnapshot>;
 }
 
+export type InventoryPrefillPayload = {
+  v: number;
+  primaryItemUri: string;
+  collectionUri: string;
+  licenseUri: string;
+  licenseGrantCid: string;
+  priceUsd?: string;
+  individualPurchaseTrackUris?: string[];
+};
+
+export async function fetchLatestInventoryPrefill(): Promise<{
+  prefill: InventoryPrefillPayload | null;
+  id?: string;
+  createdAt?: string | null;
+}> {
+  const res = await invFetch("/prefill/latest");
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{
+    prefill: InventoryPrefillPayload | null;
+    id?: string;
+    createdAt?: string | null;
+  }>;
+}
+
 const MULTIPART_CHUNK = 8 * 1024 * 1024;
 
 /** Bytes delivered for the current file (`total` = file.size). */

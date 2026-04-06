@@ -365,13 +365,14 @@ type AudioRowState = RegRow & {
   showDisc: boolean;
   description: string;
   rights: TrackRightsState;
+  allowIndividualPurchase: boolean;
 };
 
 type ExtraRowState = RegRow & {
   title: string;
   itemClass: (typeof EXTRA_ITEM_CLASSES)[number];
   role: CollectionItemRole;
-  essential: boolean;
+  allowIndividualPurchase: boolean;
   description: string;
 };
 
@@ -885,6 +886,7 @@ export function UploadTracksPage() {
           showDisc: false,
           description: "",
           rights: emptyTrackRights(merchantDid),
+          allowIndividualPurchase: false,
         };
       });
       const nextExtra: ExtraRowState[] = extraFiles.map((file, i) => {
@@ -898,7 +900,7 @@ export function UploadTracksPage() {
           title: stripExtension(file.name),
           itemClass: ic,
           role: defaultRoleForItemClass(ic, file),
-          essential: true,
+          allowIndividualPurchase: false,
           description: "",
         };
       });
@@ -1085,15 +1087,19 @@ export function UploadTracksPage() {
           return {
             objectId: r.objectId,
             role: "track" as const,
-            essential: true,
             trackNumber: i + 1,
             discNumber,
+            ...(r.allowIndividualPurchase
+              ? { allowIndividualPurchase: true as const }
+              : {}),
           };
         }),
         ...extraRows.map((r) => ({
           objectId: r.objectId,
           role: r.role,
-          essential: r.essential,
+          ...(r.allowIndividualPurchase
+            ? { allowIndividualPurchase: true as const }
+            : {}),
         })),
       ];
 
@@ -1134,14 +1140,10 @@ export function UploadTracksPage() {
       };
 
       await saveInventoryDraft(sessionId, draft);
-      const snap = await publishInventorySession(sessionId);
+      await publishInventorySession(sessionId);
       toast.success("Release published to your PDS.");
       skipLeaveGuardRef.current = true;
-      navigate("/merchant/dashboard", {
-        state: {
-          listingPrefillPath: `/merchant/listings?prefillItemUri=${encodeURIComponent(snap.primaryItemUri)}`,
-        },
-      });
+      navigate("/merchant/listings?source=upload");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Publish failed");
     } finally {
@@ -1622,6 +1624,25 @@ export function UploadTracksPage() {
                           )
                         }
                       />
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={r.allowIndividualPurchase}
+                          onChange={(e) =>
+                            setAudioRows((prev) =>
+                              prev.map((x) =>
+                                x.objectId === r.objectId
+                                  ? {
+                                      ...x,
+                                      allowIndividualPurchase: e.target.checked,
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                        Allow individual purchase (separate listing for this track)
+                      </label>
                       <Button
                         type="button"
                         variant="ghost"
@@ -3146,18 +3167,21 @@ export function UploadTracksPage() {
                       <label className="flex items-center gap-2 text-xs">
                         <input
                           type="checkbox"
-                          checked={r.essential}
+                          checked={r.allowIndividualPurchase}
                           onChange={(e) =>
                             setExtraRows((prev) =>
                               prev.map((x) =>
                                 x.objectId === r.objectId
-                                  ? { ...x, essential: e.target.checked }
+                                  ? {
+                                      ...x,
+                                      allowIndividualPurchase: e.target.checked,
+                                    }
                                   : x,
                               ),
                             )
                           }
                         />
-                        Essential to the release
+                        Allow individual purchase (separate listing)
                       </label>
                       <Textarea
                         rows={2}
@@ -3429,6 +3453,7 @@ export function UploadTracksPage() {
                 <li key={r.objectId}>
                   {r.title} ({formatDuration(r.durationMs)})
                   {r.isrc.trim() ? ` · ISRC ${r.isrc}` : ""}
+                  {r.allowIndividualPurchase ? " · individual listing" : ""}
                 </li>
               ))}
             </ol>
@@ -3441,7 +3466,7 @@ export function UploadTracksPage() {
                   {extraRows.map((r) => (
                     <li key={r.objectId}>
                       {r.title} · {r.itemClass} · {r.role}
-                      {r.essential ? "" : " · non-essential"}
+                      {r.allowIndividualPurchase ? " · individual listing" : ""}
                     </li>
                   ))}
                 </ul>
