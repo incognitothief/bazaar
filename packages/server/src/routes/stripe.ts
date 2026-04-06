@@ -5,11 +5,13 @@ import {
   devCheckoutStubAllowed,
   isDevStubListingUri,
 } from "@bazaar/shared";
+import { eq } from "drizzle-orm";
 import { getCookie } from "hono/cookie";
 import { Hono } from "hono";
 import Stripe from "stripe";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
+import { paymentFulfillment } from "../db/schema";
 import { getAgent } from "../lib/atproto/client";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { storefrontWebOrigin } from "../lib/atproto/oauth-url";
@@ -27,6 +29,28 @@ const SESSION_COOKIE = "bazaar_atp_session";
 
 function buyerDidValid(did: string): boolean {
   return did.startsWith("did:") && did.length > 8;
+}
+
+function fulfillmentRowForCheckoutSession(
+  db: Db,
+  session: Stripe.Checkout.Session,
+): typeof paymentFulfillment.$inferSelect | undefined {
+  const bySession = db
+    .select()
+    .from(paymentFulfillment)
+    .where(eq(paymentFulfillment.checkoutSessionId, session.id))
+    .get();
+  if (bySession) return bySession;
+  const piRef =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id;
+  if (!piRef) return undefined;
+  return db
+    .select()
+    .from(paymentFulfillment)
+    .where(eq(paymentFulfillment.paymentIntentId, piRef))
+    .get();
 }
 
 async function getRecordJson(uri: string): Promise<Record<string, unknown> | null> {
@@ -257,9 +281,30 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
         409,
       );
     }
+    const row = fulfillmentRowForCheckoutSession(db, session);
+    const buyerCookieOk = !!(cookieDid && cookieDid === buyerDid);
+    const itemUriMeta = session.metadata?.itemUri;
+    const showPds =
+      buyerCookieOk &&
+      row &&
+      (row.receiptUri?.length || row.consentUri?.length);
     return c.json({
       ok: true,
       ...(skipReason ? { note: `claim_skipped:${skipReason}` } : {}),
+      ...(buyerCookieOk &&
+      typeof itemUriMeta === "string" &&
+      itemUriMeta.startsWith("at://")
+        ? { itemUri: itemUriMeta }
+        : {}),
+      ...(showPds
+        ? {
+            pds: {
+              receiptUri: row.receiptUri ?? null,
+              consentUri: row.consentUri ?? null,
+              receiptCid: row.receiptCid ?? null,
+            },
+          }
+        : {}),
     });
   });
 

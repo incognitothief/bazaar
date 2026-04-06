@@ -2,13 +2,44 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/button";
 import { browserApiUrl } from "@/lib/browserApi";
+import { catalogItemRkey, itemPathCanonical } from "@/lib/itemPath";
+import { pdslsRecordUrl } from "@/lib/pdsls";
 import { cn } from "@/lib/utils";
+
+type PdsFulfillment = {
+  receiptUri: string | null;
+  consentUri: string | null;
+  receiptCid?: string | null;
+};
+
+function PdslsAtUriLink({ uri }: { uri: string }) {
+  const href = pdslsRecordUrl(uri);
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block text-sm font-mono text-primary break-all underline-offset-2 hover:underline leading-snug"
+      >
+        {uri}
+      </a>
+    );
+  }
+  return (
+    <code className="block text-[11px] text-muted-foreground break-all leading-snug">
+      {uri}
+    </code>
+  );
+}
 
 export function PurchaseSuccessPage() {
   const [params] = useSearchParams();
   const sessionId = params.get("session_id");
   const [status, setStatus] = useState<string | null>(null);
   const [fulfillNote, setFulfillNote] = useState<string | null>(null);
+  const [pds, setPds] = useState<PdsFulfillment | null>(null);
+  const [itemUri, setItemUri] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -53,16 +84,29 @@ export function PurchaseSuccessPage() {
             );
             setFulfillNote(
               parts.length
-                ? parts.join(": ")
-                : `PDS sync failed (${fr.status}). Receipt may arrive after the server processes the Stripe webhook.`,
+                ? `We couldn't finish writing your receipt and license consent to your PDS yet. If you were charged, wait a moment and refresh, or open My purchases. (${parts.join(": ")})`
+                : `We couldn't finish writing to your PDS yet (something went wrong on our side). If you were charged, try refreshing in a minute; records usually land shortly after payment.`,
             );
             return;
+          }
+          const okBody = (await fr.json().catch(() => null)) as {
+            pds?: PdsFulfillment;
+            itemUri?: string;
+          } | null;
+          if (
+            typeof okBody?.itemUri === "string" &&
+            okBody.itemUri.startsWith("at://")
+          ) {
+            setItemUri(okBody.itemUri);
+          }
+          if (okBody?.pds?.receiptUri || okBody?.pds?.consentUri) {
+            setPds(okBody.pds);
           }
           setFulfillNote(null);
           return;
         }
         setFulfillNote(
-          "PDS sync is still waiting on the server (checkout may be finishing). Refresh in a minute or check the Stripe webhook.",
+          "We're still writing your receipt and license consent to your PDS. Refresh in a minute or open My purchases; they should appear in your repo soon.",
         );
       } catch {
         /* ignore */
@@ -70,41 +114,92 @@ export function PurchaseSuccessPage() {
     })();
   }, [sessionId]);
 
+  const headline =
+    status === "paid"
+      ? "Your payment went through."
+      : status
+        ? `We're processing your payment (${status}).`
+        : "We're confirming your payment.";
+
+  let itemHref: string | null = null;
+  if (itemUri) {
+    try {
+      itemHref = itemPathCanonical(catalogItemRkey(itemUri));
+    } catch {
+      itemHref = null;
+    }
+  }
+
   return (
     <div className="mx-auto max-w-lg space-y-6 text-center py-12">
-      <h1 className="text-2xl font-semibold">Thank you</h1>
-      <p className="text-muted-foreground">
-        Your purchase is confirmed
-        {status ? ` (${status})` : ""}.
-      </p>
+      <h1 className="text-2xl font-semibold">Thank you for your purchase</h1>
+      <p className="text-muted-foreground">{headline}</p>
       {sessionId ? (
         <p className="text-xs text-muted-foreground break-all">
-          Session: {sessionId}
+          Reference for support: {sessionId}
         </p>
       ) : null}
       <p className="text-sm text-muted-foreground">
-        After Stripe confirms payment, the app writes a{" "}
-        <code className="text-xs">purchase.receipt</code> and{" "}
-        <code className="text-xs">purchase.consent</code> to your PDS. That
-        requires you to have signed in with Bazaar before checkout so the server
-        can complete those records on your behalf.
+        Bazaar records this purchase in{" "}
+        <span className="text-foreground/90">your PDS</span>—your ATProto
+        personal data repository. You get a{" "}
+        <span className="text-foreground/90">receipt</span> (proof of what you
+        paid for) and a matching{" "}
+        <span className="text-foreground/90">license consent</span>, both stored
+        in <span className="text-foreground/90">your repo</span> under your DID,
+        not siloed on our servers. We write them using the same app session you
+        used to buy—standard ATProto pattern—so your purchase history stays
+        yours to inspect, export, or build on.
       </p>
+      {pds?.receiptUri || pds?.consentUri ? (
+        <div className="rounded-lg border bg-card px-4 py-3 text-left space-y-3">
+          <p className="text-sm font-medium text-foreground">
+            Your records in your PDS
+          </p>
+          {pds.receiptUri ? (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Purchase receipt</p>
+              <PdslsAtUriLink uri={pds.receiptUri} />
+              {pds.receiptCid ? (
+                <p className="text-[11px] text-muted-foreground">
+                  CID{" "}
+                  <span className="font-mono break-all">{pds.receiptCid}</span>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {pds.consentUri ? (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">License consent</p>
+              <PdslsAtUriLink uri={pds.consentUri} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {fulfillNote ? (
         <p className="text-sm text-amber-600 dark:text-amber-500" role="status">
           {fulfillNote}
         </p>
       ) : null}
       <p className="text-sm text-muted-foreground">
-        Download access will show up here once delivery is wired; your purchases
-        also appear on the dashboard when receipts are in your repo.
+        Downloads will show here when delivery is wired up. Your purchases (and
+        the underlying records in your PDS) are always listed on the dashboard.
       </p>
-      <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-center sm:flex-wrap">
         <Link
           to="/dashboard"
           className={cn(buttonVariants({ variant: "default" }))}
         >
-          View purchases
+          My purchases
         </Link>
+        {itemHref ? (
+          <Link
+            to={itemHref}
+            className={cn(buttonVariants({ variant: "outline" }))}
+          >
+            View item
+          </Link>
+        ) : null}
         <Link to="/" className={cn(buttonVariants({ variant: "outline" }))}>
           Back to storefront
         </Link>
