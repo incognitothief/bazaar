@@ -10,13 +10,10 @@ import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { Button } from "@/components/ui/button";
 import { useAtpSession } from "@/hooks/useAtpSession";
-import { createBrowserApiURL, triggerFileDownload } from "@/lib/browserApi";
+import { createBrowserApiURL } from "@/lib/browserApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { pdslsRecordUrl } from "@/lib/pdsls";
-import {
-  getRecordValue,
-  listPurchaseConsentRows,
-} from "@/lib/atproto/records";
+import { getRecordValue, listPurchaseConsentRows } from "@/lib/atproto/records";
 import { createPublicAgent } from "@/lib/atproto/session";
 import type {
   CatalogItem,
@@ -47,8 +44,7 @@ function PdslsCidLink({
   if (!href) {
     return (
       <p className="text-xs text-muted-foreground">
-        {label}{" "}
-        <code className="text-[11px] break-all">{cid}</code>
+        {label} <code className="text-[11px] break-all">{cid}</code>
       </p>
     );
   }
@@ -124,7 +120,10 @@ export function PurchaseDetailPage() {
         if (!cancelled) setItem(itemVal ?? null);
 
         if (rec.licenseGrantUri) {
-          const lt = await getRecordValue<LicenseTerms>(agent, rec.licenseGrantUri);
+          const lt = await getRecordValue<LicenseTerms>(
+            agent,
+            rec.licenseGrantUri,
+          );
           if (!cancelled) setLicense(lt);
         }
       } catch {
@@ -149,11 +148,8 @@ export function PurchaseDetailPage() {
         const t = await res.text();
         throw new Error(t || res.statusText);
       }
-      const { url: signed, filename } = (await res.json()) as {
-        url: string;
-        filename?: string;
-      };
-      triggerFileDownload(signed, filename);
+      const { url: signed } = (await res.json()) as { url: string };
+      window.location.href = signed;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Download failed");
     } finally {
@@ -283,12 +279,12 @@ export function PurchaseDetailPage() {
 
       <section className="flex flex-wrap gap-2" aria-label="Metadata">
         {"releaseDate" in item && item.releaseDate ? (
-          <MetadataChip>Release {item.releaseDate}</MetadataChip>
+          <MetadataChip>
+            Released: {new Date(item.releaseDate).toLocaleDateString()}
+          </MetadataChip>
         ) : null}
         {"durationMs" in item && item.durationMs ? (
-          <MetadataChip>
-            {Math.round(item.durationMs / 60000)} min
-          </MetadataChip>
+          <MetadataChip>{Math.round(item.durationMs / 60000)} min</MetadataChip>
         ) : null}
         {item.genre?.map((g) => (
           <MetadataChip key={g}>{g}</MetadataChip>
@@ -316,8 +312,7 @@ export function PurchaseDetailPage() {
               <li>Project: {consent.syncProject}</li>
             ) : null}
             <li>
-              Consented at:{" "}
-              {new Date(consent.consentedAt).toLocaleString()}
+              Consented at: {new Date(consent.consentedAt).toLocaleString()}
             </li>
           </ul>
         ) : null}
@@ -330,9 +325,7 @@ export function PurchaseDetailPage() {
             agent={agent}
             collection={item as Collection}
             onDownloadItem={(u) => void downloadDigitalItemUri(u)}
-            onDownloadZip={() =>
-              void downloadCollectionZip(receipt.item.uri)
-            }
+            onDownloadZip={() => void downloadCollectionZip(receipt.item.uri)}
             zipBusy={zipBusy}
             itemBusyUri={itemDownloadingUri}
           />

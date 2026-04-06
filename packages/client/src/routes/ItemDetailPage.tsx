@@ -147,9 +147,7 @@ export function ItemDetailPage() {
         if (licUri) {
           const lt = await getRecordValue<LicenseTerms>(agent, licUri);
           if (cancelled) return;
-          setLicense(
-            lt ?? (dummyTarget ? buildDummyLicenseTerms() : null),
-          );
+          setLicense(lt ?? (dummyTarget ? buildDummyLicenseTerms() : null));
         } else {
           setLicense(dummyTarget ? buildDummyLicenseTerms() : null);
         }
@@ -274,7 +272,9 @@ export function ItemDetailPage() {
     return (
       <p className="text-muted-foreground">
         Invalid item URL. Use an AT-URI such as{" "}
-        <code className="text-xs">at://did:plc:…/diamonds.whereditgo.bazaar.catalog.item.digital/…</code>
+        <code className="text-xs">
+          at://did:plc:…/diamonds.whereditgo.bazaar.catalog.item.digital/…
+        </code>
         , or set <code className="text-xs">VITE_ARTIST_DID</code> in{" "}
         <code className="text-xs">.env</code>.
       </p>
@@ -359,7 +359,7 @@ export function ItemDetailPage() {
   const blobDid =
     item.$type === "diamonds.whereditgo.bazaar.catalog.item.digital"
       ? item.artistDid
-      : artistDid ?? "";
+      : (artistDid ?? "");
 
   const showDummyBanner =
     catalogDummyEnabled() && isDummyStorefrontItem(itemUri, artistDid);
@@ -438,15 +438,14 @@ export function ItemDetailPage() {
             )}
           </div>
           {listing ? (
-            <p className="text-2xl font-medium">
-              {formatMoney(listing.price)}
-            </p>
+            <p className="text-2xl font-medium">{formatMoney(listing.price)}</p>
           ) : (
             <div className="space-y-2 text-muted-foreground">
               <p>Not currently for sale.</p>
               <p className="text-sm">
-                Publish an active <code className="text-xs">catalog.listing</code>{" "}
-                (with <code className="text-xs">licenseUri</code> and{" "}
+                Publish an active{" "}
+                <code className="text-xs">catalog.listing</code> (with{" "}
+                <code className="text-xs">licenseUri</code> and{" "}
                 <code className="text-xs">licenseGrantCid</code>) on the artist
                 repo, or use{" "}
                 <Link
@@ -471,12 +470,12 @@ export function ItemDetailPage() {
 
       <section className="flex flex-wrap gap-2" aria-label="Metadata">
         {"releaseDate" in item && item.releaseDate ? (
-          <MetadataChip>Release {item.releaseDate}</MetadataChip>
+          <MetadataChip>
+            Released: {new Date(item.releaseDate).toLocaleDateString()}
+          </MetadataChip>
         ) : null}
         {"durationMs" in item && item.durationMs ? (
-          <MetadataChip>
-            {Math.round(item.durationMs / 60000)} min
-          </MetadataChip>
+          <MetadataChip>{Math.round(item.durationMs / 60000)} min</MetadataChip>
         ) : null}
         {isCollection ? (
           <MetadataChip>
