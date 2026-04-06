@@ -145,11 +145,43 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
     const rkey = itemAt.rkey;
     const key = inventoryObjectKey(artistDid, rkey, INVENTORY_MASTER_OBJECT_NAME);
 
+    let filenameForDownload = `track_${rkey}.bin`;
     try {
-      const cmd = new GetObjectCommand({ Bucket: cfg.bucket, Key: key });
+      const catalogAgent = getAgent();
+      const dig = await catalogAgent.com.atproto.repo.getRecord({
+        repo: artistDid,
+        collection: itemAt.collection,
+        rkey: itemAt.rkey,
+      });
+      const digital = dig.data.value as Record<string, unknown>;
+      const title =
+        typeof digital.title === "string" && digital.title.trim()
+          ? digital.title.trim()
+          : rkey;
+      const formats = digital.formats as string[] | undefined;
+      const ext = extensionForDigital(
+        formats,
+        digital.fileFormat as string | undefined,
+      );
+      const safeBase = sanitizeInventoryFilename(
+        title.replace(/\.[^./\\]+$/g, "") || `track_${rkey}`,
+      );
+      filenameForDownload = `${safeBase}.${ext}`;
+    } catch (e) {
+      console.warn("download: could not resolve digital title for filename", e);
+    }
+
+    const disp = `attachment; filename="${filenameForDownload.replace(/"/g, "")}"`;
+
+    try {
+      const cmd = new GetObjectCommand({
+        Bucket: cfg.bucket,
+        Key: key,
+        ResponseContentDisposition: disp,
+      });
       const url = await getSignedUrl(client, cmd, { expiresIn: 900 });
       const expiresAt = new Date(Date.now() + 900_000).toISOString();
-      return c.json({ url, expiresAt });
+      return c.json({ url, expiresAt, filename: filenameForDownload });
     } catch (e) {
       if (isS3NoSuchKey(e)) {
         return c.json({ error: "master_not_in_r2" }, 404);

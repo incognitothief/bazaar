@@ -10,7 +10,7 @@ import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { Button } from "@/components/ui/button";
 import { useAtpSession } from "@/hooks/useAtpSession";
-import { createBrowserApiURL } from "@/lib/browserApi";
+import { createBrowserApiURL, triggerFileDownload } from "@/lib/browserApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { pdslsRecordUrl } from "@/lib/pdsls";
 import {
@@ -149,8 +149,11 @@ export function PurchaseDetailPage() {
         const t = await res.text();
         throw new Error(t || res.statusText);
       }
-      const { url: signed } = (await res.json()) as { url: string };
-      window.location.href = signed;
+      const { url: signed, filename } = (await res.json()) as {
+        url: string;
+        filename?: string;
+      };
+      triggerFileDownload(signed, filename);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Download failed");
     } finally {

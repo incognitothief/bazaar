@@ -62,3 +62,20 @@ export function createBrowserApiURL(path: string): URL {
     typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1";
   return new URL(resolved, base);
 }
+
+/**
+ * Start a file download from a URL (e.g. R2 presigned GET with
+ * `Content-Disposition: attachment` from `/api/download`) without replacing the SPA tab.
+ */
+export function triggerFileDownload(signedUrl: string, filename?: string): void {
+  const a = document.createElement("a");
+  a.href = signedUrl;
+  if (filename) {
+    a.setAttribute("download", filename);
+  }
+  a.rel = "noopener noreferrer";
+  a.target = "_blank";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}

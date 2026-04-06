@@ -9,7 +9,7 @@ import {
   listPurchaseReceiptRows,
   type ListingRow,
 } from "@/lib/atproto/records";
-import { createBrowserApiURL } from "@/lib/browserApi";
+import { createBrowserApiURL, triggerFileDownload } from "@/lib/browserApi";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
@@ -314,8 +314,11 @@ export function ItemDetailPage() {
         const t = await res.text();
         throw new Error(t || res.statusText);
       }
-      const { url: signed } = (await res.json()) as { url: string };
-      window.location.href = signed;
+      const { url: signed, filename } = (await res.json()) as {
+        url: string;
+        filename?: string;
+      };
+      triggerFileDownload(signed, filename);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Download failed");
     } finally {
