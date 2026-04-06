@@ -1,0 +1,120 @@
+{
+    "version": 3,
+    "deployment": {
+        "manifest": {
+            "time": "2026-04-05T23:29:27.610224-04:00",
+            "magic": "88d0da18f668d21177091127bf6af43a4706b834600c4edf2e942a3f566ca00e",
+            "version": "v3.229.0"
+        },
+        "secrets_providers": {
+            "type": "passphrase",
+            "state": {
+                "salt": "v1:JqfMnC5La70=:v1:r2UnD7ch0kXVMQJV:Tgny/4BDVO7GwBr4b8DAG5GXk7ZqdQ=="
+            }
+        },
+        "resources": [
+            {
+                "urn": "urn:pulumi:stg::bazaar-infra::pulumi:pulumi:Stack::bazaar-infra-stg",
+                "custom": false,
+                "type": "pulumi:pulumi:Stack",
+                "outputs": {
+                    "pulumiBackendUrl": "s3://bazaar-pulumi-state-prod?endpoint=https://2deffbb5bb96d5b25f80bd2710555d80.r2.cloudflarestorage.com&region=auto&s3ForcePathStyle=true",
+                    "pulumiStateBucketName": "bazaar-pulumi-state-prod",
+                    "r2AccountId": "2deffbb5bb96d5b25f80bd2710555d80",
+                    "r2BucketName": "bazaar-stg",
+                    "r2S3Endpoint": "https://2deffbb5bb96d5b25f80bd2710555d80.r2.cloudflarestorage.com"
+                },
+                "created": "2026-04-06T03:29:26.363957Z",
+                "modified": "2026-04-06T03:29:26.363957Z",
+                "sourcePosition": "project:///../../node_modules/@pulumi/runtime/stack.ts#37,19",
+                "stackTrace": [
+                    {
+                        "sourcePosition": "project:///../../node_modules/@pulumi/runtime/stack.ts#37,19"
+                    },
+                    {
+                        "sourcePosition": "project:///../../node_modules/@pulumi/cmd/run/run.ts#603,38"
+                    }
+                ]
+            },
+            {
+                "urn": "urn:pulumi:stg::bazaar-infra::pulumi:providers:cloudflare::default_5_49_1",
+                "custom": true,
+                "id": "bcd4e9b8-8a4b-4bc6-af2b-9aa9ed40fb09",
+                "type": "pulumi:providers:cloudflare",
+                "inputs": {
+                    "__internal": {},
+                    "apiClientLogging": "false",
+                    "maxBackoff": "30",
+                    "minBackoff": "1",
+                    "retries": "3",
+                    "rps": "4",
+                    "version": "5.49.1"
+                },
+                "outputs": {
+                    "apiClientLogging": "false",
+                    "maxBackoff": "30",
+                    "minBackoff": "1",
+                    "retries": "3",
+                    "rps": "4",
+                    "version": "5.49.1"
+                },
+                "created": "2026-04-06T03:29:26.790154Z",
+                "modified": "2026-04-06T03:29:26.790154Z"
+            },
+            {
+                "urn": "urn:pulumi:stg::bazaar-infra::cloudflare:index/r2Bucket:R2Bucket::primary",
+                "custom": true,
+                "id": "bazaar-stg",
+                "type": "cloudflare:index/r2Bucket:R2Bucket",
+                "inputs": {
+                    "accountId": "2deffbb5bb96d5b25f80bd2710555d80",
+                    "location": "WNAM",
+                    "name": "bazaar-stg"
+                },
+                "outputs": {
+                    "accountId": "2deffbb5bb96d5b25f80bd2710555d80",
+                    "id": "bazaar-stg",
+                    "location": "ENAM",
+                    "name": "bazaar-stg"
+                },
+                "parent": "urn:pulumi:stg::bazaar-infra::pulumi:pulumi:Stack::bazaar-infra-stg",
+                "provider": "urn:pulumi:stg::bazaar-infra::pulumi:providers:cloudflare::default_5_49_1::bcd4e9b8-8a4b-4bc6-af2b-9aa9ed40fb09",
+                "propertyDependencies": {
+                    "accountId": [],
+                    "location": [],
+                    "name": []
+                },
+                "created": "2026-04-06T03:29:27.598629Z",
+                "modified": "2026-04-06T03:29:27.598629Z",
+                "sourcePosition": "project:///index.ts#31,16",
+                "stackTrace": [
+                    {
+                        "sourcePosition": "project:///index.ts#31,16"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///../../node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3009,23"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///../../node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3011,12"
+                    },
+                    {},
+                    {},
+                    {},
+                    {},
+                    {
+                        "sourcePosition": "project:///../../node_modules/@pulumi/cmd/run/run.ts#543,33"
+                    },
+                    {
+                        "sourcePosition": "project:///../../node_modules/@pulumi/runtime/stack.ts#78,28"
+                    },
+                    {
+                        "sourcePosition": "project:///../../node_modules/@pulumi/resource.ts#1579,22"
+                    }
+                ]
+            }
+        ],
+        "metadata": {}
+    }
+}

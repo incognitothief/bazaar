@@ -28,21 +28,38 @@ const accountId =
 const stack = pulumi.getStack();
 const isProdStack = stack === "prod";
 
-const bucket = new cloudflare.R2Bucket("primary", {
-  accountId,
-  name: config.get("bucketName") ?? `bazaar-${stack}`,
-  location: config.get("location") ?? "WNAM",
-});
+/**
+ * R2 bucket names are unique per account. A provider "replace" uses create-before-delete, so the
+ * second create hits "bucket already exists" (Cloudflare 10004). Location hints are best-effort and
+ * often drift vs. API read → spurious replaces; ignore those input fields after first create.
+ */
+const r2BucketIgnoreDrift: pulumi.CustomResourceOptions = {
+  ignoreChanges: ["location", "storageClass"],
+};
+
+const bucket = new cloudflare.R2Bucket(
+  "primary",
+  {
+    accountId,
+    name: config.get("bucketName") ?? `bazaar-${stack}`,
+    location: config.get("location") ?? "WNAM",
+  },
+  r2BucketIgnoreDrift,
+);
 
 const stateBucketPhysicalName =
   config.get("pulumiStateBucketName") ?? `bazaar-pulumi-state-${stack}`;
 
 const pulumiStateBucket = isProdStack
-  ? new cloudflare.R2Bucket("pulumi-state", {
-      accountId,
-      name: stateBucketPhysicalName,
-      location: config.get("location") ?? "WNAM",
-    })
+  ? new cloudflare.R2Bucket(
+      "pulumi-state",
+      {
+        accountId,
+        name: stateBucketPhysicalName,
+        location: config.get("location") ?? "WNAM",
+      },
+      r2BucketIgnoreDrift,
+    )
   : undefined;
 
 /** Name of the shared state bucket (for outputs / PULUMI_BACKEND_URL); non-prod stacks do not create it. */
