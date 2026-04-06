@@ -36,8 +36,23 @@ export function PublicLayout() {
         <Outlet />
       </main>
       <footer className="shrink-0 border-t border-border py-6 text-center text-sm text-muted-foreground">
-        <p>
-          bazaar ·{" "}
+        <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+          <span>bazaar</span>
+          <span aria-hidden>·</span>
+          <Link
+            to="/terms"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Terms
+          </Link>
+          <span aria-hidden>·</span>
+          <Link
+            to="/refunds"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Refunds
+          </Link>
+          <span aria-hidden>·</span>
           <a
             href={SOURCE_CODE_HREF}
             target="_blank"

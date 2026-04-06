@@ -3,7 +3,22 @@ import { desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db";
-import { merchantStripeConfig, paymentFulfillment } from "../db/schema";
+import {
+  merchantBusinessProfile,
+  merchantStripeConfig,
+  paymentFulfillment,
+} from "../db/schema";
+import {
+  businessEmailFromEnv,
+  businessNameFromEnv,
+  businessStateFromEnv,
+  getEffectiveBusinessProfile,
+  getStoredBusinessProfile,
+  normalizeBusinessField,
+  validateBusinessEmail,
+  validateBusinessName,
+  validateBusinessState,
+} from "../lib/businessProfile";
 import {
   stripeCredentialSources,
   stripeSecretKeyFromEnv,
@@ -37,6 +52,132 @@ function merchantGuard(c: Context): Response | null {
 
 export function createMerchantRouter(db: Db) {
   const r = new Hono();
+
+  /** Store-owner: business details for KYC pages (DB + optional env override). */
+  r.get("/business-settings", (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const effective = getEffectiveBusinessProfile(db);
+    const stored = getStoredBusinessProfile(db);
+    return c.json({
+      businessName: effective.businessName,
+      businessState: effective.businessState,
+      businessEmail: effective.businessEmail,
+      db: {
+        businessName: stored.businessName,
+        businessState: stored.businessState,
+        businessEmail: stored.businessEmail,
+      },
+      canEditBusinessName: !businessNameFromEnv(),
+      canEditBusinessState: !businessStateFromEnv(),
+      canEditBusinessEmail: !businessEmailFromEnv(),
+    });
+  });
+
+  /**
+   * Persist business fields to SQLite. Fields overridden by BUSINESS_NAME / BUSINESS_STATE /
+   * BUSINESS_EMAIL are ignored (unchanged in DB).
+   */
+  r.post("/business-settings", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+
+    const body = (await c.req.json().catch(() => null)) as {
+      businessName?: unknown;
+      businessState?: unknown;
+      businessEmail?: unknown;
+    } | null;
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+
+    const hasName = "businessName" in body;
+    const hasState = "businessState" in body;
+    const hasEmail = "businessEmail" in body;
+    if (!hasName && !hasState && !hasEmail) {
+      return c.json(
+        { error: "validation", detail: "Provide businessName, businessState, and/or businessEmail" },
+        400,
+      );
+    }
+
+    const row = db
+      .select()
+      .from(merchantBusinessProfile)
+      .where(eq(merchantBusinessProfile.singleton, 1))
+      .get();
+
+    let nextName = row?.businessName ?? null;
+    let nextState = row?.businessState ?? null;
+    let nextEmail = row?.businessEmail ?? null;
+
+    if (hasName && !businessNameFromEnv()) {
+      const norm = normalizeBusinessField(body.businessName);
+      if (norm === undefined) {
+        return c.json({ error: "validation", detail: "businessName invalid" }, 400);
+      }
+      const err = validateBusinessName(norm);
+      if (err) return c.json({ error: "validation", detail: err }, 400);
+      nextName = norm;
+    }
+
+    if (hasState && !businessStateFromEnv()) {
+      const norm = normalizeBusinessField(body.businessState);
+      if (norm === undefined) {
+        return c.json({ error: "validation", detail: "businessState invalid" }, 400);
+      }
+      const err = validateBusinessState(norm);
+      if (err) return c.json({ error: "validation", detail: err }, 400);
+      nextState = norm;
+    }
+
+    if (hasEmail && !businessEmailFromEnv()) {
+      const norm = normalizeBusinessField(body.businessEmail);
+      if (norm === undefined) {
+        return c.json({ error: "validation", detail: "businessEmail invalid" }, 400);
+      }
+      const err = validateBusinessEmail(norm);
+      if (err) return c.json({ error: "validation", detail: err }, 400);
+      nextEmail = norm;
+    }
+
+    await db
+      .insert(merchantBusinessProfile)
+      .values({
+        singleton: 1,
+        businessName: nextName,
+        businessState: nextState,
+        businessEmail: nextEmail,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: merchantBusinessProfile.singleton,
+        set: {
+          businessName: nextName,
+          businessState: nextState,
+          businessEmail: nextEmail,
+          updatedAt: new Date(),
+        },
+      })
+      .run();
+
+    const effective = getEffectiveBusinessProfile(db);
+    const stored = getStoredBusinessProfile(db);
+    return c.json({
+      ok: true,
+      businessName: effective.businessName,
+      businessState: effective.businessState,
+      businessEmail: effective.businessEmail,
+      db: {
+        businessName: stored.businessName,
+        businessState: stored.businessState,
+        businessEmail: stored.businessEmail,
+      },
+      canEditBusinessName: !businessNameFromEnv(),
+      canEditBusinessState: !businessStateFromEnv(),
+      canEditBusinessEmail: !businessEmailFromEnv(),
+    });
+  });
 
   /** Store-owner only: lists `payment_fulfillment` rows for the Stripe → PDS pipeline. */
   r.get("/payment-fulfillments", (c) => {

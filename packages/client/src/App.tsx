@@ -21,12 +21,16 @@ import { LicensePage } from "@/routes/LicensePage";
 import { SettingsPage } from "@/routes/SettingsPage";
 import { MerchantTransactionsPage } from "@/routes/MerchantTransactionsPage";
 import { MerchantSignInPage } from "@/routes/MerchantSignInPage";
+import { TermsPage } from "@/routes/TermsPage";
+import { RefundsPage } from "@/routes/RefundsPage";
 
 const router = createBrowserRouter([
   {
     element: <PublicLayout />,
     children: [
       { path: "/", element: <HomePage /> },
+      { path: "/terms", element: <TermsPage /> },
+      { path: "/refunds", element: <RefundsPage /> },
       { path: "/item/:uri", element: <ItemDetailPage /> },
       { path: "/purchase/success", element: <PurchaseSuccessPage /> },
       { path: "/merchant/signin", element: <MerchantSignInPage /> },

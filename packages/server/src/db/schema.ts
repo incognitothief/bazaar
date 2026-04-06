@@ -6,6 +6,17 @@ import {
   text,
 } from "drizzle-orm/sqlite-core";
 
+/** Single-row KYC / storefront business details (optional env override per field). */
+export const merchantBusinessProfile = sqliteTable("merchant_business_profile", {
+  singleton: integer("singleton").primaryKey({ autoIncrement: false }).default(1),
+  businessName: text("business_name"),
+  businessState: text("business_state"),
+  businessEmail: text("business_email"),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 /** Single-row Stripe API keys when not set via environment (see stripeCredentials). */
 export const merchantStripeConfig = sqliteTable("merchant_stripe_config", {
   singleton: integer("singleton").primaryKey({ autoIncrement: false }).default(1),
