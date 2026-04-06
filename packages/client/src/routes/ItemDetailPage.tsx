@@ -296,6 +296,9 @@ export function ItemDetailPage() {
   }
 
   const title = item.title;
+  const collectionTrackCount = isCollection
+    ? item.items.filter((i) => i.role === "track").length
+    : 0;
   const authorDid = item.artistDid;
   const authorInitial =
     authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
@@ -482,12 +485,15 @@ export function ItemDetailPage() {
         ) : null}
         {isCollection ? (
           <MetadataChip>
-            {item.items.filter((i) => i.role === "track").length} tracks
+            {collectionTrackCount}{" "}
+            {collectionTrackCount === 1 ? "track" : "tracks"}
           </MetadataChip>
         ) : null}
-        {item.genre?.map((g) => (
-          <MetadataChip key={g}>{g}</MetadataChip>
-        ))}
+        {"genre" in item && item.genre
+          ? item.genre.map((g: string) => (
+              <MetadataChip key={g}>{g}</MetadataChip>
+            ))
+          : null}
       </section>
 
       {isCollection ? (
