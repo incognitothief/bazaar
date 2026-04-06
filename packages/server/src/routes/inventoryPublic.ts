@@ -1,21 +1,5 @@
-import { AtUri } from "@atproto/syntax";
-import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Hono } from "hono";
-import { getAgent } from "../lib/atproto/client";
-import { r2ConfigFromEnv } from "../lib/r2/env";
-import {
-  INVENTORY_ARTWORK_OBJECT_NAME,
-  inventoryObjectKey,
-} from "../lib/r2/inventoryKey";
-import { getR2S3Client } from "../lib/r2/s3Client";
-
-function lexiconNs(): string {
-  return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
-}
-
-const COL_DIGITAL = `${lexiconNs()}.catalog.item.digital`;
-const COL_COLLECTION = `${lexiconNs()}.catalog.collection`;
+import { presignInventoryArtworkGet } from "../lib/inventoryArtworkPresign";
 
 /**
  * Presigned GET for cover art on R2. Public if the object exists (catalog item URI is public on ATProto).
@@ -27,74 +11,27 @@ export function createInventoryPublicRouter() {
     const itemUri = c.req.query("itemUri")?.trim();
     if (!itemUri) return c.json({ error: "itemUri_required" }, 400);
 
-    let at: AtUri;
-    try {
-      at = new AtUri(itemUri);
-    } catch {
-      return c.json({ error: "invalid_itemUri" }, 400);
+    const result = await presignInventoryArtworkGet(itemUri);
+    if (!result.ok) {
+      return c.json({ error: result.error }, result.status);
     }
-    if (!at.rkey) return c.json({ error: "missing_rkey" }, 400);
-    if (at.collection !== COL_DIGITAL && at.collection !== COL_COLLECTION) {
-      return c.json({ error: "unsupported_item_type" }, 400);
+    return c.json({
+      url: result.url,
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    });
+  });
+
+  /** Stable URL for og:image — redirects to a fresh presigned R2 GET. */
+  r.get("/artwork-open", async (c) => {
+    const itemUri = c.req.query("itemUri")?.trim();
+    if (!itemUri) return c.json({ error: "itemUri_required" }, 400);
+
+    const result = await presignInventoryArtworkGet(itemUri);
+    if (!result.ok) {
+      return c.json({ error: result.error }, result.status);
     }
-
-    const artistDid = at.hostname;
-    const cfg = r2ConfigFromEnv();
-    if (!cfg.ok) return c.json({ error: "r2_unconfigured" }, 503);
-    const client = getR2S3Client(cfg);
-    let key = inventoryObjectKey(artistDid, at.rkey, INVENTORY_ARTWORK_OBJECT_NAME);
-
-    try {
-      await client.send(new HeadObjectCommand({ Bucket: cfg.bucket, Key: key }));
-    } catch {
-      if (at.collection === COL_DIGITAL) {
-        try {
-          const agent = getAgent();
-          const rec = await agent.com.atproto.repo.getRecord({
-            repo: artistDid,
-            collection: COL_DIGITAL,
-            rkey: at.rkey,
-          });
-          const val = rec.data.value as { collectionUri?: string };
-          const colUri =
-            typeof val.collectionUri === "string" ? val.collectionUri.trim() : "";
-          if (colUri) {
-            const colAt = new AtUri(colUri);
-            if (
-              colAt.rkey &&
-              colAt.hostname === artistDid &&
-              colAt.collection === COL_COLLECTION
-            ) {
-              const colKey = inventoryObjectKey(
-                artistDid,
-                colAt.rkey,
-                INVENTORY_ARTWORK_OBJECT_NAME,
-              );
-              try {
-                await client.send(
-                  new HeadObjectCommand({ Bucket: cfg.bucket, Key: colKey }),
-                );
-                key = colKey;
-              } catch {
-                return c.json({ error: "artwork_not_in_r2" }, 404);
-              }
-            } else {
-              return c.json({ error: "artwork_not_in_r2" }, 404);
-            }
-          } else {
-            return c.json({ error: "artwork_not_in_r2" }, 404);
-          }
-        } catch {
-          return c.json({ error: "artwork_not_in_r2" }, 404);
-        }
-      } else {
-        return c.json({ error: "artwork_not_in_r2" }, 404);
-      }
-    }
-
-    const cmd = new GetObjectCommand({ Bucket: cfg.bucket, Key: key });
-    const url = await getSignedUrl(client, cmd, { expiresIn: 3600 });
-    return c.json({ url, expiresAt: new Date(Date.now() + 3600_000).toISOString() });
+    c.header("Cache-Control", "private, max-age=300");
+    return c.redirect(result.url, 302);
   });
 
   return r;

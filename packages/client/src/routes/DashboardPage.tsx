@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/button";
+import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { cn } from "@/lib/utils";
 import { CompletenessIndicator } from "@/components/merchant/CompletenessIndicator";
 import { OnboardingChecklist } from "@/components/merchant/OnboardingChecklist";
@@ -134,7 +135,7 @@ export function DashboardPage() {
                   </td>
                   <td className="p-3 text-right space-x-2">
                     <Link
-                      to={`/item/${encodeURIComponent(uri)}`}
+                      to={itemPathPretty(catalogItemRkey(uri), item.title)}
                       className={cn(buttonVariants({ size: "sm", variant: "outline" }), "inline-flex")}
                     >
                       View

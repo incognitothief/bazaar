@@ -40,6 +40,7 @@ import {
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
 import type { ATPRepoClient } from "@/lib/atproto/session";
+import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { cn } from "@/lib/utils";
 import type { CatalogItem, Listing } from "@/types/lexicons";
 import { toast } from "sonner";
@@ -783,7 +784,10 @@ export function ListingsPage() {
                       </>
                     )}
                     <Link
-                      to={`/item/${encodeURIComponent(row.listing.item.uri)}`}
+                      to={itemPathPretty(
+                        catalogItemRkey(row.listing.item.uri),
+                        titles[row.uri],
+                      )}
                       className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "inline-flex")}
                     >
                       Storefront

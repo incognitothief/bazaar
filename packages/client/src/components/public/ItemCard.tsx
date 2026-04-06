@@ -3,6 +3,7 @@ import type { Agent } from "@atproto/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { FormatBadge } from "@/components/shared/FormatBadge";
+import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import type { CatalogItem, Listing } from "@/types/lexicons";
 import { ArtworkImage } from "./ArtworkImage";
 
@@ -35,7 +36,7 @@ export function ItemCard({
     item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
       ? item.items.filter((i) => i.role === "track").length
       : undefined;
-  const to = `/item/${encodeURIComponent(itemUri)}`;
+  const to = itemPathPretty(catalogItemRkey(itemUri), title);
 
   return (
     <Link

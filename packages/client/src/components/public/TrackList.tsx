@@ -3,6 +3,7 @@ import type { Agent } from "@atproto/api";
 import { Link } from "react-router-dom";
 import { getRecordValue } from "@/lib/atproto/records";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { cn } from "@/lib/utils";
 import type { Collection, DigitalItem, Listing } from "@/types/lexicons";
 
@@ -97,7 +98,7 @@ export function TrackList({
             {purchaseByTrackUri ? (
               r.purchase ? (
                 <Link
-                  to={`/item/${encodeURIComponent(r.uri)}`}
+                  to={itemPathPretty(catalogItemRkey(r.uri), r.title)}
                   className={cn(
                     buttonVariants({ size: "sm", variant: "outline" }),
                     "shrink-0",

@@ -12,6 +12,7 @@ import {
   type DigitalItemRow,
   type PhysicalItemRow,
 } from "@/lib/atproto/records";
+import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { cn } from "@/lib/utils";
 import type { Collection, DigitalItem, PhysicalItem } from "@/types/lexicons";
 
@@ -201,7 +202,10 @@ export function MerchantInventoryPage() {
                         Edit
                       </Link>
                       <Link
-                        to={`/item/${encodeURIComponent(row.uri)}`}
+                        to={itemPathPretty(
+                          catalogItemRkey(row.uri),
+                          row.item.title,
+                        )}
                         className={cn(
                           buttonVariants({ size: "sm", variant: "ghost" }),
                           "inline-flex",

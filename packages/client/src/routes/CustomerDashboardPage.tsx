@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { getAuthRole } from "@/lib/auth";
 import { merchantSignInUrl } from "@/lib/signInReturn";
+import { catalogItemRkey, itemPathCanonical } from "@/lib/itemPath";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
@@ -307,7 +308,9 @@ export function CustomerDashboardPage() {
               {result.listingItemUri ? (
                 <p className="pt-2">
                   <Link
-                    to={`/item/${encodeURIComponent(result.listingItemUri)}`}
+                    to={itemPathCanonical(
+                      catalogItemRkey(result.listingItemUri),
+                    )}
                     className="underline underline-offset-4 hover:text-foreground"
                   >
                     View item
