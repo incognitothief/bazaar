@@ -17,10 +17,15 @@ const DEFAULT_STOREFRONT_DESCRIPTION =
 
 export function HomePage() {
   const artistDid = import.meta.env.VITE_ARTIST_DID;
-  const { profile: merchantProfile } = useActorMerchantProfile(artistDid);
+  const {
+    profile: merchantProfile,
+    loading: merchantProfileLoading,
+  } = useActorMerchantProfile(artistDid);
   const { entries, listingsByItemUri, loading, error } = useCatalog(artistDid);
   const agent = createPublicAgent();
 
+  const merchantHeaderPending =
+    merchantProfileLoading && artistDid?.startsWith("did:");
   const storefrontTitle =
     merchantProfile?.displayName?.trim() || DEFAULT_STOREFRONT_TITLE;
   const storefrontDescription =
@@ -58,13 +63,34 @@ export function HomePage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">
-          {storefrontTitle}
-        </h1>
-        <p className="mt-2 text-muted-foreground max-w-prose whitespace-pre-wrap">
-          {storefrontDescription}
-        </p>
+      <div aria-busy={merchantHeaderPending || undefined}>
+        {merchantHeaderPending ? (
+          <div className="space-y-3">
+            <div
+              className="h-9 max-w-xs animate-pulse rounded-md bg-muted"
+              aria-hidden
+            />
+            <div className="max-w-prose space-y-2">
+              <div
+                className="h-4 w-full animate-pulse rounded bg-muted"
+                aria-hidden
+              />
+              <div
+                className="h-4 w-4/5 animate-pulse rounded bg-muted"
+                aria-hidden
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              {storefrontTitle}
+            </h1>
+            <p className="mt-2 max-w-prose whitespace-pre-wrap text-muted-foreground">
+              {storefrontDescription}
+            </p>
+          </>
+        )}
       </div>
       {error ? (
         <p className="text-destructive text-sm" role="alert">
