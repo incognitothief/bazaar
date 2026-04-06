@@ -633,6 +633,127 @@ export async function putListing(
   });
 }
 
+/** Updates a digital item; immutable fields are always taken from the current record. */
+export async function putDigitalItem(
+  agent: ATPRepoClient,
+  uri: string,
+  draft: DigitalItem,
+): Promise<void> {
+  const did = agent.session?.did;
+  if (!did) throw new Error("Not authenticated");
+  const at = new AtUri(uri);
+  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
+  if (at.hostname !== did) throw new Error("Record must be in your repo");
+  if (at.collection !== BAZAAR_COLLECTION.digitalItem) {
+    throw new Error("Not a digital item record");
+  }
+  const cur = (await agent.com.atproto.repo.getRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+  })) as GetRecordResponse;
+  const prev = cur.data.value as DigitalItem;
+  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.item.digital") {
+    throw new Error("Invalid record type");
+  }
+  const merged: DigitalItem = {
+    ...draft,
+    artistDid: prev.artistDid,
+    itemClass: prev.itemClass,
+    formats: prev.formats,
+    fileChecksum: prev.fileChecksum,
+    fileCid: prev.fileCid,
+    fileFormat: prev.fileFormat,
+    durationMs: prev.durationMs,
+    supersedes: prev.supersedes,
+    createdAt: prev.createdAt,
+    bazaarRid: prev.bazaarRid,
+  };
+  await agent.com.atproto.repo.putRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+    swapRecord: cur.data.cid,
+    record: merged as unknown as Record<string, unknown>,
+  });
+}
+
+/** Updates a collection; immutable fields are always taken from the current record. */
+export async function putCollection(
+  agent: ATPRepoClient,
+  uri: string,
+  draft: Collection,
+): Promise<void> {
+  const did = agent.session?.did;
+  if (!did) throw new Error("Not authenticated");
+  const at = new AtUri(uri);
+  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
+  if (at.hostname !== did) throw new Error("Record must be in your repo");
+  if (at.collection !== BAZAAR_COLLECTION.collection) {
+    throw new Error("Not a collection record");
+  }
+  const cur = (await agent.com.atproto.repo.getRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+  })) as GetRecordResponse;
+  const prev = cur.data.value as Collection;
+  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.collection") {
+    throw new Error("Invalid record type");
+  }
+  const merged: Collection = {
+    ...draft,
+    artistDid: prev.artistDid,
+    createdAt: prev.createdAt,
+    bazaarPid: prev.bazaarPid,
+  };
+  await agent.com.atproto.repo.putRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+    swapRecord: cur.data.cid,
+    record: merged as unknown as Record<string, unknown>,
+  });
+}
+
+/** Updates a physical item; immutable fields are always taken from the current record. */
+export async function putPhysicalItem(
+  agent: ATPRepoClient,
+  uri: string,
+  draft: PhysicalItem,
+): Promise<void> {
+  const did = agent.session?.did;
+  if (!did) throw new Error("Not authenticated");
+  const at = new AtUri(uri);
+  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
+  if (at.hostname !== did) throw new Error("Record must be in your repo");
+  if (at.collection !== BAZAAR_COLLECTION.physicalItem) {
+    throw new Error("Not a physical item record");
+  }
+  const cur = (await agent.com.atproto.repo.getRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+  })) as GetRecordResponse;
+  const prev = cur.data.value as PhysicalItem;
+  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.item.physical") {
+    throw new Error("Invalid record type");
+  }
+  const merged: PhysicalItem = {
+    ...draft,
+    artistDid: prev.artistDid,
+    itemClass: prev.itemClass,
+    createdAt: prev.createdAt,
+  };
+  await agent.com.atproto.repo.putRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+    swapRecord: cur.data.cid,
+    record: merged as unknown as Record<string, unknown>,
+  });
+}
+
 export async function listTracksForArtist(
   agent: ATPRepoClient,
   did: string,

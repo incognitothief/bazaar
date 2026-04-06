@@ -35,7 +35,8 @@
               "accessory",
               "hardGood",
               "other"
-            ]
+            ],
+            "description": "Immutable. A class change is a new publishing act requiring a new record."
           },
           "description": {
             "type": "string",
