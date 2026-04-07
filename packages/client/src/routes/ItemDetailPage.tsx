@@ -75,8 +75,7 @@ export function ItemDetailPage() {
     slug?: string;
   }>();
   const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
-  const legacySegment =
-    !!rkeyParam && isLegacyItemPathSegment(rkeyParam);
+  const legacySegment = !!rkeyParam && isLegacyItemPathSegment(rkeyParam);
 
   const agent = useMemo(() => createPublicAgent(), []);
   const { session } = useAtpSession();
@@ -131,11 +130,7 @@ export function ItemDetailPage() {
         storefrontDid,
         rkeyParam,
       );
-      if (
-        !uri &&
-        catalogDummyEnabled() &&
-        rkeyParam === DUMMY_ITEM_RKEY
-      ) {
+      if (!uri && catalogDummyEnabled() && rkeyParam === DUMMY_ITEM_RKEY) {
         uri = resolveDummyItemAtUri(storefrontDid);
       }
       if (!cancelled) {
@@ -374,9 +369,7 @@ export function ItemDetailPage() {
   }
 
   if (legacySegment) {
-    return (
-      <p className="text-muted-foreground">Invalid item link.</p>
-    );
+    return <p className="text-muted-foreground">Invalid item link.</p>;
   }
 
   if (!artistDid.startsWith("did:")) {
@@ -471,10 +464,9 @@ export function ItemDetailPage() {
     }
   }
 
-  const blobDid =
-    item.$type === "diamonds.whereditgo.bazaar.catalog.item.digital"
-      ? item.artistDid
-      : (artistDid ?? "");
+  const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
+
+  const blobDid = isDigital ? item.artistDid : (artistDid ?? "");
 
   const showDummyBanner =
     catalogDummyEnabled() && isDummyStorefrontItem(itemUri, artistDid);
@@ -498,11 +490,11 @@ export function ItemDetailPage() {
         <link rel="canonical" href={canonicalAbs} />
         <meta property="og:type" content="article" />
         <meta property="og:site_name" content={siteBrandName()} />
-        <meta property="og:title" content={`${item.title} · ${siteBrandName()}`} />
         <meta
-          property="og:description"
-          content={truncMeta(metaDesc, 200)}
+          property="og:title"
+          content={`${item.title} · ${siteBrandName()}`}
         />
+        <meta property="og:description" content={truncMeta(metaDesc, 200)} />
         <meta property="og:url" content={canonicalAbs} />
         <meta property="og:image" content={ogImage} />
         <meta name="twitter:card" content="summary_large_image" />
@@ -510,10 +502,7 @@ export function ItemDetailPage() {
           name="twitter:title"
           content={`${item.title} · ${siteBrandName()}`}
         />
-        <meta
-          name="twitter:description"
-          content={truncMeta(metaDesc, 200)}
-        />
+        <meta name="twitter:description" content={truncMeta(metaDesc, 200)} />
         <meta name="twitter:image" content={ogImage} />
         {twSite ? (
           <meta
@@ -594,7 +583,36 @@ export function ItemDetailPage() {
             )}
           </div>
           {listing ? (
-            <p className="text-2xl font-medium">{formatMoney(listing.price)}</p>
+            <>
+              <p className="text-2xl font-medium">
+                {formatMoney(listing.price)}
+              </p>
+              {isDigital || isCollection ? (
+                <p className="text-sm text-muted-foreground">
+                  {isCollection ? (
+                    <>
+                      After purchase, you can{" "}
+                      <a
+                        href="/dashboard"
+                        className="text-primary underline underline-offset-2"
+                      >
+                        download this release.
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      After purchase, you can{" "}
+                      <a
+                        href="/dashboard"
+                        className="text-primary underline underline-offset-2"
+                      >
+                        download this item.
+                      </a>
+                    </>
+                  )}
+                </p>
+              ) : null}
+            </>
           ) : (
             <div className="space-y-2 text-muted-foreground">
               <p>Not currently for sale.</p>
