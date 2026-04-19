@@ -9,7 +9,7 @@ const devMockSignIn =
   import.meta.env.DEV &&
   import.meta.env.VITE_DEV_MOCK_ATPROTO_SIGNIN === "true";
 
-export function MerchantSignInPage() {
+export function SignInPage() {
   const { signIn } = useAtpSession();
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);

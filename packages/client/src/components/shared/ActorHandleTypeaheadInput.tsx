@@ -61,6 +61,8 @@ export function ActorHandleTypeaheadInput({
   const reactId = useId();
   const listboxId = `${id}-${reactId}-listbox`;
   const wrapRef = useRef<HTMLDivElement>(null);
+  /** Browser autofill does not set this; avoids opening the list over the submit button. */
+  const userDroveTypeaheadRef = useRef(false);
   const [debounced, setDebounced] = useState(value);
   const [suggestions, setSuggestions] = useState<ActorTypeaheadHit[]>([]);
   const [open, setOpen] = useState(false);
@@ -76,6 +78,16 @@ export function ActorHandleTypeaheadInput({
     const q = debounced.trim();
     if (q.length < MIN_QUERY_LEN || disabled) {
       setSuggestions([]);
+      setOpen(false);
+      setHighlight(-1);
+      setLoading(false);
+      return;
+    }
+
+    if (!userDroveTypeaheadRef.current) {
+      setSuggestions([]);
+      setOpen(false);
+      setHighlight(-1);
       setLoading(false);
       return;
     }
@@ -145,12 +157,28 @@ export function ActorHandleTypeaheadInput({
         aria-busy={loading}
         onChange={(e) => {
           onChange(e.target.value);
-          setOpen(true);
+        }}
+        onPaste={() => {
+          userDroveTypeaheadRef.current = true;
+        }}
+        onCut={() => {
+          userDroveTypeaheadRef.current = true;
         }}
         onFocus={() => {
           if (suggestions.length > 0) setOpen(true);
         }}
         onKeyDown={(e) => {
+          if (
+            !e.metaKey &&
+            !e.ctrlKey &&
+            !e.altKey &&
+            (e.key.length === 1 ||
+              e.key === "Backspace" ||
+              e.key === "Delete")
+          ) {
+            userDroveTypeaheadRef.current = true;
+          }
+
           if (!showList) return;
 
           if (e.key === "Escape") {
