@@ -16,25 +16,25 @@
           "title": {
             "type": "string",
             "maxLength": 512,
-            "description": "Title of the composition. May differ from the recording title."
+            "description": "Title of the composition. May differ from the recording title. Freely mutable."
           },
           "artistDid": {
             "type": "string",
             "format": "did",
-            "description": "DID of the artist publishing this record. Not necessarily the sole writer."
+            "description": "DID of the artist publishing this record. Not necessarily the sole writer. Immutable."
           },
           "iswc": {
             "type": "string",
             "maxLength": 16,
-            "description": "International Standard Musical Work Code. Assigned by a PRO. Optional — see bazaarWid for self-issued alternative."
+            "description": "International Standard Musical Work Code. Assigned by a PRO. Optional \u2014 see bazaarWid for self-issued alternative. Freely mutable."
           },
           "bazaarWid": {
             "$ref": "diamonds.whereditgo.bazaar.defs#bazaarIdentifier",
-            "description": "Self-issued Work Identifier. Generated as base32(SHA-256(artistDid + compositionTitle + writers[] + createdAt)). Writers array canonicalized before hashing. Shadows ISWC. supersededByIswc populated when a proper ISWC is obtained."
+            "description": "Self-issued Work Identifier. Generated as base32(SHA-256(artistDid + compositionTitle + writers[] + createdAt)). Writers array canonicalized before hashing. Shadows ISWC. id, sig, kid, and generatedAt are immutable. supersededByIswc is mutable \u2014 populated when a proper ISWC is obtained."
           },
           "writers": {
             "type": "array",
-            "description": "Co-writers and their share splits. Optional — single-writer compositions may omit.",
+            "description": "Co-writers and their share splits. Optional \u2014 single-writer compositions may omit. Freely mutable.",
             "items": {
               "type": "object",
               "required": [
@@ -74,7 +74,7 @@
           },
           "publishers": {
             "type": "array",
-            "description": "Publishing administrators for this composition.",
+            "description": "Publishing administrators for this composition. Freely mutable.",
             "items": {
               "type": "object",
               "required": [
@@ -106,7 +106,7 @@
           },
           "proRegistrations": {
             "type": "array",
-            "description": "PRO registrations for this composition across territories.",
+            "description": "PRO registrations for this composition across territories. Freely mutable.",
             "items": {
               "type": "object",
               "required": [
@@ -132,16 +132,16 @@
           "publishingLicenseTermsUri": {
             "type": "string",
             "format": "at-uri",
-            "description": "AT-URI of the license.terms record governing publishing rights for this composition."
+            "description": "AT-URI of the license.terms record governing publishing rights for this composition. Freely mutable."
           },
           "songMetaUri": {
             "type": "string",
             "format": "at-uri",
-            "description": "Optional AT-URI of a song record in an external namespace (e.g. ch.indiemusi.alpha.song)."
+            "description": "Optional AT-URI of a song record in an external namespace (e.g. ch.indiemusi.alpha.song). Freely mutable."
           },
           "recordings": {
             "type": "array",
-            "description": "AT-URIs of catalog.item.digital records that are recordings of this composition. Informational only — the authoritative link direction is catalog.recording → catalog.composition via songMetaUri.",
+            "description": "AT-URIs of catalog.item.digital records that are recordings of this composition. Informational only \u2014 the authoritative link direction is catalog.recording \u2192 catalog.composition via songMetaUri. Freely mutable.",
             "items": {
               "type": "object",
               "required": [
@@ -160,16 +160,18 @@
             }
           },
           "copyrightYear": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Freely mutable."
           },
           "copyrightRegistrationId": {
             "type": "string",
             "maxLength": 128,
-            "description": "Copyright office registration ID if registered, e.g. US Copyright Office PA number."
+            "description": "Copyright office registration ID if registered, e.g. US Copyright Office PA number. Freely mutable."
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           }
         }
       }

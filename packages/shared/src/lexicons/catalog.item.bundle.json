@@ -16,30 +16,36 @@
         "properties": {
           "title": {
             "type": "string",
-            "maxLength": 512
+            "maxLength": 512,
+            "description": "Freely mutable."
           },
           "artistDid": {
             "type": "string",
-            "format": "did"
+            "format": "did",
+            "description": "Immutable."
           },
           "description": {
             "type": "string",
-            "maxLength": 4096
+            "maxLength": 4096,
+            "description": "Freely mutable."
           },
           "items": {
             "type": "array",
             "items": {
               "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
             },
-            "minLength": 2
+            "minLength": 2,
+            "description": "Freely mutable \u2014 add or remove item refs via putRecord."
           },
           "artworkCid": {
             "type": "string",
-            "format": "cid"
+            "format": "cid",
+            "description": "Freely mutable."
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           }
         }
       }

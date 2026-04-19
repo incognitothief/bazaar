@@ -17,11 +17,13 @@
         "properties": {
           "title": {
             "type": "string",
-            "maxLength": 512
+            "maxLength": 512,
+            "description": "Freely mutable."
           },
           "artistDid": {
             "type": "string",
-            "format": "did"
+            "format": "did",
+            "description": "Immutable."
           },
           "itemClass": {
             "type": "string",
@@ -36,39 +38,45 @@
               "hardGood",
               "other"
             ],
-            "description": "Immutable. A class change is a new publishing act requiring a new record."
+            "description": "Immutable."
           },
           "description": {
             "type": "string",
-            "maxLength": 4096
+            "maxLength": 4096,
+            "description": "Freely mutable."
           },
           "variants": {
             "type": "array",
             "items": {
               "$ref": "diamonds.whereditgo.bazaar.defs#variant"
             },
-            "minLength": 1
+            "minLength": 1,
+            "description": "Freely mutable \u2014 add, remove, or update variants via putRecord."
           },
           "artworkCid": {
             "type": "string",
-            "format": "cid"
+            "format": "cid",
+            "description": "Freely mutable."
           },
           "countryOfOrigin": {
             "type": "string",
-            "maxLength": 2
+            "maxLength": 2,
+            "description": "Freely mutable."
           },
           "harmonizedCode": {
             "type": "string",
             "maxLength": 16,
-            "description": "HS tariff code."
+            "description": "HS tariff code. Freely mutable."
           },
           "requiresShipping": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "description": "Freely mutable."
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           }
         }
       }

@@ -22,77 +22,85 @@
         ],
         "properties": {
           "item": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
+            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef",
+            "description": "Immutable."
           },
           "listingUri": {
             "type": "string",
-            "format": "at-uri"
+            "format": "at-uri",
+            "description": "Immutable."
           },
           "listingCid": {
             "type": "string",
             "format": "cid",
-            "description": "CID of the listing at time of purchase — immutable price anchor."
+            "description": "CID of the listing at time of purchase \u2014 immutable price anchor. Immutable."
           },
           "pricePaid": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#money"
+            "$ref": "diamonds.whereditgo.bazaar.defs#money",
+            "description": "Immutable."
           },
           "paymentProcessor": {
             "type": "string",
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "Immutable."
           },
           "paymentRef": {
             "type": "string",
             "maxLength": 256,
-            "description": "Stripe PaymentIntent ID or equivalent. Independently verifiable via payment processor."
+            "description": "Stripe PaymentIntent ID or equivalent. Independently verifiable via payment processor. Immutable."
           },
           "licenseGrantUri": {
             "type": "string",
-            "format": "at-uri"
+            "format": "at-uri",
+            "description": "Immutable."
           },
           "licenseGrantCid": {
             "type": "string",
             "format": "cid",
-            "description": "CID of the license.terms record at time of purchase. Resolved from the listing's licenseGrantCid."
+            "description": "CID of the license.terms record at time of purchase. Resolved from the listing's licenseGrantCid. Immutable."
           },
           "buyerDid": {
             "type": "string",
             "format": "did",
-            "description": "DID of the buyer. Explicit field — previously only implied by appSig payload. Makes receipt queryable by buyer identity and consistent with purchase.consent record."
+            "description": "DID of the buyer. Explicit field \u2014 previously only implied by appSig payload. Makes receipt queryable by buyer identity and consistent with purchase.consent record. Immutable."
           },
           "shippingAddress": {
             "$ref": "diamonds.whereditgo.bazaar.defs#address",
-            "description": "For physical items. Lives in buyer's own PDS — they control this data."
+            "description": "For physical items. Lives in buyer's own PDS \u2014 they control this data. Immutable."
           },
           "fulfillmentUri": {
             "type": "string",
-            "format": "at-uri"
+            "format": "at-uri",
+            "description": "Immutable."
           },
           "appDid": {
             "type": "string",
             "format": "did",
-            "description": "DID of the Bazaar app that issued this receipt. Verifiers resolve this to get the public key for appSig verification."
+            "description": "DID of the Bazaar app that issued this receipt. Verifiers resolve this DID to obtain the public key for appSig verification. Use the kid field to select the correct historical key if the app keypair has been rotated. Immutable."
           },
           "issuerScope": {
             "type": "string",
             "format": "did",
-            "description": "DID of the artist/storefront this receipt was issued under."
+            "description": "DID of the artist/storefront this receipt was issued under. Immutable."
           },
           "appSig": {
             "type": "string",
-            "description": "Base64url signature by the Bazaar app service keypair (appDid) over SHA-256(purchasedAt:paymentRef:item.uri:listingCid:buyerDid). All five values are colon-delimited in the order listed. item.uri is the AT-URI from the item field. Verifiers reconstruct this payload from the receipt's plaintext fields and verify against the public key resolved from appDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
+            "description": "Base64url signature by the Bazaar app service keypair (appDid) over SHA-256(purchasedAt:paymentRef:item.uri:listingCid:buyerDid). All five values are colon-delimited in the order listed. item.uri is the AT-URI from the item field. Verifiers reconstruct this payload from the receipt's plaintext fields and verify against the public key resolved from appDid \u2014 using kid to select the correct historical key if the keypair has been rotated. Immutable."
           },
           "kid": {
             "type": "string",
             "maxLength": 64,
-            "description": "Key identifier for the app service keypair that produced appSig. Format: app-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. app-key-2026-04-17. Allows verifiers to select the correct historical key from the appDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
+            "description": "Key identifier for the app service keypair that produced appSig. Format: app-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. app-key-2026-04-17. Allows verifiers to select the correct historical key from the appDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint \u2014 verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
           },
           "purchasedAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           },
           "note": {
             "type": "string",
-            "maxLength": 512
+            "maxLength": 512,
+            "description": "Immutable."
           }
         }
       }

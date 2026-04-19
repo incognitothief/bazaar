@@ -19,7 +19,8 @@
         "properties": {
           "title": {
             "type": "string",
-            "maxLength": 256
+            "maxLength": 256,
+            "description": "Freely mutable."
           },
           "tier": {
             "type": "string",
@@ -32,7 +33,8 @@
               "mechanical",
               "broadcast",
               "stemLicense"
-            ]
+            ],
+            "description": "Freely mutable."
           },
           "rightsType": {
             "type": "string",
@@ -41,18 +43,20 @@
               "publishing",
               "both"
             ],
-            "description": "Which rights stack this license covers. Master = the recording. Publishing = the composition. Both = full clearance."
+            "description": "Which rights stack this license covers. Master = the recording. Publishing = the composition. Both = full clearance. Freely mutable."
           },
           "version": {
             "type": "string",
-            "maxLength": 32
+            "maxLength": 32,
+            "description": "Freely mutable."
           },
           "territoryCoverage": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#territoryCoverage"
+            "$ref": "diamonds.whereditgo.bazaar.defs#territoryCoverage",
+            "description": "Freely mutable."
           },
           "term": {
             "type": "object",
-            "description": "Duration of the license. Absent = perpetual.",
+            "description": "Duration of the license. Absent = perpetual. Freely mutable.",
             "properties": {
               "durationMonths": {
                 "type": "integer"
@@ -65,6 +69,7 @@
           },
           "usageRestrictions": {
             "type": "object",
+            "description": "Freely mutable.",
             "properties": {
               "allowsStreaming": {
                 "type": "boolean"
@@ -98,7 +103,7 @@
           },
           "proNotice": {
             "type": "object",
-            "description": "Identifies PRO(s) administering composition rights so buyers know where to direct royalty payments.",
+            "description": "Identifies PRO(s) administering composition rights so buyers know where to direct royalty payments. Freely mutable.",
             "properties": {
               "compositionPro": {
                 "type": "string",
@@ -116,6 +121,7 @@
           },
           "legalMetadata": {
             "type": "object",
+            "description": "Freely mutable.",
             "properties": {
               "governingLaw": {
                 "type": "string",
@@ -141,24 +147,26 @@
           "humanReadableUrl": {
             "type": "string",
             "format": "uri",
-            "description": "Canonical URL of the full license text. For Creative Commons licenses, this should be the canonical CC deed URL."
+            "description": "Canonical URL of the full license text. For Creative Commons licenses, this should be the canonical CC deed URL. Freely mutable."
           },
           "summary": {
             "type": "string",
-            "maxLength": 1024
+            "maxLength": 1024,
+            "description": "Freely mutable."
           },
           "editionSize": {
             "type": "integer",
-            "description": "For limited editions. Absent = open edition."
+            "description": "For limited editions. Absent = open edition. Freely mutable."
           },
           "checkoutConsentRequired": {
             "type": "boolean",
             "default": true,
-            "description": "If true, the purchasing application MUST obtain affirmative clickwrap consent before completing the transaction. Set to false for Creative Commons licenses where the grant is public and non-transactional."
+            "description": "If true, the purchasing application MUST obtain affirmative clickwrap consent before completing the transaction. Set to false for Creative Commons licenses where the grant is public and non-transactional. Freely mutable."
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           }
         }
       }

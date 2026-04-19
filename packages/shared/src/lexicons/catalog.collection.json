@@ -17,11 +17,13 @@
         "properties": {
           "title": {
             "type": "string",
-            "maxLength": 512
+            "maxLength": 512,
+            "description": "Freely mutable."
           },
           "artistDid": {
             "type": "string",
-            "format": "did"
+            "format": "did",
+            "description": "Immutable."
           },
           "collectionType": {
             "type": "string",
@@ -31,21 +33,23 @@
               "single",
               "compilation",
               "other"
-            ]
+            ],
+            "description": "Freely mutable."
           },
           "description": {
             "type": "string",
             "maxLength": 4096,
-            "description": "Optional longer text for the release (e.g. storefront, listings, liner notes)."
+            "description": "Optional longer text for the release (e.g. storefront, listings, liner notes). Freely mutable."
           },
           "releaseDate": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Freely mutable."
           },
           "items": {
             "type": "array",
             "minLength": 1,
-            "description": "All content belonging to this release, in display order.",
+            "description": "All content belonging to this release, in display order. Freely mutable \u2014 items may be added or removed and per-item fields updated via putRecord. Note: receipts reference the collection URI, not a CID snapshot, so entitlement set may shift if items are added or removed after purchase. Snapshot entitlement semantics are deferred.",
             "items": {
               "type": "object",
               "required": [
@@ -56,12 +60,12 @@
                 "uri": {
                   "type": "string",
                   "format": "at-uri",
-                  "description": "AT-URI of the catalog.item.digital record for this content."
+                  "description": "AT-URI of the catalog.item.digital record for this content. Freely mutable."
                 },
                 "cid": {
                   "type": "string",
                   "format": "cid",
-                  "description": "Optional CID of the item record at time of collection authoring. Informational only."
+                  "description": "Optional CID of the item record at time of collection authoring. Informational only. Freely mutable."
                 },
                 "role": {
                   "type": "string",
@@ -73,20 +77,20 @@
                     "bonus",
                     "other"
                   ],
-                  "description": "The function of this item within the release. track = music recording. document = liner notes, lyrics, zine, PDF. video = music video or visual album component. artwork = supplementary visual asset. bonus = promotional or discretionary extra."
+                  "description": "The function of this item within the release. track = music recording. document = liner notes, lyrics, zine, PDF. video = music video or visual album component. artwork = supplementary visual asset. bonus = promotional or discretionary extra. Freely mutable."
                 },
                 "trackNumber": {
                   "type": "integer",
-                  "description": "Position in the tracklist. Meaningful only for role: track."
+                  "description": "Position in the tracklist. Meaningful only for role: track. Freely mutable."
                 },
                 "discNumber": {
                   "type": "integer",
-                  "description": "Disc number for multi-disc releases. Meaningful only for role: track."
+                  "description": "Disc number for multi-disc releases. Meaningful only for role: track. Freely mutable."
                 },
                 "title": {
                   "type": "string",
                   "maxLength": 512,
-                  "description": "Display title override for this item's role in the collection. Falls back to the item record's own title if absent."
+                  "description": "Display title override for this item's role in the collection. Falls back to the item record's own title if absent. Freely mutable."
                 }
               }
             }
@@ -94,31 +98,34 @@
           "defaultLicenseUri": {
             "type": "string",
             "format": "at-uri",
-            "description": "AT-URI of the default license.terms record for this collection. Used to pre-populate the listing form. Not the authoritative license at point of sale — the listing's licenseUri field is authoritative."
+            "description": "AT-URI of the default license.terms record for this collection. Used to pre-populate the listing form. Not the authoritative license at point of sale \u2014 the listing's licenseUri field is authoritative. Freely mutable."
           },
           "upc": {
             "type": "string",
             "maxLength": 20,
-            "description": "Universal Product Code. Optional — may be absent if not yet registered. See bazaarPid for self-issued alternative."
+            "description": "Universal Product Code. Optional \u2014 may be absent if not yet registered. See bazaarPid for self-issued alternative. Freely mutable."
           },
           "bazaarPid": {
             "$ref": "diamonds.whereditgo.bazaar.defs#bazaarIdentifier",
-            "description": "Self-issued Product Identifier. Generated as base32(SHA-256(artistDid + collectionUri + releaseDate)). Shadows UPC. id, sig, and generatedAt are immutable; supersededByUpc is populated when a proper UPC is obtained."
+            "description": "Self-issued Product Identifier. Generated as base32(SHA-256(artistDid + collectionUri + releaseDate)). Shadows UPC. id, sig, kid, and generatedAt are immutable. supersededByUpc is mutable \u2014 populated when a proper UPC is obtained."
           },
           "artworkCid": {
             "type": "string",
-            "format": "cid"
+            "format": "cid",
+            "description": "Freely mutable."
           },
           "genre": {
             "type": "array",
             "items": {
               "type": "string",
               "maxLength": 64
-            }
+            },
+            "description": "Freely mutable."
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           }
         }
       }

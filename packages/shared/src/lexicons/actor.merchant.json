@@ -13,27 +13,33 @@
         "properties": {
           "displayName": {
             "type": "string",
-            "maxLength": 256
+            "maxLength": 256,
+            "description": "Freely mutable."
           },
           "description": {
             "type": "string",
-            "maxLength": 2048
+            "maxLength": 2048,
+            "description": "Freely mutable."
           },
           "storefrontUrl": {
             "type": "string",
-            "format": "uri"
+            "format": "uri",
+            "description": "Freely mutable."
           },
           "avatarCid": {
             "type": "string",
-            "format": "cid"
+            "format": "cid",
+            "description": "Freely mutable."
           },
           "bannerCid": {
             "type": "string",
-            "format": "cid"
+            "format": "cid",
+            "description": "Freely mutable."
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           }
         }
       }

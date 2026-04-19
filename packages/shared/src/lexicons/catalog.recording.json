@@ -15,63 +15,71 @@
         "properties": {
           "itemUri": {
             "type": "string",
-            "format": "at-uri"
+            "format": "at-uri",
+            "description": "Immutable. Anchors this record to a specific item."
           },
           "itemCid": {
             "type": "string",
-            "format": "cid"
+            "format": "cid",
+            "description": "Immutable."
           },
           "isrc": {
             "type": "string",
             "maxLength": 16,
-            "description": "International Standard Recording Code. Optional — see bazaarRid for self-issued alternative."
+            "description": "International Standard Recording Code. Optional \u2014 see bazaarRid for self-issued alternative. Freely mutable."
           },
           "iswc": {
             "type": "string",
             "maxLength": 16,
-            "description": "International Standard Musical Work Code. Optional — see bazaarWid for self-issued alternative."
+            "description": "International Standard Musical Work Code. Optional \u2014 see bazaarWid for self-issued alternative. Freely mutable."
           },
           "bazaarRid": {
             "$ref": "diamonds.whereditgo.bazaar.defs#bazaarIdentifier",
-            "description": "Self-issued Recording Identifier. Generated as base32(SHA-256(artistDid + fileCid + fileChecksum + createdAt)). Shadows ISRC. supersededByIsrc populated when a proper ISRC is obtained."
+            "description": "Self-issued Recording Identifier. Generated as base32(SHA-256(artistDid + fileCid + fileChecksum + createdAt)). Shadows ISRC. id, sig, kid, and generatedAt are immutable. supersededByIsrc is mutable \u2014 populated when a proper ISRC is obtained."
           },
           "bazaarWid": {
             "$ref": "diamonds.whereditgo.bazaar.defs#bazaarIdentifier",
-            "description": "Self-issued Work Identifier. Generated as base32(SHA-256(artistDid + compositionTitle + writers[] + createdAt)). Shadows ISWC. supersededByIswc populated when a proper ISWC is obtained."
+            "description": "Self-issued Work Identifier. Generated as base32(SHA-256(artistDid + compositionTitle + writers[] + createdAt)). Shadows ISWC. id, sig, kid, and generatedAt are immutable. supersededByIswc is mutable \u2014 populated when a proper ISWC is obtained."
           },
           "recordingMetaUri": {
             "type": "string",
             "format": "at-uri",
-            "description": "Optional AT-URI of a recording record in an external namespace (e.g. ch.indiemusi.alpha.recording)."
+            "description": "Optional AT-URI of a recording record in an external namespace (e.g. ch.indiemusi.alpha.recording). Freely mutable."
           },
           "songMetaUri": {
             "type": "string",
             "format": "at-uri",
-            "description": "Optional AT-URI of a composition record — either in an external namespace (e.g. ch.indiemusi.alpha.song) or a Bazaar-native catalog.composition record."
+            "description": "Optional AT-URI of a composition record \u2014 either in an external namespace (e.g. ch.indiemusi.alpha.song) or a Bazaar-native catalog.composition record. Freely mutable."
           },
           "masterOwnerDid": {
             "type": "string",
-            "format": "did"
+            "format": "did",
+            "description": "Freely mutable."
           },
           "publishingOwnerDid": {
             "type": "string",
-            "format": "did"
+            "format": "did",
+            "description": "Freely mutable."
           },
           "publishingOwnerIpi": {
             "type": "string",
-            "maxLength": 32
+            "maxLength": 32,
+            "description": "Freely mutable."
           },
           "masterLicenseTermsUri": {
             "type": "string",
-            "format": "at-uri"
+            "format": "at-uri",
+            "description": "Freely mutable."
           },
           "publishingLicenseTermsUri": {
             "type": "string",
-            "format": "at-uri"
+            "format": "at-uri",
+            "description": "Freely mutable."
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           }
         }
       }

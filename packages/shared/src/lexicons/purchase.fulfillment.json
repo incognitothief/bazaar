@@ -16,11 +16,13 @@
         "properties": {
           "receiptUri": {
             "type": "string",
-            "format": "at-uri"
+            "format": "at-uri",
+            "description": "Immutable."
           },
           "receiptCid": {
             "type": "string",
-            "format": "cid"
+            "format": "cid",
+            "description": "Immutable."
           },
           "status": {
             "type": "string",
@@ -32,34 +34,42 @@
               "delivered",
               "returned",
               "cancelled"
-            ]
+            ],
+            "description": "Freely mutable \u2014 this is a living logistics record."
           },
           "carrier": {
             "type": "string",
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "Freely mutable."
           },
           "trackingNumber": {
             "type": "string",
-            "maxLength": 256
+            "maxLength": 256,
+            "description": "Freely mutable."
           },
           "trackingUrl": {
             "type": "string",
-            "format": "uri"
+            "format": "uri",
+            "description": "Freely mutable."
           },
           "estimatedDelivery": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Freely mutable."
           },
           "shippedAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Freely mutable."
           },
           "deliveredAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Freely mutable."
           },
           "events": {
             "type": "array",
+            "description": "Freely mutable. Append-only by convention \u2014 existing events should not be removed or modified, but this is not enforced by the lexicon.",
             "items": {
               "type": "object",
               "required": [
@@ -88,11 +98,13 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           },
           "updatedAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Freely mutable."
           }
         }
       }

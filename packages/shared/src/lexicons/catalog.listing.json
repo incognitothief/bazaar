@@ -17,13 +17,16 @@
         ],
         "properties": {
           "item": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
+            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef",
+            "description": "Immutable. A listing is for a specific item; a different item requires a new listing."
           },
           "price": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#money"
+            "$ref": "diamonds.whereditgo.bazaar.defs#money",
+            "description": "Immutable. A price change requires a new listing record with status: superseded on the old one."
           },
           "compareAtPrice": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#money"
+            "$ref": "diamonds.whereditgo.bazaar.defs#money",
+            "description": "Freely mutable."
           },
           "status": {
             "type": "string",
@@ -34,42 +37,47 @@
               "scheduled",
               "archived",
               "superseded"
-            ]
+            ],
+            "description": "Mutable. active \u2194 paused, soldOut, and scheduled may update in place. archived and superseded are terminal states."
           },
           "licenseUri": {
             "type": "string",
             "format": "at-uri",
-            "description": "AT-URI of the license.terms record governing this listing. Required. Takes precedence over defaultLicenseUri on the item or collection. Different listings for the same item may reference different license.terms records, enabling per-tier pricing (e.g. personal vs. commercial)."
+            "description": "AT-URI of the license.terms record governing this listing. Required. Takes precedence over defaultLicenseUri on the item or collection. Different listings for the same item may reference different license.terms records, enabling per-tier pricing. Immutable \u2014 a license change requires a new listing record."
           },
           "licenseGrantCid": {
             "type": "string",
             "format": "cid",
-            "description": "CID of the license.terms record at time of listing creation. Anchors the offered terms so that receipt and consent record resolution is consistent even if the license.terms record is later updated."
+            "description": "CID of the license.terms record at time of listing creation. Anchors the offered terms so that receipt and consent record resolution is consistent even if the license.terms record is later updated. Immutable."
           },
           "parentListing": {
             "type": "string",
             "format": "at-uri",
-            "description": "When this listing sells a member digital item as an individual single, the AT-URI of the parent catalog.listing for the collection. Absent for standalone singles and for the collection listing itself. Used for storefront grouping and cascade pause when the collection listing is paused."
+            "description": "AT-URI of the parent collection listing this standalone item listing is subordinate to. When set, the storefront and merchant dashboard group this listing under the parent. When the parent listing is archived, the backend cascades status: archived to all listings referencing it via this field. Cascade is a backend convention \u2014 records are never deleted and existing receipts remain valid. Immutable once set."
           },
           "supersededBy": {
             "type": "string",
             "format": "at-uri",
-            "description": "AT-URI of the listing record that replaced this one following a material change. Set when status is superseded."
+            "description": "AT-URI of the listing record that replaced this one following a material change. Set when status is superseded. Immutable once set."
           },
           "availableFrom": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Freely mutable."
           },
           "availableUntil": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Freely mutable."
           },
           "maxPurchasesPerBuyer": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Freely mutable."
           },
           "createdAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "Immutable."
           }
         }
       }

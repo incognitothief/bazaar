@@ -20,41 +20,41 @@
           "receiptUri": {
             "type": "string",
             "format": "at-uri",
-            "description": "AT-URI of the purchase.receipt this consent record accompanies."
+            "description": "AT-URI of the purchase.receipt this consent record accompanies. Immutable."
           },
           "receiptCid": {
             "type": "string",
             "format": "cid",
-            "description": "CID of the receipt at time of consent. Links consent to a specific, immutable receipt state."
+            "description": "CID of the receipt at time of consent. Links consent to a specific, immutable receipt state. Immutable."
           },
           "licenseGrantUri": {
             "type": "string",
             "format": "at-uri",
-            "description": "AT-URI of the license.terms record the buyer consented to."
+            "description": "AT-URI of the license.terms record the buyer consented to. Immutable."
           },
           "licenseGrantCid": {
             "type": "string",
             "format": "cid",
-            "description": "CID of the license.terms record at time of consent. The buyer agreed to these exact terms — not a future or past version."
+            "description": "CID of the license.terms record at time of consent. The buyer agreed to these exact terms \u2014 not a future or past version. Immutable."
           },
           "buyerDid": {
             "type": "string",
             "format": "did",
-            "description": "DID of the buyer. Names the consenting party explicitly, making this a buyer-addressed instrument rather than an anonymous terms snapshot."
+            "description": "DID of the buyer. Names the consenting party explicitly, making this a buyer-addressed instrument rather than an anonymous terms snapshot. Immutable."
           },
           "consentedAt": {
             "type": "string",
             "format": "datetime",
-            "description": "Timestamp of affirmative consent. Combined with the PDS record's creation timestamp forms a tamper-evident assertion of when consent was given."
+            "description": "Timestamp of affirmative consent. Combined with the PDS record's creation timestamp forms a tamper-evident assertion of when consent was given. Immutable."
           },
           "appSig": {
             "type": "string",
-            "description": "Base64url signature by the Bazaar app service keypair (appDid) over SHA-256(buyerDid:licenseGrantCid:receiptCid:consentedAt). All four values are colon-delimited in the order listed. Prevents consent records being fabricated outside the app's trust boundary. Verifiers reconstruct this payload from the consent record's plaintext fields and verify against the public key resolved from appDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
+            "description": "Base64url signature by the Bazaar app service keypair (appDid) over SHA-256(buyerDid:licenseGrantCid:receiptCid:consentedAt). All four values are colon-delimited in the order listed. Prevents consent records being fabricated outside the app's trust boundary. Verifiers reconstruct this payload from the consent record's plaintext fields and verify against the public key resolved from appDid \u2014 using kid to select the correct historical key if the keypair has been rotated. Immutable."
           },
           "kid": {
             "type": "string",
             "maxLength": 64,
-            "description": "Key identifier for the app service keypair that produced appSig. Format: app-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. app-key-2026-04-17. Allows verifiers to select the correct historical key from the appDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
+            "description": "Key identifier for the app service keypair that produced appSig. Format: app-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. app-key-2026-04-17. Allows verifiers to select the correct historical key from the appDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint \u2014 verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
           },
           "usageTier": {
             "type": "string",
@@ -63,12 +63,12 @@
               "commercial",
               "sync"
             ],
-            "description": "The license tier the buyer selected at checkout. Surfaces the buyer's affirmative acknowledgment of which tier applies — redundant with the license.terms tier field but records the buyer's explicit selection."
+            "description": "The license tier the buyer selected at checkout. Surfaces the buyer's affirmative acknowledgment of which tier applies \u2014 redundant with the license.terms tier field but records the buyer's explicit selection. Immutable."
           },
           "syncProject": {
             "type": "string",
             "maxLength": 512,
-            "description": "For sync tier only. Human-readable description of the project this license covers, e.g. 'Short film: The Last Train, dir. A. Smith, 2026'. Optional but strongly recommended for sync purchases."
+            "description": "For sync tier only. Human-readable description of the project this license covers, e.g. 'Short film: The Last Train, dir. A. Smith, 2026'. Optional but strongly recommended for sync purchases. Immutable."
           }
         }
       }
