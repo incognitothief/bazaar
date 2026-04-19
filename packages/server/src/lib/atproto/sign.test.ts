@@ -5,12 +5,37 @@ import {
 } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import {
+  appServiceKidFromEnv,
   normalizeAppServicePrivateKey,
   signConsentPayload,
   signReceiptPayload,
   verifyConsentPayload,
   verifyReceiptPayload,
 } from "./sign";
+
+describe("appServiceKidFromEnv", () => {
+  test("returns null when unset", () => {
+    const prev = process.env.APP_SERVICE_KID;
+    delete process.env.APP_SERVICE_KID;
+    try {
+      expect(appServiceKidFromEnv()).toBeNull();
+    } finally {
+      if (prev === undefined) delete process.env.APP_SERVICE_KID;
+      else process.env.APP_SERVICE_KID = prev;
+    }
+  });
+
+  test("returns trimmed value when set", () => {
+    const prev = process.env.APP_SERVICE_KID;
+    process.env.APP_SERVICE_KID = "  app-key-2026-04-19  ";
+    try {
+      expect(appServiceKidFromEnv()).toBe("app-key-2026-04-19");
+    } finally {
+      if (prev === undefined) delete process.env.APP_SERVICE_KID;
+      else process.env.APP_SERVICE_KID = prev;
+    }
+  });
+});
 
 describe("signReceiptPayload / verifyReceiptPayload", () => {
   test("round-trip", () => {

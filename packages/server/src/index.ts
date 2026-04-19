@@ -15,6 +15,7 @@ import {
 } from "./lib/stripe/fulfillCheckoutSession";
 import { getStripe } from "./lib/stripe/getStripe";
 import { lexicons } from "@bazaar/shared";
+import { wellKnown } from "./routes/wellKnown";
 
 const port = Number(process.env.PORT ?? 3000);
 const databasePath = process.env.DATABASE_PATH ?? "./data/app.db";
@@ -63,6 +64,7 @@ app.get("/xrpc/com.atproto.lexicon.get", (c) => {
 });
 
 app.route("/api", api);
+app.route("/.well-known", wellKnown);
 
 /** Legacy share links: `/item/<encodeURIComponent(at-uri)>` → `/item/<rkey>` */
 app.use("/item/*", async (c, next) => {
@@ -132,6 +134,14 @@ app.notFound(async (c) => {
   }
   return c.text("Not found", 404);
 });
+
+if (!process.env.APP_SERVICE_KID?.trim() && process.env.NODE_ENV === "production") {
+  console.warn(
+    "[WARN] APP_SERVICE_KID is not set. Signed records will not carry a kid field. " +
+      "Key rotation verification will require exhaustive key search. " +
+      "Set APP_SERVICE_KID to the fragment of the active key in did-document.json.",
+  );
+}
 
 Bun.serve({
   port,
