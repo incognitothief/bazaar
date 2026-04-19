@@ -12,7 +12,11 @@ import type { Db } from "../../db";
 import { meta, paymentFulfillment } from "../../db/schema";
 import { getAgent } from "../atproto/client";
 import type { OAuthClient } from "../atproto/oauth";
-import { signConsentPayload, signReceiptPayload } from "../atproto/sign";
+import {
+  appServiceKidFromEnv,
+  signConsentPayload,
+  signReceiptPayload,
+} from "../atproto/sign";
 import { getStripe } from "./getStripe";
 
 const COL_RECEIPT = "diamonds.whereditgo.bazaar.purchase.receipt";
@@ -576,6 +580,10 @@ export async function fulfillCheckoutSession(opts: {
     }
   }
 
+  const receiptKidEnv = appServiceKidFromEnv();
+  const receiptKid =
+    appSigReceipt && receiptKidEnv ? receiptKidEnv : undefined;
+
   const receiptRecord: Record<string, unknown> = {
     $type: COL_RECEIPT,
     item: receiptItem,
@@ -594,6 +602,7 @@ export async function fulfillCheckoutSession(opts: {
     issuerScope,
     appSig: appSigReceipt,
     purchasedAt,
+    ...(receiptKid ? { kid: receiptKid } : {}),
   };
 
   const receiptPayload: Record<string, unknown> = {
@@ -733,6 +742,9 @@ export async function fulfillCheckoutSession(opts: {
     }
   }
 
+  const consentKidEnv = appServiceKidFromEnv();
+  const consentKid = consentSig && consentKidEnv ? consentKidEnv : undefined;
+
   const consentRecord: Record<string, unknown> = {
     $type: COL_CONSENT,
     receiptUri,
@@ -742,6 +754,7 @@ export async function fulfillCheckoutSession(opts: {
     buyerDid,
     consentedAt: purchasedAt,
     appSig: consentSig,
+    ...(consentKid ? { kid: consentKid } : {}),
   };
 
   if (!consentUri) {

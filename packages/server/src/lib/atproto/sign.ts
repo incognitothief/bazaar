@@ -11,6 +11,18 @@ import {
  */
 const APP_SIG_DIGEST = "sha256";
 
+const APP_SERVICE_KID_MAX = 64;
+
+/**
+ * Optional lexicon `kid` (e.g. app-key-2026-04-19), matching the active fragment in
+ * `packages/server/config/did-document.json` assertionMethod / verificationMethod.
+ */
+export function appServiceKidFromEnv(): string | null {
+  const k = process.env.APP_SERVICE_KID?.trim();
+  if (!k) return null;
+  return k.length > APP_SERVICE_KID_MAX ? k.slice(0, APP_SERVICE_KID_MAX) : k;
+}
+
 /** SPKI PEM for verifyReceiptPayload / verifyConsentPayload when only APP_SERVICE_PRIVATE_KEY is configured. */
 export function appServicePublicKeyPemFromEnv(): string | null {
   const raw = process.env.APP_SERVICE_PRIVATE_KEY?.trim();
