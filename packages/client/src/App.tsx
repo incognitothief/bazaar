@@ -22,7 +22,7 @@ import { ListingsPage } from "@/routes/ListingsPage";
 import { LicensePage } from "@/routes/LicensePage";
 import { SettingsPage } from "@/routes/SettingsPage";
 import { MerchantTransactionsPage } from "@/routes/MerchantTransactionsPage";
-import { MerchantSignInPage } from "@/routes/MerchantSignInPage";
+import { SignInPage } from "@/routes/SignInPage";
 import { TermsPage } from "@/routes/TermsPage";
 import { RefundsPage } from "@/routes/RefundsPage";
 
@@ -36,7 +36,7 @@ const router = createBrowserRouter([
       { path: "/item/:rkey/:slug", element: <ItemDetailPage /> },
       { path: "/item/:rkey", element: <ItemDetailPage /> },
       { path: "/purchase/success", element: <PurchaseSuccessPage /> },
-      { path: "/merchant/signin", element: <MerchantSignInPage /> },
+      { path: "/merchant/signin", element: <SignInPage /> },
       { path: "/dashboard", element: <CustomerDashboardPage /> },
       {
         path: "/dashboard/purchase/:receiptUri",

@@ -1,5 +1,12 @@
 export const TYPEAHEAD_URL = "https://typeahead.waow.tech" as const;
 
+/** Stable client id for typeahead / profile relay requests. */
+export const BAZAAR_TYPEAHEAD_CLIENT_ID = "bazaar.whereditgo.diamonds" as const;
+
+const TYPEAHEAD_FETCH_HEADERS = {
+  "X-Client": BAZAAR_TYPEAHEAD_CLIENT_ID,
+} as const;
+
 export type ActorTypeaheadHit = {
   did: string;
   handle: string;
@@ -45,7 +52,7 @@ export async function fetchActorPublicProfile(
   }
 
   const url = `${TYPEAHEAD_URL}/xrpc/app.bsky.actor.getProfiles?actors=${encodeURIComponent(a)}`;
-  const response = await fetch(url, { signal });
+  const response = await fetch(url, { signal, headers: TYPEAHEAD_FETCH_HEADERS });
 
   if (!response.ok) {
     throw new Error(`getProfiles failed: ${response.status}`);
@@ -87,8 +94,6 @@ function parseHits(raw: TypeaheadResponse["actors"]): ActorTypeaheadHit[] {
 
 /**
  * Batch profile lookup (same relay as typeahead). Each `actors` query param is a DID or handle.
- *
- * TODO(app-identification): add `headers: { 'X-Client': '…' }` alongside typeahead fetches.
  */
 export async function fetchActorAvatarByActor(
   actor: string,
@@ -110,7 +115,10 @@ async function enrichHitsWithProfileAvatars(
     url.searchParams.append("actors", did);
   }
 
-  const response = await fetch(url.toString(), { signal });
+  const response = await fetch(url.toString(), {
+    signal,
+    headers: TYPEAHEAD_FETCH_HEADERS,
+  });
   if (!response.ok) return hits;
 
   const data = (await response.json()) as GetProfilesResponse;
@@ -132,12 +140,6 @@ async function enrichHitsWithProfileAvatars(
 
 /**
  * Prefix search against a public typeahead relay (Bluesky `searchActorsTypeahead`).
- *
- * TODO(app-identification): Pass a stable client id for the relay, e.g.
- *   await fetch(url, {
- *     signal,
- *     headers: { "X-Client": "my-app.example.com" },
- *   });
  */
 export async function fetchActorTypeahead(
   query: string,
@@ -149,7 +151,7 @@ export async function fetchActorTypeahead(
 
   const url = `${TYPEAHEAD_URL}/xrpc/app.bsky.actor.searchActorsTypeahead?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(String(limit))}`;
 
-  const response = await fetch(url, { signal });
+  const response = await fetch(url, { signal, headers: TYPEAHEAD_FETCH_HEADERS });
 
   if (!response.ok) {
     throw new Error(`typeahead failed: ${response.status}`);
