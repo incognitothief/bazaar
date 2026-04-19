@@ -37,6 +37,7 @@ ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VE
 RUN tar -xzf /tmp/litestream.tgz -C /usr/local/bin litestream && rm /tmp/litestream.tgz
 
 COPY --from=builder /app/packages/server/dist ./dist
+COPY --from=builder /app/packages/server/config ./config
 COPY --from=builder /app/packages/server/drizzle ./drizzle
 COPY --from=builder /app/packages/client/dist ./static
 COPY docker-entrypoint.sh litestream.yml ./
