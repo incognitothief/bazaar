@@ -64,9 +64,20 @@ Adding Square (Cash App Pay) and Braintree/PayPal (Venmo) as real merchant relat
 
 This runbook is not yet written.
 
-### Still open
+## Crypto rail
 
-- **Crypto rail** — stablecoin choice, custody model, on-chain confirmation/signing flow. Not yet mapped.
+- **Stripe-native.** Rides on the existing Stripe account and PaymentIntents API — no new merchant relationship, no new processor. Buyer selects "Crypto" at checkout, connects a wallet, pays in a stablecoin, Stripe auto-converts to USD and settles into the existing Stripe balance. Same `paymentProcessor: "stripe"` value on the receipt, same webhook → signed-receipt flow, zero lexicon change.
+- **Stablecoins only for now** — USDC/USDP/USDG. Zero volatility exposure, zero new accounting complexity. Raw/volatile crypto (BTC/ETH) and a fully self-sovereign, no-intermediary on-chain path are both crystallized as future features, not built now, the same way the DID-signed audit trail was.
+- **Covers one-off purchases, rentals, and subscriptions** through the same rail. Stripe Billing supports stablecoin subscriptions via a smart contract that lets a buyer pre-authorize their wallet once instead of re-signing every billing cycle — runs alongside fiat subscriptions in the same dashboard.
+- **Networks:** subscriptions currently support Base and Polygon; one-time payments support a broader set (Base, Polygon, Ethereum, Solana, Tempo). Base is the common denominator across one-time, subscription, and the x402/agent ecosystem below.
+- **Resolves half of the agent hook surface.** Stripe integrated the x402 protocol into PaymentIntents: the server returns HTTP 402, the agent pays in USDC, Stripe auto-captures the PaymentIntent, webhook fires, receipt signs — identical shape to every other rail. This is the concrete mechanism for agent-driven one-off purchases. It does **not** resolve how an agent gets a DID-scoped session for rentals/subscriptions — that's a separate authorization question, independent of which rail moves the money.
+- **Doesn't cost single ingress.** Unlike Venmo/Cash App, this stays inside the same Stripe statement, same dashboard, same 1099 question — the one rail that didn't add reconciliation surface.
+
+### Action items before this is real
+
+- [ ] Confirm the business's registered state isn't New York (Stripe's crypto payment method excludes it)
+- [ ] Request the crypto payment method in the Stripe Dashboard
+- [ ] Check Stripe's refund/dispute mechanics for stablecoin payments specifically — not yet confirmed either way, needed for the runbook
 
 ---
 
@@ -163,10 +174,10 @@ Three buckets of ergonomic tooling, to be designed once the payment map is compl
 
 ## Action items / next steps
 
-- [ ] Write the multi-processor operational runbook (see skeleton above)
-- [ ] Map the crypto rail (stablecoin, custody, confirmation model)
+- [ ] Write the multi-processor operational runbook (see skeleton above), including Stripe's stablecoin refund/dispute mechanics and the New York exclusion
+- [ ] Request the crypto payment method in the Stripe Dashboard
 - [ ] Draft the `purchase.entitlement` record shape for rentals/day-passes/subscriptions
-- [ ] Design the agent hook API surface and DID-delegation/auth model
+- [ ] Design the agent hook API surface and DID-delegation/auth model — one-off purchases are solved via x402-on-Stripe; rentals/subscriptions still need the DID-delegation piece
 - [ ] Build the guest-checkout magic-link + PII purge mechanism (30-day / 3-download cap, whichever first)
 - [ ] Define financial-ledger retention duration for the runbook's tax reporting matrix
 - [ ] Design the three admin panel categories in detail once the payment map is complete
