@@ -65,7 +65,7 @@ The listing is the commercial offer. `catalog.listing` requires `licenseUri` and
 
 `purchase.consent` is written to the buyer's PDS at checkout, naming `buyerDid` and `licenseGrantCid`. Required for commercial/sync tiers; recommended for personal use. Consent `appSig` covers `SHA-256(buyerDid:licenseGrantCid:receiptCid:consentedAt)`.
 
-Both records support optional `kid` for app-service key rotation (see ADR TBD).
+Both records support optional `kid` for app-service key rotation (see ADR 0011).
 
 ### 7. Digital item file identity
 
@@ -100,7 +100,7 @@ Hand-maintained types in `packages/client/src/types/lexicons.ts` mirror the JSON
 
 - Hand-maintained TS types can lag JSON changes without CI discipline.
 - v5 cutover invalidated pre-shared client scaffold NSIDs and field names.
-- Full v5 purchase/delivery narrative in the proposal assumes collection `essential` flags; those were removed post-implementation (see ADR TBD).
+- Full v5 purchase/delivery narrative in the proposal assumes collection `essential` flags; those were removed post-implementation (see ADR 0009).
 
 **Deferred**
 

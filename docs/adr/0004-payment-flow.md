@@ -47,7 +47,7 @@ On `checkout.session.completed` (webhook) or `/fulfill-session` (client, cookie 
 1. **PaymentIntent** — Retrieve PI; require `status === "succeeded"`. Use PI id as `paymentRef`.
 2. **Listing snapshot** — `getRecord` for listing; validate `listingCid` metadata matches checkout anchor.
 3. **Price** — Compare PI `amount_received` and currency to listing `price` (smallest-unit semantics). Mismatch: log, mark dead-letter or skip writes; still return **200** to Stripe where applicable.
-4. **Receipt** — Build `purchase.receipt` (v5 fields including `buyerDid`, `licenseGrantUri`/`licenseGrantCid` from listing, `appSig` via `signReceiptPayload`). Optional `kid` when `APP_SERVICE_KID` is set (see ADR TBD).
+4. **Receipt** — Build `purchase.receipt` (v5 fields including `buyerDid`, `licenseGrantUri`/`licenseGrantCid` from listing, `appSig` via `signReceiptPayload`). Optional `kid` when `APP_SERVICE_KID` is set (see ADR 0011).
 5. **Consent** — Build `purchase.consent` with `signConsentPayload` over `buyerDid:licenseGrantCid:receiptCid:consentedAt` (same instant as `purchasedAt` for MVP).
 6. **PDS writes** — `oauthClient.restore(buyerDid)` → `Agent` → `com.atproto.repo.createRecord` on buyer repo for receipt, then consent.
 

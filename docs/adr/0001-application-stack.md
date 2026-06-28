@@ -77,4 +77,4 @@ On push to `main`: `pulumi up` (stack `prod`) then `flyctl deploy`. Requires Clo
 
 **Deferred**
 
-- Staging environment (see ADR TBD from `260405-stg-env`).
+- Staging environment (see ADR 0010).
