@@ -7,6 +7,14 @@ DOCKER_IMAGE ?= bazaar:local
 PULUMI_STACK ?= prod
 INFRA_DIR := packages/infra
 
+# When nix + flake.nix are present, npm installs run inside the pinned dev shell.
+NIX_AVAILABLE := $(shell command -v nix >/dev/null 2>&1 && test -f flake.nix && echo yes)
+ifeq ($(NIX_AVAILABLE),yes)
+  NIX_RUN := nix develop -c
+else
+  NIX_RUN :=
+endif
+
 # Optional Docker build-args (same names as Dockerfile / deploy workflow).
 # Export from your shell or a local .env before `make docker-build`.
 VITE_ATPROTO_SERVICE ?=
@@ -20,13 +28,23 @@ VITE_API_ORIGIN ?=
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
+.PHONY: shell
+shell: ## Enter Nix dev shell (node 22, bun, pulumi, flyctl, docker, …)
+	@command -v nix >/dev/null 2>&1 || { echo "nix is not installed; see https://nixos.org/download.html"; exit 1; }
+	nix develop
+
+.PHONY: nix-lock
+nix-lock: ## Refresh flake.lock (run once after cloning, or when bumping inputs)
+	@command -v nix >/dev/null 2>&1 || { echo "nix is not installed; see https://nixos.org/download.html"; exit 1; }
+	nix flake lock
+
 .PHONY: install
-install: ## Install dependencies (npm install)
-	npm install
+install: ## Install dependencies (npm install; uses nix develop when available)
+	$(NIX_RUN) npm install
 
 .PHONY: install-ci
-install-ci: ## Install dependencies for CI (npm ci)
-	npm ci
+install-ci: ## Install dependencies for CI (npm ci; uses nix develop when available)
+	$(NIX_RUN) npm ci
 
 .PHONY: setup-env
 setup-env: ## Copy .env.example files when packages/*/.env are missing
