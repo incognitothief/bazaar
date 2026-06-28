@@ -51,7 +51,7 @@ Returns the lexicon document JSON or `{ error: "LexiconNotFound" }` with HTTP 40
 
 **Purchase** — `purchase.receipt`, `purchase.consent`, `purchase.stock`, `purchase.fulfillment`.
 
-**Actor** — `actor.merchant` (storefront profile; see ADR TBD for rename from `actor.profile`).
+**Actor** — `actor.merchant` (storefront profile; see ADR 0005 for rename from `actor.profile`).
 
 **Shared defs** — `defs.json` including `#money`, `#itemRef`, `#bazaarIdentifier`, `#address`, etc.
 
