@@ -67,9 +67,72 @@ This runbook is not yet written.
 ### Still open
 
 - **Crypto rail** — stablecoin choice, custody model, on-chain confirmation/signing flow. Not yet mapped.
-- **Subscriptions** — a different entitlement shape than `purchase.receipt`'s point-in-time model; likely needs its own lightweight "current period" record rather than living inside the receipt. Not yet mapped.
-- **Rentals** — closer to what exists already; probably just a receipt with an `expiresAt` and a backend access-check change rather than new lexicon work. Not yet mapped in detail.
-- **Agentic microtransactions** — framing undecided. Could mean AI agents shopping on a human's behalf, machine-to-machine micropayments (agent pays per request/asset, x402-style), or both. Likely shares plumbing with whatever the crypto rail ends up being, since card and P2P rails have no concept of sub-dollar autonomous payments.
+
+---
+
+## Rentals & subscriptions
+
+### Rental
+
+- A single purchase granting time-boxed access — modeled around 24 hours, though duration can vary by listing.
+- Two scopes: a specific item/project (one song or one release), or a sitewide day pass — access to everything on the storefront for the window.
+- No downloads. Rentals are stream/access-only.
+
+### Subscription
+
+- Patronage-style, not tied to any single song — gives ongoing premium access while active.
+- Recurring, periodic refresh (billing period), not a one-time grant.
+- **No perpetual access.** Once a subscription lapses, access reverts to nothing — no "keep what you had while subscribed" carryover. This keeps the entitlement check to a single boolean: is there a currently-active subscription record for this buyer and this artist.
+- **Cancellation:** stops future renewal, but access continues until the end of the current paid period — the standard pattern, not an immediate cutoff.
+
+### ATProto required for both
+
+Both rentals and subscriptions require ATProto login. This keeps them inside the existing portable-receipt trust model — entitlement lives on the buyer's own PDS and is checkable the same way `purchase.receipt` already is.
+
+### Still open
+
+- **Entitlement record shape.** Neither rental nor subscription fits cleanly into `purchase.receipt` as currently defined — that lexicon assumes a single `item` and a point-in-time fact. A day pass and a subscription are both _scope_-level grants (item / collection / storefront-wide), and a subscription is ongoing rather than point-in-time. This will likely need a new, lightweight record type alongside `purchase.receipt` — something like a `purchase.entitlement` shape with a `scope` and a window (fixed `expiresAt` for rentals, `currentPeriodEnd` + status for subscriptions). Not yet drafted.
+
+---
+
+## One-off purchases & guest checkout
+
+ATProto login is optional for one-off purchases — soft-nudged, never required.
+
+### Trust model impact
+
+This is a real fork, not a free choice. `purchase.receipt`'s trust model depends on two properties: a receipt is independently verifiable by anyone without contacting the backend (because it's signed and lives on the buyer's own PDS), and downloads are gated by matching the authenticated session's DID to `receipt.buyerDid`. A guest has no PDS, so neither property is available — access has to fall back to something backend-anchored instead.
+
+Net effect: there are now two real tiers of purchase. Portable and independently verifiable for anything ATProto-backed (rentals, subscriptions, and any one-off where the buyer chooses to log in). Ephemeral and backend-only for guest one-offs.
+
+### Three-tier guest experience
+
+1. **ATProto login** (soft-nudged, default recommendation) — full receipt on the buyer's PDS, shows up in their library permanently.
+2. **Guest + optional email** — ephemeral backend record, no PDS write. Backend can send a magic link to re-deliver the download.
+3. **Guest, no email** — pure session/immediate download. If the buyer closes the tab, it's gone; recovery means the artist manually looking up the Stripe payment and resending by hand.
+
+### PII retention (tier 2)
+
+- **Hard cap: 30 days from issuance**, or **purge after the 3rd successful download** — whichever happens first.
+- The email address and the magic link are purged together when either limit is hit.
+- The financial/ledger record (amount, date, `paymentRef`) is **not** affected by this purge — it's retained separately per accounting/tax requirements, which run on a different and much longer clock. It simply no longer has a working email attached to it.
+- The delivery email states the actual purge condition explicitly (e.g. "This link works until [date], or for your first 3 downloads, whichever comes first") rather than a vague "expires eventually."
+- A guest purchase recovered after purge is a manual support case, same as the no-email tier.
+
+---
+
+## Agent hooks
+
+Hooks for starting and ending subscriptions, starting rentals, and one-off purchases, callable by an agent rather than a human clicking through checkout.
+
+These inherit the trust tiers above rather than needing new exceptions:
+
+- **Rentals/subscriptions** require ATProto, so an agent acting on these must operate under a DID-scoped, user-delegated OAuth context — not an anonymous path.
+- **One-off purchases** can be done by an agent without login, in which case they inherit the guest tier (ephemeral access, no signed receipt) exactly as a human guest checkout would.
+
+### Still open
+
+- The actual hook surface — API shape, how an agent obtains a DID-scoped session vs. its own credentials. Left open deliberately, since it will likely share plumbing with whatever the crypto/agentic-microtransactions rail ends up being.
 
 ---
 
@@ -102,6 +165,8 @@ Three buckets of ergonomic tooling, to be designed once the payment map is compl
 
 - [ ] Write the multi-processor operational runbook (see skeleton above)
 - [ ] Map the crypto rail (stablecoin, custody, confirmation model)
-- [ ] Map subscriptions and rentals as entitlement shapes
-- [ ] Resolve the agentic microtransactions framing
+- [ ] Draft the `purchase.entitlement` record shape for rentals/day-passes/subscriptions
+- [ ] Design the agent hook API surface and DID-delegation/auth model
+- [ ] Build the guest-checkout magic-link + PII purge mechanism (30-day / 3-download cap, whichever first)
+- [ ] Define financial-ledger retention duration for the runbook's tax reporting matrix
 - [ ] Design the three admin panel categories in detail once the payment map is complete
