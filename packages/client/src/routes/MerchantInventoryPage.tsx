@@ -84,9 +84,9 @@ export function MerchantInventoryPage() {
       setLoadError(null);
       try {
         const [digital, collections, physical] = await Promise.all([
-          listDigitalItemRows(agent, session.did),
-          listCollectionRows(agent, session.did),
-          listPhysicalItemRows(agent, session.did),
+          listDigitalItemRows(session.did),
+          listCollectionRows(session.did),
+          listPhysicalItemRows(session.did),
         ]);
         if (!cancelled) {
           setRows(mergeRows(digital, collections, physical));

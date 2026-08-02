@@ -13,6 +13,7 @@
   "dependencies": {
     "@atproto/api": "^0.19.5",
     "@atproto/common-web": "^0.4.19",
+    "@atproto/identity": "^0.5.7",
     "@atproto/oauth-client": "^0.6.0",
     "@atproto/oauth-client-node": "^0.3.17",
     "@atproto/syntax": "^0.5.2",

@@ -86,7 +86,7 @@ export function MerchantInventoryEditPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const v = await getRecordValue<CatalogItem>(agent, itemUri);
+      const v = await getRecordValue<CatalogItem>(itemUri);
       if (!v || typeof v !== "object" || !("$type" in v)) {
         setRecord(null);
         setLoadError("Could not load this record.");

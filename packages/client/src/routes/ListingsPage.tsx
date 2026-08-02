@@ -39,7 +39,6 @@ import {
   isDummyListingRowUri,
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
-import type { ATPRepoClient } from "@/lib/atproto/session";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { cn } from "@/lib/utils";
 import type { CatalogItem, Listing } from "@/types/lexicons";
@@ -79,7 +78,6 @@ function catalogItemKindFromAtUri(uri: string): CatalogPick["kind"] {
 }
 
 async function loadListingTitles(
-  agent: ATPRepoClient,
   sessionDid: string,
   list: ListingRow[],
 ): Promise<Record<string, string>> {
@@ -87,7 +85,7 @@ async function loadListingTitles(
   const dummyRow = devDummyListingRow(sessionDid);
   const forTitles = list.length > 0 ? list : dummyRow ? [dummyRow] : [];
   for (const r of forTitles) {
-    const item = await getRecordValue<CatalogItem>(agent, r.listing.item.uri);
+    const item = await getRecordValue<CatalogItem>(r.listing.item.uri);
     t[r.uri] =
       item?.title ??
       (isDummyListingRow(r) ? "Sample listing (dev)" : r.listing.item.uri);
@@ -128,13 +126,13 @@ export function ListingsPage() {
   const refreshListingsAndCatalog = useCallback(async () => {
     if (!agent || !session) return;
     const [list, digital, collections, licenses] = await Promise.all([
-      listListingRows(agent, session.did),
-      listDigitalItemRows(agent, session.did),
-      listCollectionRows(agent, session.did),
-      listLicenseTermsRows(agent, session.did),
+      listListingRows(session.did),
+      listDigitalItemRows(session.did),
+      listCollectionRows(session.did),
+      listLicenseTermsRows(session.did),
     ]);
     setRows(list);
-    setTitles(await loadListingTitles(agent, session.did, list));
+    setTitles(await loadListingTitles(session.did, list));
     setLicenseRows(licenses);
     const listed = new Set(list.map((r) => r.listing.item.uri));
     const opts: CatalogPick[] = [
@@ -244,7 +242,7 @@ export function ListingsPage() {
       return;
     }
     let cancelled = false;
-    void getRecordValue<CatalogItem>(agent, newItemUri).then((item) => {
+    void getRecordValue<CatalogItem>(newItemUri).then((item) => {
       if (!cancelled) setNewTitle(item?.title ?? "");
     });
     return () => {
@@ -346,7 +344,7 @@ export function ListingsPage() {
 
     setCreateBusy(true);
     try {
-      const itemRef = await buildItemRefFromUri(agent, newItemUri);
+      const itemRef = await buildItemRefFromUri(newItemUri);
       if (!itemRef?.cid) {
         toast.error("Could not load catalog item");
         return;
@@ -372,7 +370,7 @@ export function ListingsPage() {
         listedUris.add(newItemUri);
         for (const trackUri of prefillIndividualTrackUris) {
           if (listedUris.has(trackUri)) continue;
-          const tRef = await buildItemRefFromUri(agent, trackUri);
+          const tRef = await buildItemRefFromUri(trackUri);
           if (!tRef?.cid) continue;
           await createListing(agent, {
             item: tRef,

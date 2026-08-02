@@ -35,6 +35,7 @@ import {
   itemPathPretty,
 } from "@/lib/itemPath";
 import { createPublicAgent } from "@/lib/atproto/session";
+import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import {
   defaultOgImageAbsolute,
   firstLineForItemMeta,
@@ -126,7 +127,6 @@ export function ItemDetailPage() {
         return;
       }
       let uri = await resolveCatalogItemUriFromRkey(
-        agent,
         storefrontDid,
         rkeyParam,
       );
@@ -141,7 +141,7 @@ export function ItemDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [agent, rkeyParam, storefrontDid, legacySegment]);
+  }, [rkeyParam, storefrontDid, legacySegment]);
 
   const itemUri = legacySegment ? "" : (resolvedItemUri ?? "");
   const artistDid = resolveStorefrontArtistDid(itemUri);
@@ -161,14 +161,14 @@ export function ItemDetailPage() {
     void (async () => {
       setLoading(true);
       try {
-        let v = await getRecordValue<CatalogItem>(agent, itemUri);
+        let v = await getRecordValue<CatalogItem>(itemUri);
         if (cancelled) return;
         if (!v && dummyTarget) {
           v = buildDummyDigitalItem(itemUri, artistDid);
         }
         setItem(v ?? null);
 
-        const rows = await listListingRows(agent, artistDid);
+        const rows = await listListingRows(artistDid);
         if (cancelled) return;
         setAllArtistListings(rows);
         const row = rows.find((r) => r.listing.item.uri === itemUri);
@@ -188,10 +188,7 @@ export function ItemDetailPage() {
           buyerAgent &&
           session?.did
         ) {
-          const receipts = await listPurchaseReceiptRows(
-            buyerAgent,
-            session.did,
-          );
+          const receipts = await listPurchaseReceiptRows(session.did);
           if (!cancelled) {
             setOwnsCollection(
               receipts.some(
@@ -215,7 +212,7 @@ export function ItemDetailPage() {
           licUri = (v as DigitalItem).defaultLicenseUri;
         }
         if (licUri) {
-          const lt = await getRecordValue<LicenseTerms>(agent, licUri);
+          const lt = await getRecordValue<LicenseTerms>(licUri);
           if (cancelled) return;
           setLicense(lt ?? (dummyTarget ? buildDummyLicenseTerms() : null));
         } else {
@@ -228,7 +225,7 @@ export function ItemDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [agent, itemUri, artistDid, buyerAgent, session?.did]);
+  }, [itemUri, artistDid, buyerAgent, session?.did]);
 
   useEffect(() => {
     setRelayAvatarBroken(false);
@@ -262,9 +259,10 @@ export function ItemDetailPage() {
         handle: null as string | null,
         displayName: null as string | null,
       };
+      const authorAgent = await agentForRepo(authorDid);
       const [profile, merchantList] = await Promise.all([
         fetchActorPublicProfile(authorDid, ac.signal).catch(() => emptyProfile),
-        agent.com.atproto.repo
+        authorAgent.com.atproto.repo
           .listRecords({
             repo: authorDid,
             collection: BAZAAR_COLLECTION.actorMerchant,
@@ -674,7 +672,6 @@ export function ItemDetailPage() {
           </h2>
           {ownsCollection ? (
             <CollectionMemberDownloads
-              agent={agent}
               collection={item}
               onDownloadItem={(u) => void downloadDigitalItemUri(u)}
               onDownloadZip={() => void downloadCollectionZip()}
@@ -683,7 +680,6 @@ export function ItemDetailPage() {
             />
           ) : (
             <TrackList
-              agent={agent}
               collection={item}
               purchaseByTrackUri={purchaseByTrackUri}
             />

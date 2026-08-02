@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listDigitalItemRows } from "@/lib/atproto/records";
-import type { ATPRepoClient } from "@/lib/atproto/session";
 
 export type TrackSlot = {
   uri: string;
@@ -12,12 +11,10 @@ export type TrackSlot = {
 
 export function TrackListBuilder({
   artistDid,
-  agent,
   value,
   onChange,
 }: {
   artistDid: string;
-  agent: ATPRepoClient;
   value: TrackSlot[];
   onChange: (tracks: TrackSlot[]) => void;
 }) {
@@ -26,13 +23,13 @@ export function TrackListBuilder({
 
   useEffect(() => {
     void (async () => {
-      const rows = await listDigitalItemRows(agent, artistDid);
+      const rows = await listDigitalItemRows(artistDid);
       const tracks = rows
         .filter((r) => r.item.itemClass === "track")
         .map((r) => ({ uri: r.uri, title: r.item.title }));
       setPool(tracks);
     })();
-  }, [agent, artistDid]);
+  }, [artistDid]);
 
   const filtered = pool.filter(
     (p) =>

@@ -23,7 +23,7 @@ export function LicensePage() {
     if (!agent || !session?.did) return;
     setLoading(true);
     try {
-      const list = await listLicenseTermsRows(agent, session.did);
+      const list = await listLicenseTermsRows(session.did);
       setRows(list);
     } finally {
       setLoading(false);

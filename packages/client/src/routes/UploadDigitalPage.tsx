@@ -170,7 +170,7 @@ export function UploadDigitalPage() {
     if (step !== 3 || !agent || !session?.did) return;
     let cancelled = false;
     setLicenseRowsLoading(true);
-    void listLicenseTermsRows(agent, session.did)
+    void listLicenseTermsRows(session.did)
       .then((rows) => {
         if (!cancelled) setLicenseRows(rows);
       })
@@ -250,7 +250,6 @@ export function UploadDigitalPage() {
       } else {
         const licensePayload = buildLicenseTermsPayload()!;
         const existing = await findLicenseByTemplateId(
-          agent,
           session.did,
           licenseTemplateId!,
         );

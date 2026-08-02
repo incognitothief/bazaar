@@ -597,7 +597,7 @@ export function UploadTracksPage() {
     let cancelled = false;
     void (async () => {
       try {
-        const rows = await listCompositionRows(agent, session.did);
+        const rows = await listCompositionRows(session.did);
         if (!cancelled) setCompositionRows(rows);
       } catch {
         if (!cancelled) setCompositionRows([]);
@@ -781,7 +781,7 @@ export function UploadTracksPage() {
     if (step !== 3 || !agent || !session?.did) return;
     let cancelled = false;
     setLicenseRowsLoading(true);
-    void listLicenseTermsRows(agent, session.did)
+    void listLicenseTermsRows(session.did)
       .then((rows) => {
         if (!cancelled) setLicenseRows(rows);
       })
@@ -1304,7 +1304,7 @@ export function UploadTracksPage() {
     if (!tid) throw new Error("Select a template");
     const payload = licenseTermsPayloadFromTemplateId(tid);
     if (!payload) throw new Error("Invalid license template");
-    const existing = await findLicenseByTemplateId(agent, session.did, tid);
+    const existing = await findLicenseByTemplateId(session.did, tid);
     if (existing) return { uri: existing.uri, cid: existing.cid };
     const lic = await createLicenseTerms(agent, payload);
     return { uri: lic.uri, cid: lic.cid };

@@ -3,8 +3,8 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { zipSync } from "fflate";
 import { Hono } from "hono";
-import { getAgent } from "../lib/atproto/client";
 import type { OAuthClient } from "../lib/atproto/oauth";
+import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { appServicePublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
 import { getSessionAgent } from "../lib/atproto/session";
 import { r2ConfigFromEnv } from "../lib/r2/env";
@@ -124,7 +124,6 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
         if (receiptItemIsCollection(rec.item.uri)) {
           if (!safeVerifyReceiptForBuyer(rec, sess.did, publicKeyPem)) continue;
           const ok = await collectionContainsDigitalMember(
-            getAgent(),
             rec.item.uri,
             itemUriRaw,
           );
@@ -147,7 +146,7 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
 
     let filenameForDownload = `track_${rkey}.bin`;
     try {
-      const catalogAgent = getAgent();
+      const catalogAgent = await getAgentForDid(artistDid);
       const dig = await catalogAgent.com.atproto.repo.getRecord({
         repo: artistDid,
         collection: itemAt.collection,
@@ -245,9 +244,9 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
 
     if (!entitled) return c.json({ error: "not_entitled" }, 403);
 
-    const catalogAgent = getAgent();
     let colRec;
     try {
+      const catalogAgent = await getAgentForDid(colAt.hostname);
       colRec = await catalogAgent.com.atproto.repo.getRecord({
         repo: colAt.hostname,
         collection: colAt.collection,
@@ -280,7 +279,8 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
 
       let dig;
       try {
-        dig = await catalogAgent.com.atproto.repo.getRecord({
+        const memberAgent = await getAgentForDid(digAt.hostname);
+        dig = await memberAgent.com.atproto.repo.getRecord({
           repo: digAt.hostname,
           collection: digAt.collection,
           rkey: digAt.rkey,
@@ -389,7 +389,6 @@ function verifyReceiptForBuyer(
 }
 
 async function collectionContainsDigitalMember(
-  agent: import("@atproto/api").Agent,
   collectionUri: string,
   digitalItemUri: string,
 ): Promise<boolean> {
@@ -401,6 +400,7 @@ async function collectionContainsDigitalMember(
   }
   if (!at.rkey) return false;
   try {
+    const agent = await getAgentForDid(at.hostname);
     const got = await agent.com.atproto.repo.getRecord({
       repo: at.hostname,
       collection: at.collection,

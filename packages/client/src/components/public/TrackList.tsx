@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { Agent } from "@atproto/api";
 import { Link } from "react-router-dom";
 import { getRecordValue } from "@/lib/atproto/records";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -23,11 +22,9 @@ function formatDuration(ms: number | undefined): string {
 }
 
 export function TrackList({
-  agent,
   collection,
   purchaseByTrackUri,
 }: {
-  agent: Agent;
   collection: Collection;
   /** Active per-track listings where parentListing matches the collection listing AT-URI. */
   purchaseByTrackUri?: Map<
@@ -61,7 +58,7 @@ export function TrackList({
       for (const entry of collection.items) {
         if (entry.role !== "track") continue;
         trackSeq += 1;
-        const v = await getRecordValue<DigitalItem>(agent, entry.uri);
+        const v = await getRecordValue<DigitalItem>(entry.uri);
         const purchase = purchaseByTrackUri?.get(entry.uri);
         out.push({
           uri: entry.uri,
@@ -77,7 +74,7 @@ export function TrackList({
     return () => {
       cancelled = true;
     };
-  }, [agent, collection, purchaseByTrackUri]);
+  }, [collection, purchaseByTrackUri]);
 
   return (
     <ol className="list-none space-y-3 text-sm m-0 p-0">
@@ -120,14 +117,12 @@ export function TrackList({
 }
 
 export function CollectionMemberDownloads({
-  agent,
   collection,
   onDownloadItem,
   onDownloadZip,
   zipBusy,
   itemBusyUri,
 }: {
-  agent: Agent;
   collection: Collection;
   onDownloadItem: (digitalItemUri: string) => void;
   onDownloadZip: () => void;
@@ -156,7 +151,7 @@ export function CollectionMemberDownloads({
       }[] = [];
       let trackSeq = 0;
       for (const entry of collection.items) {
-        const v = await getRecordValue<DigitalItem>(agent, entry.uri);
+        const v = await getRecordValue<DigitalItem>(entry.uri);
         const isTrack = entry.role === "track";
         if (isTrack) trackSeq += 1;
         out.push({
@@ -172,7 +167,7 @@ export function CollectionMemberDownloads({
     return () => {
       cancelled = true;
     };
-  }, [agent, collection]);
+  }, [collection]);
 
   return (
     <div className="space-y-4">

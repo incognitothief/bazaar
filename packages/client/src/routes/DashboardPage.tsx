@@ -53,10 +53,10 @@ export function DashboardPage() {
     if (!agent || !session) return;
     void (async () => {
       const [rows, listings, licenses, recordings] = await Promise.all([
-        listDigitalItemRows(agent, session.did),
-        listListingRows(agent, session.did),
-        listLicenseTerms(agent, session.did),
-        listRecordingRows(agent, session.did),
+        listDigitalItemRows(session.did),
+        listListingRows(session.did),
+        listLicenseTerms(session.did),
+        listRecordingRows(session.did),
       ]);
       setItems(rows.map((r) => ({ uri: r.uri, item: r.item })));
       setListingCount(listings.filter((l) => l.listing.status === "active").length);

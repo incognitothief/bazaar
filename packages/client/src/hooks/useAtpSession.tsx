@@ -128,6 +128,16 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
       new URLSearchParams(window.location.search).get("returnTo"),
     );
     if (back) qs.set("returnTo", back);
+    // Least-privilege OAuth scope: infer buyer vs. merchant from where this
+    // sign-in will land. A destination under /merchant/ is the merchant's own
+    // dashboard flow (needs full catalog/listing/license/profile write scopes);
+    // anything else is a buyer completing a purchase (only ever needs
+    // purchase.receipt/purchase.consent). Defaults to the narrower buyer scope
+    // when ambiguous — the real DID/role isn't known until after OAuth completes.
+    const role = (back ?? window.location.pathname).startsWith("/merchant/")
+      ? "merchant"
+      : "buyer";
+    qs.set("role", role);
     window.location.href = `${origin}/api/atproto/signin?${qs.toString()}`;
   }, []);
 

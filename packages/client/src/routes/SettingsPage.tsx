@@ -328,7 +328,7 @@ export function SettingsPage() {
       return;
     }
     if (!agent || !session) return;
-    const rows = await listListingRows(agent, session.did);
+    const rows = await listListingRows(session.did);
     try {
       for (const row of rows) {
         if (row.listing.status !== "active") continue;

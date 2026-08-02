@@ -1,4 +1,4 @@
-import { getAgent } from "./atproto/client";
+import { getAgentForDid } from "./atproto/resolvePds";
 
 function lexiconNs(): string {
   return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
@@ -18,7 +18,7 @@ export async function resolveCatalogItemUriFromRkey(
     `${ns}.catalog.collection`,
     `${ns}.catalog.item.physical`,
   ] as const;
-  const agent = getAgent();
+  const agent = await getAgentForDid(repoDid);
   for (const collection of collections) {
     try {
       await agent.com.atproto.repo.getRecord({
