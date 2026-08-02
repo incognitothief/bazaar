@@ -461,7 +461,6 @@ export function UploadDigitalPage() {
               </div>
               <TrackListBuilder
                 artistDid={session.did}
-                agent={agent}
                 value={albumTracks}
                 onChange={setAlbumTracks}
               />
