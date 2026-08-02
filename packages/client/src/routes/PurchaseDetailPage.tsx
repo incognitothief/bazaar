@@ -15,6 +15,7 @@ import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { pdslsRecordUrl } from "@/lib/pdsls";
 import { getRecordValue, listPurchaseConsentRows } from "@/lib/atproto/records";
 import { createPublicAgent } from "@/lib/atproto/session";
+import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import type {
   CatalogItem,
   Collection,
@@ -101,7 +102,8 @@ export function PurchaseDetailPage() {
           setReceipt(null);
           return;
         }
-        const res = await agent.com.atproto.repo.getRecord({
+        const receiptAgent = await agentForRepo(at.hostname);
+        const res = await receiptAgent.com.atproto.repo.getRecord({
           repo: at.hostname,
           collection: at.collection,
           rkey: at.rkey,
@@ -111,17 +113,16 @@ export function PurchaseDetailPage() {
         setReceipt(rec);
         setReceiptCid(res.data.cid ?? null);
 
-        const consents = await listPurchaseConsentRows(agent, session.did);
+        const consents = await listPurchaseConsentRows(session.did);
         const match = consents.find((c) => c.consent.receiptUri === receiptUri);
         if (!cancelled && match) setConsent(match.consent);
 
         const itemUri = rec.item.uri;
-        const itemVal = await getRecordValue<CatalogItem>(agent, itemUri);
+        const itemVal = await getRecordValue<CatalogItem>(itemUri);
         if (!cancelled) setItem(itemVal ?? null);
 
         if (rec.licenseGrantUri) {
           const lt = await getRecordValue<LicenseTerms>(
-            agent,
             rec.licenseGrantUri,
           );
           if (!cancelled) setLicense(lt);
@@ -135,7 +136,7 @@ export function PurchaseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [receiptUri, session, agent]);
+  }, [receiptUri, session]);
 
   async function downloadDigitalItemUri(itemUri: string) {
     if (!session) return;
@@ -325,7 +326,6 @@ export function PurchaseDetailPage() {
         <section className="space-y-4">
           <h2 className="text-lg font-medium">Your downloads</h2>
           <CollectionMemberDownloads
-            agent={agent}
             collection={item as Collection}
             onDownloadItem={(u) => void downloadDigitalItemUri(u)}
             onDownloadZip={() => void downloadCollectionZip(receipt.item.uri)}

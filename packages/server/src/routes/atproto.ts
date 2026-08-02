@@ -4,7 +4,11 @@ import type { Context } from "hono";
 import { Agent } from "@atproto/api";
 import { eq } from "drizzle-orm";
 import type { OAuthClient } from "../lib/atproto/oauth";
-import { buildOAuthScopeString } from "../lib/atproto/oauth-scope";
+import {
+  buildBuyerOAuthScopeString,
+  buildOAuthScopeString,
+} from "../lib/atproto/oauth-scope";
+import { resolvePdsForDid } from "../lib/atproto/resolvePds";
 import { oauthAppBaseUrl, oauthRedirectUri } from "../lib/atproto/oauth-url";
 
 function clientScope(oauthClient: OAuthClient): string {
@@ -77,9 +81,16 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
     } else {
       deleteCookie(c, RETURN_COOKIE, { path: "/" });
     }
+    // Least-privilege: buyers only ever need to write purchase attestations to
+    // their own repo, so their session requests a narrower scope than the full
+    // merchant superset declared in client metadata. `role` is a client-supplied
+    // hint (defaults to "buyer") — worst case a mislabeled buyer session simply
+    // can't write merchant-only collections, which fails safe.
+    const role = c.req.query("role") === "merchant" ? "merchant" : "buyer";
     try {
-      // Use clientMetadata.scope only (PAR + fetched metadata stay identical).
-      const url = await oauthClient.authorize(handle, {});
+      const scope =
+        role === "buyer" ? buildBuyerOAuthScopeString() : undefined;
+      const url = await oauthClient.authorize(handle, scope ? { scope } : {});
       return c.redirect(url.toString());
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -145,6 +156,20 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       deleteCookie(c, COOKIE, { path: "/" });
       return c.json(null);
     }
+  });
+
+  // Resolves the PDS that actually hosts a given DID's repo. `com.atproto.repo.getRecord` /
+  // `listRecords` are PDS-hosted endpoints — they only work against the host that has the repo,
+  // not a single universal endpoint — so the browser calls this before hitting a repo directly.
+  // Public: DID→PDS is public info, no auth needed. Cached in resolvePdsForDid.
+  r.get("/resolve-pds", async (c) => {
+    const did = c.req.query("did")?.trim();
+    if (!did || !did.startsWith("did:")) {
+      return c.json({ error: "invalid_did" }, 400);
+    }
+    const pds = await resolvePdsForDid(did);
+    if (!pds) return c.json({ error: "not_found" }, 404);
+    return c.json({ pds });
   });
 
   r.post("/signout", async (c) => {

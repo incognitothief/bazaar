@@ -10,8 +10,8 @@ import type Stripe from "stripe";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../../db";
 import { meta, paymentFulfillment } from "../../db/schema";
-import { getAgent } from "../atproto/client";
 import type { OAuthClient } from "../atproto/oauth";
+import { getAgentForDid } from "../atproto/resolvePds";
 import {
   appServiceKidFromEnv,
   signConsentPayload,
@@ -108,7 +108,7 @@ async function findBuyerConsentByReceiptUri(
 async function getRecordJson(uri: string): Promise<Record<string, unknown> | null> {
   try {
     const at = new AtUri(uri);
-    const agent = getAgent();
+    const agent = await getAgentForDid(at.hostname);
     const res = await agent.com.atproto.repo.getRecord({
       repo: at.hostname,
       collection: at.collection,
@@ -126,7 +126,7 @@ async function getListingAtCid(
 ): Promise<{ listing: Record<string, unknown>; cid: string } | null> {
   try {
     const at = new AtUri(listingUri);
-    const agent = getAgent();
+    const agent = await getAgentForDid(at.hostname);
     const res = await agent.com.atproto.repo.getRecord({
       repo: at.hostname,
       collection: at.collection,
@@ -163,7 +163,7 @@ export async function parentListingAllowsSale(
   try {
     const at = new AtUri(parentListingUri);
     if (!at.rkey) return false;
-    const agent = getAgent();
+    const agent = await getAgentForDid(at.hostname);
     const res = await agent.com.atproto.repo.getRecord({
       repo: at.hostname,
       collection: at.collection,

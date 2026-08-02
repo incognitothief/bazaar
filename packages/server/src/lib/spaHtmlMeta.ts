@@ -1,5 +1,5 @@
 import { AtUri } from "@atproto/syntax";
-import { getAgent } from "./atproto/client";
+import { getAgentForDid } from "./atproto/resolvePds";
 import { resolveCatalogItemUriFromRkey } from "./resolveCatalogItemUri";
 
 function lexiconNs(): string {
@@ -67,7 +67,7 @@ async function getStorefrontOg(artistDid: string): Promise<{
     return { title: DEFAULT_TITLE, description: DEFAULT_DESC };
   }
   try {
-    const agent = getAgent();
+    const agent = await getAgentForDid(artistDid);
     const res = await agent.com.atproto.repo.listRecords({
       repo: artistDid,
       collection: `${lexiconNs()}.actor.merchant`,
@@ -92,7 +92,7 @@ async function getItemOg(
   try {
     const at = new AtUri(itemUri);
     if (!at.rkey || !at.collection) return null;
-    const agent = getAgent();
+    const agent = await getAgentForDid(at.hostname);
     const rec = await agent.com.atproto.repo.getRecord({
       repo: at.hostname,
       collection: at.collection,

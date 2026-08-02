@@ -7,7 +7,6 @@ import {
   type ListingRow,
 } from "@/lib/atproto/records";
 import { sortCatalogEntriesByRelease } from "@/lib/catalogSort";
-import { createPublicAgent } from "@/lib/atproto/session";
 import type { Collection, DigitalItem, Listing, PhysicalItem } from "@/types/lexicons";
 
 export type CatalogEntry =
@@ -55,13 +54,12 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
     setLoading(true);
     setError(null);
     try {
-      const agent = createPublicAgent();
       const [digitalRows, collectionRows, physicalRows, listings] =
         await Promise.all([
-          listDigitalItemRows(agent, artistDid),
-          listCollectionRows(agent, artistDid),
-          listPhysicalItemRows(agent, artistDid),
-          listListingRows(agent, artistDid),
+          listDigitalItemRows(artistDid),
+          listCollectionRows(artistDid),
+          listPhysicalItemRows(artistDid),
+          listListingRows(artistDid),
         ]);
       const byItem = indexActiveListings(listings);
       const merged: CatalogEntry[] = [

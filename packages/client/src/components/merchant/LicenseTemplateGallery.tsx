@@ -35,7 +35,7 @@ export function LicenseTemplateGallery({
     if (!did) return;
     setSaving(true);
     try {
-      const existing = await findLicenseByTemplateId(agent, did, selectedId);
+      const existing = await findLicenseByTemplateId(did, selectedId);
       if (existing) {
         toast.message("Already on your PDS", {
           description: `${existing.uri}\nCID: ${existing.cid}`,

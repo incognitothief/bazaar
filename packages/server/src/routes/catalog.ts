@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { AtUri } from "@atproto/syntax";
-import { getAgent } from "../lib/atproto/client";
+import { getAgentForDid } from "../lib/atproto/resolvePds";
 
 /** Optional public resolver for storefront / API consumers */
 export function createCatalogRouter() {
@@ -11,7 +11,8 @@ export function createCatalogRouter() {
     if (!uri) return c.json({ error: "uri required" }, 400);
     try {
       const at = new AtUri(uri);
-      const res = await getAgent().com.atproto.repo.getRecord({
+      const agent = await getAgentForDid(at.hostname);
+      const res = await agent.com.atproto.repo.getRecord({
         repo: at.hostname,
         collection: at.collection,
         rkey: at.rkey,

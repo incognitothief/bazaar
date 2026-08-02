@@ -12,7 +12,6 @@ import Stripe from "stripe";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
 import { paymentFulfillment } from "../db/schema";
-import { getAgent } from "../lib/atproto/client";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { storefrontWebOrigin } from "../lib/atproto/oauth-url";
 import {
@@ -23,6 +22,7 @@ import { getStripe } from "../lib/stripe/getStripe";
 import {
   resolveStripeWebhookSecret,
 } from "../lib/stripe/stripeCredentials";
+import { getAgentForDid } from "../lib/atproto/resolvePds";
 
 /** Same as `bazaar_atp_session` in atproto routes — buyer must match checkout metadata. */
 const SESSION_COOKIE = "bazaar_atp_session";
@@ -56,7 +56,7 @@ function fulfillmentRowForCheckoutSession(
 async function getRecordJson(uri: string): Promise<Record<string, unknown> | null> {
   try {
     const at = new AtUri(uri);
-    const agent = getAgent();
+    const agent = await getAgentForDid(at.hostname);
     const res = await agent.com.atproto.repo.getRecord({
       repo: at.hostname,
       collection: at.collection,
@@ -121,7 +121,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
       listingCid = DEV_STUB_LISTING_CID;
     } else {
       const listingAt = new AtUri(listingUri);
-      const agent = getAgent();
+      const agent = await getAgentForDid(listingAt.hostname);
       let listingRes;
       try {
         listingRes = await agent.com.atproto.repo.getRecord({

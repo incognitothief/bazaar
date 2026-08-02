@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
@@ -7,7 +7,7 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { getAuthRole } from "@/lib/auth";
 import { merchantSignInUrl } from "@/lib/signInReturn";
 import { catalogItemRkey, itemPathCanonical } from "@/lib/itemPath";
-import { createPublicAgent } from "@/lib/atproto/session";
+import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   getRecordValue,
@@ -46,7 +46,6 @@ export function CustomerDashboardPage() {
   const { session, loading } = useAtpSession();
   const navigate = useNavigate();
   const location = useLocation();
-  const agent = useMemo(() => createPublicAgent(), []);
 
   const [receiptUri, setReceiptUri] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,7 +65,7 @@ export function CustomerDashboardPage() {
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
-    void listPurchaseReceiptRows(agent, session.did)
+    void listPurchaseReceiptRows(session.did)
       .then((rows) => {
         if (!cancelled) setPurchases(rows);
       })
@@ -76,7 +75,7 @@ export function CustomerDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [session, agent]);
+  }, [session]);
 
   useEffect(() => {
     if (!session || purchases.length === 0) return;
@@ -86,7 +85,7 @@ export function CustomerDashboardPage() {
       for (const row of purchases) {
         const uri = row.receipt.item.uri;
         try {
-          const item = await getRecordValue<CatalogItem>(agent, uri);
+          const item = await getRecordValue<CatalogItem>(uri);
           if (item?.title) next[row.uri] = item.title;
         } catch {
           /* ignore */
@@ -97,7 +96,7 @@ export function CustomerDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [purchases, session, agent]);
+  }, [purchases, session]);
 
   async function validate() {
     if (!session) return;
@@ -117,7 +116,8 @@ export function CustomerDashboardPage() {
       }
       if (!receiptAt.rkey) throw new Error("Invalid receipt URI.");
 
-      const receiptRes = await agent.com.atproto.repo.getRecord({
+      const receiptAgent = await agentForRepo(receiptAt.hostname);
+      const receiptRes = await receiptAgent.com.atproto.repo.getRecord({
         repo: receiptAt.hostname,
         collection: receiptAt.collection,
         rkey: receiptAt.rkey,
@@ -140,7 +140,8 @@ export function CustomerDashboardPage() {
       }
       if (!listingAt.rkey) throw new Error("Invalid listing URI.");
 
-      const listingRes = await agent.com.atproto.repo.getRecord({
+      const listingAgent = await agentForRepo(listingAt.hostname);
+      const listingRes = await listingAgent.com.atproto.repo.getRecord({
         repo: listingAt.hostname,
         collection: listingAt.collection,
         rkey: listingAt.rkey,

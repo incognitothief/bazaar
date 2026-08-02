@@ -1,6 +1,11 @@
 import { buildAtprotoLoopbackClientId } from "@atproto/oauth-client";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { bazaarRepoOAuthScopes, buildOAuthScopeString } from "./oauth-scope";
+import {
+  bazaarRepoOAuthScopes,
+  buildBuyerOAuthScopeString,
+  buildOAuthScopeString,
+  buyerRepoOAuthScopes,
+} from "./oauth-scope";
 
 describe("oauth-scope", () => {
   const savedNs = process.env.LEXICON_NAMESPACE;
@@ -51,5 +56,34 @@ describe("oauth-scope", () => {
     expect(scopeParam).toContain(
       "repo:diamonds.whereditgo.bazaar.purchase.receipt?action=create",
     );
+  });
+
+  test("buyer scope is limited to purchase receipt/consent create", () => {
+    const scopes = buyerRepoOAuthScopes();
+    expect(scopes).toEqual([
+      "repo:diamonds.whereditgo.bazaar.purchase.receipt?action=create",
+      "repo:diamonds.whereditgo.bazaar.purchase.consent?action=create",
+    ]);
+  });
+
+  test("buyer scope string excludes merchant-only collections", () => {
+    const s = buildBuyerOAuthScopeString();
+    expect(s.startsWith("atproto transition:generic ")).toBe(true);
+    expect(s).toContain(
+      "repo:diamonds.whereditgo.bazaar.purchase.receipt?action=create",
+    );
+    expect(s).not.toContain("catalog.item.digital");
+    expect(s).not.toContain("catalog.collection");
+    expect(s).not.toContain("catalog.listing");
+    expect(s).not.toContain("license.terms");
+    expect(s).not.toContain("actor.merchant");
+  });
+
+  test("buyer scope is a subset of the full scope string", () => {
+    const full = buildOAuthScopeString().split(" ");
+    const buyer = buildBuyerOAuthScopeString().split(" ");
+    for (const token of buyer) {
+      expect(full).toContain(token);
+    }
   });
 });
