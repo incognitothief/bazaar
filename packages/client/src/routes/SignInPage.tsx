@@ -14,6 +14,13 @@ export function SignInPage() {
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
 
+  function startSignIn(h: string) {
+    const trimmed = h.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    void signIn(trimmed).finally(() => setBusy(false));
+  }
+
   return (
     <div className="mx-auto max-w-md space-y-6 py-12 px-4 sm:px-0">
       <div>
@@ -42,26 +49,27 @@ export function SignInPage() {
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          const h = handle.trim();
-          if (!h || busy) return;
-          setBusy(true);
-          void signIn(h).finally(() => setBusy(false));
+          startSignIn(handle);
         }}
       >
         <div className="space-y-2">
           <Label htmlFor="signin-handle">Handle</Label>
-          <ActorHandleTypeaheadInput
-            id="signin-handle"
-            autoComplete="username"
-            placeholder="handle.example.com"
-            value={handle}
-            onChange={setHandle}
-            disabled={busy}
-          />
+          <div className="flex gap-2">
+            <ActorHandleTypeaheadInput
+              id="signin-handle"
+              autoComplete="username"
+              placeholder="handle.example.com"
+              value={handle}
+              onChange={setHandle}
+              onSelect={startSignIn}
+              disabled={busy}
+              className="flex-1"
+            />
+            <Button type="submit" disabled={busy}>
+              {busy ? "Resolving…" : "Continue"}
+            </Button>
+          </div>
         </div>
-        <Button type="submit" className="w-full" disabled={busy}>
-          {busy ? "Resolving…" : "Continue"}
-        </Button>
       </form>
       <p className="text-center text-sm text-muted-foreground">
         <Link
