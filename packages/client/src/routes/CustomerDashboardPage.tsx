@@ -199,7 +199,7 @@ export function CustomerDashboardPage() {
           to={merchantSignInUrl(location.pathname, location.search)}
           className="underline underline-offset-4"
         >
-          Login
+          Sign in
         </Link>
       </div>
     );
@@ -233,7 +233,9 @@ export function CustomerDashboardPage() {
               </div>
               <Link
                 to={`/dashboard/purchase/${encodeURIComponent(row.uri)}`}
-                className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "sm" }),
+                )}
               >
                 Open
               </Link>

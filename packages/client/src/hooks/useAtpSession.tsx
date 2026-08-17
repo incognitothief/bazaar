@@ -91,37 +91,35 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
 
     if (devMockSignInEnabled()) {
       if (!artistDid()) {
-        window.alert(
+        throw new Error(
           "Mock sign-in needs VITE_ARTIST_DID set to your store owner did:…",
         );
-        return;
       }
+      let did: string | undefined;
       try {
         const agent = createPublicAgent();
         const { data } = await agent.com.atproto.identity.resolveHandle({
           handle: h,
         });
-        const did = data.did;
-        if (!did) {
-          window.alert("Handle resolved but no DID was returned.");
-          return;
-        }
-        localStorage.setItem(MOCK_KEY, JSON.stringify({ did, handle: h }));
-        window.location.assign(postSignInDestination(did));
+        did = data.did;
       } catch (e) {
-        window.alert(
+        throw new Error(
           `Could not resolve handle (check the handle and VITE_ATPROTO_SERVICE): ${
             e instanceof Error ? e.message : String(e)
           }`,
         );
       }
+      if (!did) {
+        throw new Error("Handle resolved but no DID was returned.");
+      }
+      localStorage.setItem(MOCK_KEY, JSON.stringify({ did, handle: h }));
+      window.location.assign(postSignInDestination(did));
       return;
     }
 
     const origin = apiServerOrigin();
     if (!origin) {
-      window.alert("Set VITE_API_ORIGIN to your API server URL.");
-      return;
+      throw new Error("Set VITE_API_ORIGIN to your API server URL.");
     }
     const qs = new URLSearchParams({ handle: h });
     const back = safeReturnPath(
@@ -138,7 +136,32 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
       ? "merchant"
       : "buyer";
     qs.set("role", role);
-    window.location.href = `${origin}/api/atproto/signin?${qs.toString()}`;
+    const url = `${origin}/api/atproto/signin?${qs.toString()}`;
+
+    // The success path here is a redirect to the user's PDS — a real top-level
+    // navigation, not something `fetch` can complete (it needs the browser's own
+    // cookie jar and address bar). But navigating straight there with
+    // `window.location.href` means any server-side failure (bad handle, PDS
+    // discovery error) dumps the user on a bare error page outside the SPA. So:
+    // preflight with `redirect: "manual"` to distinguish "this would have
+    // redirected" (opaque response, can't read where — don't need to) from "this
+    // is a real error we can read and show inline" before committing to the
+    // navigation. Costs one extra /signin call (a second, unused OAuth authorize
+    // request the PDS will let expire) in exchange for never losing the user to
+    // a blank error page.
+    let res: Response;
+    try {
+      res = await fetch(url, { redirect: "manual", credentials: "include" });
+    } catch {
+      throw new Error(
+        "Could not reach your PDS. Check your connection and try again.",
+      );
+    }
+    if (res.type !== "opaqueredirect" && !res.ok) {
+      const text = (await res.text().catch(() => "")).trim();
+      throw new Error(text || `Sign-in failed (${res.status}).`);
+    }
+    window.location.href = url;
   }, []);
 
   const signOut = useCallback(async () => {

@@ -13,12 +13,18 @@ export function SignInPage() {
   const { signIn } = useAtpSession();
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function startSignIn(h: string) {
     const trimmed = h.trim();
     if (!trimmed || busy) return;
     setBusy(true);
-    void signIn(trimmed).finally(() => setBusy(false));
+    setError(null);
+    signIn(trimmed)
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : "Sign-in failed.");
+      })
+      .finally(() => setBusy(false));
   }
 
   return (
@@ -39,8 +45,16 @@ export function SignInPage() {
             </>
           ) : (
             <>
-              Enter your ATProto handle. You will be redirected to your host PDS
-              to authorize Bazaar.
+              Using your{" "}
+              <a
+                href="https://atmosphereaccount.com/hosts"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-4 hover:text-foreground"
+              >
+                atmosphere account
+              </a>
+              .
             </>
           )}
         </p>
@@ -54,22 +68,33 @@ export function SignInPage() {
       >
         <div className="space-y-2">
           <Label htmlFor="signin-handle">Handle</Label>
-          <div className="flex gap-2">
-            <ActorHandleTypeaheadInput
-              id="signin-handle"
-              autoComplete="username"
-              placeholder="handle.example.com"
-              value={handle}
-              onChange={setHandle}
-              onSelect={startSignIn}
-              disabled={busy}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={busy}>
-              {busy ? "Resolving…" : "Continue"}
-            </Button>
-          </div>
+          <ActorHandleTypeaheadInput
+            id="signin-handle"
+            autoComplete="username"
+            placeholder="handle.example.com"
+            value={handle}
+            onChange={setHandle}
+            onSelect={startSignIn}
+            disabled={busy}
+          />
         </div>
+        {error ? (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </div>
+        ) : null}
+        <Button type="submit" className="w-full" disabled={busy}>
+          {busy ? (
+            <span className="inline-flex items-center gap-2 animate-pulse">
+              Signing in…
+            </span>
+          ) : (
+            "Continue"
+          )}
+        </Button>
       </form>
       <p className="text-center text-sm text-muted-foreground">
         <Link
