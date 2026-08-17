@@ -58,6 +58,12 @@ jobs:
           cache: npm
 
       - uses: pulumi/actions@v6
+        with:
+          # Pinned: pulumi/actions installs "latest" by default, and an unpinned upgrade between
+          # 3.253.0 and 3.257.0 broke the S3 DIY backend against R2 (InvalidDigest on state writes;
+          # see PR #24109 for Pulumi's own partial fix). 3.253.0 is confirmed working against this
+          # backend. Bump deliberately, not by surprise.
+          pulumi-version: "3.253.0"
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -139,6 +145,12 @@ jobs:
           cache: npm
 
       - uses: pulumi/actions@v6
+        with:
+          # Pinned: pulumi/actions installs "latest" by default, and an unpinned upgrade between
+          # 3.253.0 and 3.257.0 broke the S3 DIY backend against R2 (InvalidDigest on state writes;
+          # see PR #24109 for Pulumi's own partial fix). 3.253.0 is confirmed working against this
+          # backend. Bump deliberately, not by surprise.
+          pulumi-version: "3.253.0"
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
