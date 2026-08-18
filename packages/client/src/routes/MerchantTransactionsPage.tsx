@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { browserApiUrl } from "@/lib/browserApi";
 import { resolveHandleForDid } from "@/lib/atproto/pdsResolve";
 import { pdslsRecordUrl, pdslsRepoCollectionsUrl } from "@/lib/pdsls";
@@ -127,14 +127,51 @@ export function MerchantTransactionsPage() {
     };
   }, [rows]);
 
+  // Counts only — computed from the rows already on the page (most recent batch, most
+  // recent first), not a separate query. "Sale" = a completed fulfillment.
+  const stats = useMemo(() => {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const weekMs = 7 * dayMs;
+    let total = 0;
+    let lastWeek = 0;
+    let last24h = 0;
+    for (const r of rows) {
+      if (r.status !== "completed") continue;
+      total += 1;
+      const age = now - new Date(r.createdAt).getTime();
+      if (Number.isNaN(age)) continue;
+      if (age <= weekMs) lastWeek += 1;
+      if (age <= dayMs) last24h += 1;
+    }
+    return { total, lastWeek, last24h };
+  }, [rows]);
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Payment activity</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Sales</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Stripe PaymentIntent fulfillment state (PDS receipt and consent writes). Newest first.
         </p>
       </div>
+
+      {!loading && !err ? (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="rounded-lg border border-border p-4">
+            <p className="text-sm text-muted-foreground">Total sales</p>
+            <p className="text-2xl font-semibold">{stats.total}</p>
+          </div>
+          <div className="rounded-lg border border-border p-4">
+            <p className="text-sm text-muted-foreground">Last 7 days</p>
+            <p className="text-2xl font-semibold">{stats.lastWeek}</p>
+          </div>
+          <div className="rounded-lg border border-border p-4">
+            <p className="text-sm text-muted-foreground">Last 24 hours</p>
+            <p className="text-2xl font-semibold">{stats.last24h}</p>
+          </div>
+        </div>
+      ) : null}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>

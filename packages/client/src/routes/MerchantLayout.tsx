@@ -68,6 +68,7 @@ function MerchantNavPanel({
             type="button"
             onClick={onCollapse}
             aria-label="Collapse navigation"
+            title="Collapse navigation (⌘B)"
             className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <PanelLeftClose className="size-4" />
@@ -88,7 +89,7 @@ function MerchantNavPanel({
           className={navCls}
           onClick={onNavigate}
         >
-          Payment activity
+          Sales
         </NavLink>
 
         <div className="shrink-0 rounded-md">
@@ -140,10 +141,17 @@ function MerchantNavPanel({
           </NavLink>
         ))}
       </nav>
-      <div className="shrink-0 border-t border-border pt-3">
+      <div className="shrink-0 space-y-2 border-t border-border pt-3">
+        <Link
+          to="/"
+          onClick={onNavigate}
+          className="block text-sm text-muted-foreground hover:text-foreground"
+        >
+          Back to storefront
+        </Link>
         <button
           type="button"
-          className="w-full text-left text-sm text-muted-foreground hover:text-foreground"
+          className="w-full text-left text-sm text-destructive hover:text-destructive/80"
           onClick={() => {
             onNavigate?.();
             void signOut();
@@ -171,6 +179,25 @@ export function MerchantLayout() {
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "b") return;
+      const el = document.activeElement as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      setSidebarCollapsed((c) => !c);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (isMerchantInventorySection(location.pathname)) {
@@ -232,7 +259,8 @@ export function MerchantLayout() {
           type="button"
           onClick={() => setSidebarCollapsed(false)}
           aria-label="Expand navigation"
-          className="hidden shrink-0 items-center justify-center border-r border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground md:flex md:w-6"
+          title="Expand navigation (⌘B)"
+          className="fixed left-4 top-4 z-30 hidden items-center justify-center rounded-md border border-border bg-card p-2 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground md:flex"
         >
           <PanelLeftOpen className="size-4" />
         </button>
