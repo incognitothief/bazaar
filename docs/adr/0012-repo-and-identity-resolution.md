@@ -80,11 +80,23 @@ for repos off the default host.
 Mock sign-in (`useAtpSession.tsx`) switched from `createPublicAgent().identity.resolveHandle` to
 `resolveDidForHandle`.
 
-### 6. OAuth scope narrowing (same effort)
+### 6. OAuth scope narrowing and session model (same effort)
 
 Buyer sessions request only `purchase.receipt`/`purchase.consent` create scope; merchant sessions
 keep the full scope. Role is inferred from the sign-in destination (`/merchant/` prefix), since
 the real DID/role isn't known until after OAuth completes.
+
+Real auth is ATProto OAuth (`packages/server/src/routes/atproto.ts`). The only thing that actually
+gates a protected server route is `packages/server/src/routes/merchant.ts`'s `merchantGuard`,
+which checks a real HttpOnly session cookie (`bazaar_atp_session`) against `ARTIST_DID` — it
+cannot be spoofed from client-side state.
+
+Dev-only mock sign-in (`VITE_DEV_MOCK_ATPROTO_SIGNIN=true`) skips OAuth entirely and stores a
+session in `localStorage` (`bazaar_mock_atp_session`). This fakes only the **client-side** route
+guard (`MerchantLayout`'s redirect logic reads it directly). It sets no cookie, so it grants
+nothing against `merchantGuard` or any other server-side check — a mock session lets you see the
+merchant UI shell locally without proving anything to the server. Do not treat a mock session as
+equivalent to a real one when reasoning about what's actually protected.
 
 ## Constraints
 
@@ -95,6 +107,8 @@ the real DID/role isn't known until after OAuth completes.
 | Handle resolution | DNS TXT / `.well-known` only; bidirectionally verified; never a fixed AppView |
 | Fallback host | `ATPROTO_SERVICE` / `VITE_ATPROTO_SERVICE` (default `https://bsky.social`) — last resort only |
 | Generic resolver endpoint | `GET /api/atproto/resolve-pds?did=…` or `?handle=…`, public, no auth |
+| Server-side auth gate | `merchantGuard` (`routes/merchant.ts`) — real HttpOnly `bazaar_atp_session` cookie vs. `ARTIST_DID` |
+| Dev mock sign-in | Client-side only (`localStorage: bazaar_mock_atp_session`); sets no cookie, grants nothing server-side |
 
 ## Consequences
 

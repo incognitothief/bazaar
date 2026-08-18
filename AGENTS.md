@@ -24,23 +24,11 @@ Deployment is Fly.io (`fly.toml` / `fly.stg.toml`, `.github/workflows/deploy.yml
 
 - `docs/adr/` is the canonical decision log. When creating a new major feature, it should be detailed here automatically. Do not bloat this folder; Coalesce when necessary within single working sessions.
 
-## Design principle
+## Design principles
 
-The AT Protocol promises a distributed network of users: any DID's repo can live on any PDS, and any handle resolves
-independently of any single host. Code must resolve per-identity, never assume a fixed default
-host serves an arbitrary DID or handle.
-
-- Server: `packages/server/src/lib/atproto/resolvePds.ts` — `getAgentForDid`, `resolvePdsForDid`,
-  `resolveHandleForDid`, `resolveDidForHandle`.
-- Client: `packages/client/src/lib/atproto/pdsResolve.ts` — `agentForRepo`, `resolveHandleForDid`,
-  `resolveDidForHandle`, backed by `GET /api/atproto/resolve-pds`.
-- `ATPROTO_SERVICE` / `VITE_ATPROTO_SERVICE` (default `https://bsky.social`) is a last-resort
-  fallback only, not a default resolution path.
-- Not yet migrated to per-DID resolution: `createPublicAgent()` direct calls in `HomePage`,
-  `ItemDetailPage`, `PurchaseDetailPage`, `SettingsPage`, `PublicHeaderAccount`,
-  `useActorMerchantProfile`.
-
-Full rationale: [ADR 0012](docs/adr/0012-repo-and-identity-resolution.md).
+- The AT Protocol promises a distributed network of users: any DID's repo can live on any PDS, and any handle resolves
+  independently of any single host. Code must resolve per-identity, never assume a fixed default
+  host serves an arbitrary DID or handle. Full rationale: [ADR 0012](docs/adr/0012-repo-and-identity-resolution.md).
 
 ## Commands
 
