@@ -112,10 +112,7 @@ export function PublicHeaderAccount() {
 
   if (loading) {
     return (
-      <div
-        className="h-8 w-28 animate-pulse rounded-md bg-muted"
-        aria-hidden
-      />
+      <div className="h-8 w-28 animate-pulse rounded-md bg-muted" aria-hidden />
     );
   }
 
@@ -125,7 +122,7 @@ export function PublicHeaderAccount() {
         to={merchantSignInUrl(location.pathname, location.search)}
         className="text-sm font-medium text-muted-foreground hover:text-foreground"
       >
-        Login
+        Sign in
       </Link>
     );
   }

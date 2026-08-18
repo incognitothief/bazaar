@@ -1,7 +1,7 @@
 import { AtUri } from "@atproto/syntax";
 import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { getAgent } from "./atproto/client";
+import { getAgentForDid } from "./atproto/resolvePds";
 import { r2ConfigFromEnv } from "./r2/env";
 import {
   INVENTORY_ARTWORK_OBJECT_NAME,
@@ -50,7 +50,7 @@ export async function presignInventoryArtworkGet(
   } catch {
     if (at.collection === colDigital) {
       try {
-        const agent = getAgent();
+        const agent = await getAgentForDid(artistDid);
         const rec = await agent.com.atproto.repo.getRecord({
           repo: artistDid,
           collection: colDigital,

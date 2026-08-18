@@ -1,6 +1,8 @@
 # Bazaar Architecture Decision Records
 
-Index of accepted decisions backfilled from `.alignment/` implementation reports.
+`docs/adr` is the canonical decision log. `.alignment/` (implementation reports ADRs 0001–0011
+were originally backfilled from) is deprecated — new decisions get an ADR here directly, not a new
+`.alignment/` folder.
 
 | ADR | Title | Date |
 |-----|-------|------|
@@ -15,6 +17,7 @@ Index of accepted decisions backfilled from `.alignment/` implementation reports
 | [0009](0009-collection-listings-entitlement.md) | Collection listings and entitlement | 2026-04-05 |
 | [0010](0010-staging-environment.md) | Staging deployment environment | 2026-04-05 |
 | [0011](0011-app-service-did-and-kid.md) | App service DID and signing key hints | 2026-04-18 |
+| [0012](0012-repo-and-identity-resolution.md) | Repo and identity resolution (DID→PDS, handle↔DID) | 2026-08-17 |
 
 Alignment folders not given a dedicated ADR (covered by cross-refs above or out of scope):
 

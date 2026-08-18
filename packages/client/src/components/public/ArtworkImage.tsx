@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Agent } from "@atproto/api";
-import { ARTWORK_LOADING_SVG_URLS } from "@/lib/artworkLoadingUrls";
+import artworkLoadingUrl from "@/assets/artwork-loading-combined.svg?url";
 import { createBrowserApiURL } from "@/lib/browserApi";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import { cn } from "@/lib/utils";
@@ -23,50 +23,25 @@ function logArtwork(step: string, detail?: Record<string, unknown>) {
 type LoadPhase = "missing" | "loading" | "ready";
 
 function ArtworkLoadingSkeleton({ className }: { className?: string }) {
-  const urls = ARTWORK_LOADING_SVG_URLS;
-  const count = urls.length;
-  const cols = count <= 1 ? 1 : count === 2 ? 2 : 3;
-
-  if (count === 0) {
-    return (
-      <div
-        className={cn("animate-pulse bg-muted-foreground/20", className)}
-        role="status"
-        aria-busy="true"
-        aria-label="Loading artwork"
-      >
-        <span className="sr-only">Loading artwork</span>
-      </div>
-    );
-  }
-
   return (
     <>
       <span className="sr-only">Loading artwork</span>
       <div
         className={cn(
-          "grid h-full w-full min-h-0 gap-1.5 bg-muted p-2 [grid-auto-rows:minmax(0,1fr)]",
+          "flex h-full w-full min-h-0 items-center justify-center bg-muted p-4",
           className,
         )}
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
         role="status"
         aria-busy="true"
         aria-label="Loading artwork"
       >
-        {urls.map((src) => (
-          <div
-            key={src}
-            className="flex min-h-0 min-w-0 items-center justify-center"
-          >
-            <img
-              src={src}
-              alt=""
-              className="max-h-full max-w-full object-contain animate-pulse"
-              draggable={false}
-              decoding="async"
-            />
-          </div>
-        ))}
+        <img
+          src={artworkLoadingUrl}
+          alt=""
+          className="max-h-full max-w-full object-contain animate-pulse"
+          draggable={false}
+          decoding="async"
+        />
       </div>
     </>
   );

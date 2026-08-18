@@ -13,6 +13,19 @@ export function SignInPage() {
   const { signIn } = useAtpSession();
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function startSignIn(h: string) {
+    const trimmed = h.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    signIn(trimmed)
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : "Sign-in failed.");
+      })
+      .finally(() => setBusy(false));
+  }
 
   return (
     <div className="mx-auto max-w-md space-y-6 py-12 px-4 sm:px-0">
@@ -21,19 +34,23 @@ export function SignInPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           {devMockSignIn ? (
             <>
-              Development mode: no OAuth — your handle is resolved to a DID via{" "}
-              <span className="font-mono text-foreground">
-                VITE_ATPROTO_SERVICE
-              </span>{" "}
-              and stored locally. You get the merchant dashboard only if that
-              DID matches{" "}
+              Development mode: OAuth disabled. To view the merchant dashboard,
+              enter the handle that matches your environment configuration for (
               <span className="font-mono text-foreground">VITE_ARTIST_DID</span>
-              , same as production.
+              ). Other handles will present the UI available to all other users.
             </>
           ) : (
             <>
-              Enter your ATProto handle. You will be redirected to your host PDS
-              to authorize Bazaar.
+              Using your{" "}
+              <a
+                href="https://atmosphereaccount.com/hosts"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-4 hover:text-foreground"
+              >
+                atmosphere account
+              </a>
+              .
             </>
           )}
         </p>
@@ -42,10 +59,7 @@ export function SignInPage() {
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          const h = handle.trim();
-          if (!h || busy) return;
-          setBusy(true);
-          void signIn(h).finally(() => setBusy(false));
+          startSignIn(handle);
         }}
       >
         <div className="space-y-2">
@@ -56,11 +70,26 @@ export function SignInPage() {
             placeholder="handle.example.com"
             value={handle}
             onChange={setHandle}
+            onSelect={startSignIn}
             disabled={busy}
           />
         </div>
+        {error ? (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </div>
+        ) : null}
         <Button type="submit" className="w-full" disabled={busy}>
-          {busy ? "Resolving…" : "Continue"}
+          {busy ? (
+            <span className="inline-flex items-center gap-2 animate-pulse">
+              Signing in…
+            </span>
+          ) : (
+            "Continue"
+          )}
         </Button>
       </form>
       <p className="text-center text-sm text-muted-foreground">

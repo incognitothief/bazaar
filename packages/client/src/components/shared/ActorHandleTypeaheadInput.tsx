@@ -45,18 +45,22 @@ type Props = {
   id: string;
   value: string;
   onChange: (value: string) => void;
+  onSelect?: (handle: string) => void;
   disabled?: boolean;
   placeholder?: string;
   autoComplete?: string;
+  className?: string;
 };
 
 export function ActorHandleTypeaheadInput({
   id,
   value,
   onChange,
+  onSelect,
   disabled,
   placeholder,
   autoComplete,
+  className,
 }: Props) {
   const reactId = useId();
   const listboxId = `${id}-${reactId}-listbox`;
@@ -128,11 +132,14 @@ export function ActorHandleTypeaheadInput({
 
   const pick = useCallback(
     (handle: string) => {
+      userDroveTypeaheadRef.current = false;
       onChange(handle);
+      setSuggestions([]);
       setOpen(false);
       setHighlight(-1);
+      onSelect?.(handle);
     },
-    [onChange],
+    [onChange, onSelect],
   );
 
   const showList = open && suggestions.length > 0 && !disabled;
@@ -142,7 +149,7 @@ export function ActorHandleTypeaheadInput({
       : undefined;
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className={cn("relative", className)}>
       <Input
         id={id}
         type="text"
