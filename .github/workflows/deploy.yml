@@ -80,11 +80,6 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: auto
-          # R2 rejects the flexible-checksum headers newer AWS SDKs attach by default on PutObject
-          # (InvalidDigest: "The checksum or Content-MD5 you specified is not valid"). Restore the
-          # pre-default-change behavior so Pulumi's state writes to R2 succeed.
-          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
-          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
         run: |
           set -euo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
@@ -167,11 +162,6 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: auto
-          # R2 rejects the flexible-checksum headers newer AWS SDKs attach by default on PutObject
-          # (InvalidDigest: "The checksum or Content-MD5 you specified is not valid"). Restore the
-          # pre-default-change behavior so Pulumi's state writes to R2 succeed.
-          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
-          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
         run: |
           set -euo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
