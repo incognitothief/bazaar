@@ -9,7 +9,7 @@ import {
 } from "react";
 import { getAuthRole } from "@/lib/auth";
 import { apiServerOrigin, browserApiUrl } from "@/lib/browserApi";
-import { createPublicAgent } from "@/lib/atproto/session";
+import { resolveDidForHandle } from "@/lib/atproto/pdsResolve";
 import { safeReturnPath } from "@/lib/signInReturn";
 
 export type AtpSession = {
@@ -95,22 +95,14 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
           "Mock sign-in needs VITE_ARTIST_DID set to your store owner did:…",
         );
       }
-      let did: string | undefined;
-      try {
-        const agent = createPublicAgent();
-        const { data } = await agent.com.atproto.identity.resolveHandle({
-          handle: h,
-        });
-        did = data.did;
-      } catch (e) {
-        throw new Error(
-          `Could not resolve handle (check the handle and VITE_ATPROTO_SERVICE): ${
-            e instanceof Error ? e.message : String(e)
-          }`,
-        );
-      }
+      // Protocol-level resolution (DNS TXT / well-known, bidirectionally verified)
+      // via the server's generic resolver — not a fixed AppView's resolveHandle.
+      const did = await resolveDidForHandle(h);
       if (!did) {
-        throw new Error("Handle resolved but no DID was returned.");
+        throw new Error(
+          `Could not resolve handle "${h}" — check that its DNS TXT record or ` +
+            "/.well-known/atproto-did is set up and matches this handle.",
+        );
       }
       localStorage.setItem(MOCK_KEY, JSON.stringify({ did, handle: h }));
       window.location.assign(postSignInDestination(did));

@@ -34,14 +34,10 @@ export function SignInPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           {devMockSignIn ? (
             <>
-              Development mode: no OAuth — your handle is resolved to a DID via{" "}
-              <span className="font-mono text-foreground">
-                VITE_ATPROTO_SERVICE
-              </span>{" "}
-              and stored locally. You get the merchant dashboard only if that
-              DID matches{" "}
+              Development mode: OAuth disabled. To view the merchant dashboard,
+              enter the handle that matches your environment configuration for (
               <span className="font-mono text-foreground">VITE_ARTIST_DID</span>
-              , same as production.
+              ). Other handles will present the UI available to all other users.
             </>
           ) : (
             <>

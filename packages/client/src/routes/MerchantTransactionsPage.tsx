@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { browserApiUrl } from "@/lib/browserApi";
+import { resolveHandleForDid } from "@/lib/atproto/pdsResolve";
 import { pdslsRecordUrl, pdslsRepoCollectionsUrl } from "@/lib/pdsls";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +65,8 @@ export function MerchantTransactionsPage() {
   const [rows, setRows] = useState<PaymentFulfillmentRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [handles, setHandles] = useState<Record<string, string | null>>({});
+  const requestedDidsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +104,29 @@ export function MerchantTransactionsPage() {
     };
   }, []);
 
+  // Best-effort handle resolution for display — DID→handle comes from the same
+  // DID-doc lookup the PDS resolver already does, so this is one extra cheap
+  // call per distinct buyer. Falls back to showing the DID if it fails.
+  useEffect(() => {
+    const dids = Array.from(
+      new Set(rows.map((r) => r.buyerDid).filter((d): d is string => !!d)),
+    );
+    const missing = dids.filter((d) => !requestedDidsRef.current.has(d));
+    if (missing.length === 0) return;
+    for (const d of missing) requestedDidsRef.current.add(d);
+
+    let cancelled = false;
+    void Promise.all(
+      missing.map(async (did) => [did, await resolveHandleForDid(did)] as const),
+    ).then((entries) => {
+      if (cancelled) return;
+      setHandles((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rows]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -125,7 +151,7 @@ export function MerchantTransactionsPage() {
               <tr className="border-b border-border bg-muted/50">
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">PaymentIntent</th>
-                <th className="px-3 py-2 font-medium">Buyer DID</th>
+                <th className="px-3 py-2 font-medium">Buyer</th>
                 <th className="px-3 py-2 font-medium">Attempts</th>
                 <th className="px-3 py-2 font-medium">Updated</th>
                 <th className="px-3 py-2 font-medium">Receipt</th>
@@ -161,7 +187,7 @@ export function MerchantTransactionsPage() {
                         className="block max-w-[14rem] truncate font-mono text-xs text-primary underline-offset-2 hover:underline"
                         title={r.buyerDid}
                       >
-                        {r.buyerDid}
+                        {handles[r.buyerDid] ?? r.buyerDid}
                       </a>
                     ) : (
                       <Ellipsis text="" />

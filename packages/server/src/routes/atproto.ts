@@ -8,7 +8,11 @@ import {
   buildBuyerOAuthScopeString,
   buildOAuthScopeString,
 } from "../lib/atproto/oauth-scope";
-import { resolvePdsForDid } from "../lib/atproto/resolvePds";
+import {
+  resolveDidForHandle,
+  resolveHandleForDid,
+  resolvePdsForDid,
+} from "../lib/atproto/resolvePds";
 import { oauthAppBaseUrl, oauthRedirectUri } from "../lib/atproto/oauth-url";
 
 function clientScope(oauthClient: OAuthClient): string {
@@ -158,18 +162,45 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
     }
   });
 
-  // Resolves the PDS that actually hosts a given DID's repo. `com.atproto.repo.getRecord` /
-  // `listRecords` are PDS-hosted endpoints — they only work against the host that has the repo,
-  // not a single universal endpoint — so the browser calls this before hitting a repo directly.
-  // Public: DID→PDS is public info, no auth needed. Cached in resolvePdsForDid.
+  // Generic identity resolver: accepts either `did` or `handle` and resolves the full
+  // identity (did, pds, handle) from whichever was given.
+  //
+  // `com.atproto.repo.getRecord` / `listRecords` are PDS-hosted endpoints — they only
+  // work against the host that has the repo, not a single universal endpoint — so the
+  // browser calls this before hitting a repo directly.
+  //
+  // `handle` resolution never goes through a third-party AppView's `resolveHandle`
+  // convenience endpoint (e.g. bsky.social) — it's the protocol-level DNS/well-known
+  // lookup, bidirectionally verified against the resolved DID's own document. See
+  // resolveDidForHandle in resolvePds.ts for the full rationale.
+  //
+  // The `handle` field in the response (whether resolving from `did` or `handle`) is
+  // the DID document's *claimed* handle, which is NOT bidirectionally verified when the
+  // request came in by `did` — display-only in that case, same caveat as
+  // resolveHandleForDid. When the request came in by `handle`, the returned `did` is
+  // fully verified (that's what resolveDidForHandle guarantees) — it's the `handle`
+  // echoed back in the response that's merely the same string you sent in.
+  //
+  // Public: identity data is public info, no auth needed. Cached in resolvePds.ts.
   r.get("/resolve-pds", async (c) => {
-    const did = c.req.query("did")?.trim();
+    const didParam = c.req.query("did")?.trim();
+    const handleParam = c.req.query("handle")?.trim();
+
+    let did: string | undefined = didParam;
+    if (!did && handleParam) {
+      did = (await resolveDidForHandle(handleParam)) ?? undefined;
+      if (!did) return c.json({ error: "not_found" }, 404);
+    }
     if (!did || !did.startsWith("did:")) {
       return c.json({ error: "invalid_did" }, 400);
     }
-    const pds = await resolvePdsForDid(did);
+
+    const [pds, handle] = await Promise.all([
+      resolvePdsForDid(did),
+      resolveHandleForDid(did),
+    ]);
     if (!pds) return c.json({ error: "not_found" }, 404);
-    return c.json({ pds });
+    return c.json({ did, pds, handle: handle ?? null });
   });
 
   r.post("/signout", async (c) => {
