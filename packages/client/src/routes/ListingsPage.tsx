@@ -40,6 +40,7 @@ import {
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
+import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { CatalogItem, Listing } from "@/types/lexicons";
 import { toast } from "sonner";
@@ -57,13 +58,6 @@ function devDummyListingRow(merchantDid: string | undefined): ListingRow | null 
     cid: "bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     listing: buildDummyListing(itemUri),
   };
-}
-
-function formatMoney(m: { amount: number; currency: string }): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: m.currency,
-  }).format(m.amount / 100);
 }
 
 type CatalogPick = {
