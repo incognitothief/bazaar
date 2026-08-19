@@ -62,6 +62,28 @@ GitHub repository secrets (Settings → Secrets and variables → Actions):
 
 The action will run on push and deploy the application
 
+## Setting up Fly runtime secrets (server env)
+
+The GitHub secrets above are CI/deploy-only — the running app never reads them. Server env vars
+(`packages/server/.env.example`) must be set separately on each Fly app:
+
+```
+fly secrets set KEY=value -a <app>   # bazaar-g5nqca (prod) / bazaar-jwkvxw (staging)
+```
+
+At minimum:
+
+- `ARTIST_DID` — store owner DID, required for `/api/merchant/*`
+- `APP_SERVICE_PRIVATE_KEY` — signs receipts/consent and `bazaarRid`/`bazaarWid`/`bazaarPid`
+- Inventory uploads: `CF_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`
+- **Litestream DB backups — a separate credential set from the one above, all four required
+  together**: `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`. If even one
+  of these four is missing, `docker-entrypoint.sh` silently runs the app with **no backups** — no
+  error, no log line. After setting them, confirm Litestream is actually running via `fly logs`
+  right after a restart (it prints its own startup lines) — don't just trust that the vars are set.
+
+See `packages/server/.env.example` for the full list of server env vars.
+
 ## Create a DID for the bazaar instance
 
 Your storefront needs an identifier. Create one using the included script:
