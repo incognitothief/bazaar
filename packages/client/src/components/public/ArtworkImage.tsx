@@ -47,6 +47,26 @@ function ArtworkLoadingSkeleton({ className }: { className?: string }) {
   );
 }
 
+function ArtworkPlaceholder({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex h-full w-full min-h-0 items-center justify-center bg-muted p-4",
+        className,
+      )}
+      aria-hidden
+    >
+      <img
+        src={artworkLoadingUrl}
+        alt=""
+        className="max-h-full max-w-full object-contain opacity-50"
+        draggable={false}
+        decoding="async"
+      />
+    </div>
+  );
+}
+
 export function ArtworkImage({
   agent,
   did,
@@ -181,15 +201,5 @@ export function ArtworkImage({
     return <ArtworkLoadingSkeleton className={className} />;
   }
 
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-center bg-muted text-muted-foreground",
-        className,
-      )}
-      aria-hidden
-    >
-      No artwork
-    </div>
-  );
+  return <ArtworkPlaceholder className={className} />;
 }

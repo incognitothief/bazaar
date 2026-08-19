@@ -1,140 +1,155 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import {
+  INVENTORY_VIEW_MODE_KEY,
+  InventoryViewToggle,
+  loadInventoryViewMode,
+  type InventoryViewMode,
+} from "@/components/merchant/InventoryViewToggle";
+import { MerchantItemCard } from "@/components/merchant/MerchantItemCard";
+import { MerchantItemRow } from "@/components/merchant/MerchantItemRow";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
-import {
-  listCollectionRows,
-  listDigitalItemRows,
-  listPhysicalItemRows,
-  type CollectionRow,
-  type DigitalItemRow,
-  type PhysicalItemRow,
-} from "@/lib/atproto/records";
-import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
+import { useMerchantCatalog } from "@/hooks/useMerchantCatalog";
+import { putListing, type ListingRow } from "@/lib/atproto/records";
+import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
+import { createPublicAgent } from "@/lib/atproto/session";
 import { cn } from "@/lib/utils";
-import type { Collection, DigitalItem, PhysicalItem } from "@/types/lexicons";
+import type { Listing } from "@/types/lexicons";
 
-type InventoryRow =
-  | { kind: "digital"; uri: string; item: DigitalItem }
-  | { kind: "collection"; uri: string; item: Collection }
-  | { kind: "physical"; uri: string; item: PhysicalItem };
-
-function mergeRows(
-  digital: DigitalItemRow[],
-  collections: CollectionRow[],
-  physical: PhysicalItemRow[],
-): InventoryRow[] {
-  const merged: InventoryRow[] = [
-    ...digital.map((r) => ({
-      kind: "digital" as const,
-      uri: r.uri,
-      item: r.item,
-    })),
-    ...collections.map((r) => ({
-      kind: "collection" as const,
-      uri: r.uri,
-      item: r.item,
-    })),
-    ...physical.map((r) => ({
-      kind: "physical" as const,
-      uri: r.uri,
-      item: r.item,
-    })),
-  ];
-  merged.sort(
-    (a, b) =>
-      new Date(b.item.createdAt).getTime() -
-      new Date(a.item.createdAt).getTime(),
+function GridSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4" aria-busy>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="overflow-hidden rounded-lg animate-pulse">
+          <div className="aspect-square bg-muted" />
+          <div className="space-y-2 p-3">
+            <div className="h-4 w-3/4 rounded bg-muted" />
+            <div className="h-3 w-1/2 rounded bg-muted" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
-  return merged;
 }
 
-function formatDigitalDetail(item: DigitalItem): string {
-  const parts: string[] = [item.itemClass];
-  if (item.formats?.length) {
-    parts.push(item.formats.join(", "));
-  }
-  return parts.filter(Boolean).join(" · ");
-}
-
-function formatPhysicalDetail(item: PhysicalItem): string {
-  const parts: string[] = [item.itemClass];
-  if (item.variants?.length) {
-    parts.push(
-      `${item.variants.length} variant${item.variants.length === 1 ? "" : "s"}`,
-    );
-  }
-  return parts.filter(Boolean).join(" · ");
+function ListSkeleton() {
+  return (
+    <div className="rounded-lg border border-border" aria-busy>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 border-b border-border px-2 py-2 last:border-b-0 animate-pulse"
+        >
+          <div className="h-10 w-10 shrink-0 rounded-md bg-muted" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3.5 w-1/3 rounded bg-muted" />
+            <div className="h-3 w-1/4 rounded bg-muted" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function MerchantInventoryPage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
-  const [rows, setRows] = useState<InventoryRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const artworkAgent = useMemo(() => createPublicAgent(), []);
+  const {
+    itemRows,
+    listingRows,
+    listingRowByItemUri,
+    loading,
+    error,
+    applyListingUpdates,
+  } = useMerchantCatalog(session?.did);
+  const [view, setView] = useState<InventoryViewMode>(() => loadInventoryViewMode());
+  const [pendingUris, setPendingUris] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!agent || !session) return;
-    let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      setLoadError(null);
+  const handleViewChange = useCallback((mode: InventoryViewMode) => {
+    setView(mode);
+    localStorage.setItem(INVENTORY_VIEW_MODE_KEY, mode);
+  }, []);
+
+  const toggleStatus = useCallback(
+    async (listingRow: ListingRow) => {
+      if (!agent) return;
+      const nextStatus: Listing["status"] =
+        listingRow.listing.status === "active" ? "paused" : "active";
+      const next: Listing = { ...listingRow.listing, status: nextStatus };
+      const isCollectionListing =
+        listingRow.listing.item.itemType === BAZAAR_COLLECTION.collection;
+      const activeChildren = listingRows.filter(
+        (x) =>
+          x.listing.parentListing === listingRow.uri && x.listing.status === "active",
+      );
+
+      setPendingUris((prev) => new Set(prev).add(listingRow.uri));
       try {
-        const [digital, collections, physical] = await Promise.all([
-          listDigitalItemRows(session.did),
-          listCollectionRows(session.did),
-          listPhysicalItemRows(session.did),
-        ]);
-        if (!cancelled) {
-          setRows(mergeRows(digital, collections, physical));
+        const updated: ListingRow[] = [];
+        if (nextStatus === "paused" && isCollectionListing) {
+          for (const child of activeChildren) {
+            const paused: Listing = { ...child.listing, status: "paused" };
+            await putListing(agent, child.uri, paused);
+            updated.push({ ...child, listing: paused });
+          }
         }
+        await putListing(agent, listingRow.uri, next);
+        updated.push({ ...listingRow, listing: next });
+        applyListingUpdates(updated);
       } catch (e) {
-        if (!cancelled) {
-          setLoadError(
-            e instanceof Error ? e.message : "Could not load inventory.",
-          );
-          setRows([]);
-        }
+        toast.error("Could not update status", {
+          description: e instanceof Error ? e.message : undefined,
+        });
       } finally {
-        if (!cancelled) setLoading(false);
+        setPendingUris((prev) => {
+          const n = new Set(prev);
+          n.delete(listingRow.uri);
+          return n;
+        });
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [agent, session]);
+    },
+    [agent, listingRows, applyListingUpdates],
+  );
 
   const empty = useMemo(
-    () => !loading && rows.length === 0 && !loadError,
-    [loading, rows.length, loadError],
+    () => !loading && itemRows.length === 0 && !error,
+    [loading, itemRows.length, error],
   );
 
   if (!session || !agent) return null;
 
   return (
-    <div className="w-full min-w-0">
-      <h1 className="text-2xl font-semibold mb-6">Inventory</h1>
-      <p className="mb-6 text-sm text-muted-foreground max-w-2xl">
-        Catalog items in your repo. To set prices and publish to the
-        storefront, use{" "}
-        <Link to="/merchant/listings" className="underline underline-offset-2">
-          Listings
-        </Link>
-        .
-      </p>
+    <div className="w-full min-w-0 space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Inventory</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Every item in your catalog. Prices and status come from{" "}
+            <Link
+              to="/merchant/listings"
+              className="underline underline-offset-2"
+            >
+              Listings
+            </Link>{" "}
+            — pause or activate an existing listing right here.
+          </p>
+        </div>
+        {!empty ? (
+          <InventoryViewToggle value={view} onChange={handleViewChange} />
+        ) : null}
+      </div>
 
-      {loadError ? (
+      {error ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {loadError}
+          {error}
         </div>
       ) : null}
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading catalog…</p>
-      ) : null}
+      {loading ? (view === "grid" ? <GridSkeleton /> : <ListSkeleton />) : null}
 
       {empty ? (
         <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
@@ -148,78 +163,50 @@ export function MerchantInventoryPage() {
         </div>
       ) : null}
 
-      {!loading && rows.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className="text-left p-3 font-medium">Title</th>
-                <th className="text-left p-3 font-medium">Type</th>
-                <th className="text-left p-3 font-medium">Details</th>
-                <th className="text-left p-3 font-medium">Created</th>
-                <th className="text-right p-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.uri} className="border-b border-border">
-                  <td className="p-3 font-medium">{row.item.title}</td>
-                  <td className="p-3">
-                    <Badge variant="outline">
-                      {row.kind === "digital"
-                        ? "Digital"
-                        : row.kind === "collection"
-                          ? "Collection"
-                          : "Physical"}
-                    </Badge>
-                  </td>
-                  <td className="p-3 text-muted-foreground">
-                    {row.kind === "digital"
-                      ? formatDigitalDetail(row.item)
-                      : row.kind === "physical"
-                        ? formatPhysicalDetail(row.item)
-                        : [
-                            row.item.collectionType ?? "collection",
-                            `${row.item.items.length} item${
-                              row.item.items.length === 1 ? "" : "s"
-                            }`,
-                          ].join(" · ")}
-                  </td>
-                  <td className="p-3 text-muted-foreground whitespace-nowrap">
-                    {new Date(row.item.createdAt).toLocaleDateString(undefined, {
-                      dateStyle: "medium",
-                    })}
-                  </td>
-                  <td className="p-3 text-right">
-                    <div className="inline-flex flex-wrap items-center justify-end gap-1">
-                      <Link
-                        to={`/merchant/inventory/edit?uri=${encodeURIComponent(row.uri)}`}
-                        className={cn(
-                          buttonVariants({ size: "sm", variant: "secondary" }),
-                          "inline-flex",
-                        )}
-                      >
-                        Edit
-                      </Link>
-                      <Link
-                        to={itemPathPretty(
-                          catalogItemRkey(row.uri),
-                          row.item.title,
-                        )}
-                        className={cn(
-                          buttonVariants({ size: "sm", variant: "ghost" }),
-                          "inline-flex",
-                        )}
-                      >
-                        Storefront
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {!loading && itemRows.length > 0 ? (
+        view === "grid" ? (
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+            {itemRows.map((row) => (
+              <MerchantItemCard
+                key={row.uri}
+                agent={artworkAgent}
+                merchantDid={session.did}
+                row={row}
+                listingRow={listingRowByItemUri[row.uri]}
+                pending={
+                  listingRowByItemUri[row.uri]
+                    ? pendingUris.has(listingRowByItemUri[row.uri]!.uri)
+                    : false
+                }
+                onToggleStatus={() => {
+                  const lr = listingRowByItemUri[row.uri];
+                  if (lr) void toggleStatus(lr);
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-border">
+            {itemRows.map((row) => (
+              <MerchantItemRow
+                key={row.uri}
+                agent={artworkAgent}
+                merchantDid={session.did}
+                row={row}
+                listingRow={listingRowByItemUri[row.uri]}
+                pending={
+                  listingRowByItemUri[row.uri]
+                    ? pendingUris.has(listingRowByItemUri[row.uri]!.uri)
+                    : false
+                }
+                onToggleStatus={() => {
+                  const lr = listingRowByItemUri[row.uri];
+                  if (lr) void toggleStatus(lr);
+                }}
+              />
+            ))}
+          </div>
+        )
       ) : null}
     </div>
   );

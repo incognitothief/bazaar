@@ -4,15 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
+import { formatMoney } from "@/lib/format";
 import type { CatalogItem, Listing } from "@/types/lexicons";
 import { ArtworkImage } from "./ArtworkImage";
-
-function formatMoney(m: { amount: number; currency: string }): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: m.currency,
-  }).format(m.amount / 100);
-}
 
 export function ItemCard({
   agent,
