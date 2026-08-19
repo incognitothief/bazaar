@@ -31,6 +31,11 @@ RUN npm run build
 FROM oven/bun:1-slim
 WORKDIR /app
 
+# Litestream (Go binary) verifies TLS against the OS trust store, unlike Bun/Node which bundle
+# their own CA store — without this, Litestream fails all R2 requests with
+# "x509: certificate signed by unknown authority" even though the app's own R2 calls work fine.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
 ARG LITESTREAM_VERSION=0.3.13
 ARG TARGETARCH=amd64
 ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-${TARGETARCH}.tar.gz /tmp/litestream.tgz
