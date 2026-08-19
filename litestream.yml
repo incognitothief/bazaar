@@ -10,3 +10,10 @@ dbs:
         secret-access-key: ${R2_SECRET_ACCESS_KEY}
         force-path-style: true
         region: auto
+        # Default is 24h. Generation tracking is local (a hidden dir next to the DB file, on the
+        # same Fly volume) — if the volume is ever lost and replaced blank, Litestream has no memory
+        # of the old generation and silently starts a new one with no errors logged. Retention
+        # enforcement then deletes the old (good) generation once its last snapshot is older than
+        # this value, regardless of whether anyone noticed. 168h (7d) is the real deadline to detect
+        # and react to that failure mode before the last good backup is gone for good.
+        retention: 168h
