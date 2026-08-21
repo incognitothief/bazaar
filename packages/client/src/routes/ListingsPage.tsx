@@ -11,7 +11,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { CompletenessIndicator } from "@/components/merchant/CompletenessIndicator";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
@@ -19,7 +18,6 @@ import {
   type InventoryPrefillPayload,
 } from "@/lib/api/inventoryApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
-import { scoreCompleteness } from "@/hooks/useCompletenessScore";
 import {
   buildItemRefFromUri,
   createListing,
@@ -719,7 +717,6 @@ export function ListingsPage() {
                 <th className="text-left p-3 font-medium">Type</th>
                 <th className="text-left p-3 font-medium">Price</th>
                 <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-left p-3 font-medium">Completeness</th>
                 <th className="text-right p-3 font-medium">Actions</th>
               </tr>
             </thead>
@@ -750,14 +747,6 @@ export function ListingsPage() {
                     >
                       {row.listing.status}
                     </Badge>
-                  </td>
-                  <td className="p-3 min-w-[120px]">
-                    <CompletenessIndicator
-                      compact
-                      score={scoreCompleteness({
-                        hasAudioFile: true,
-                      })}
-                    />
                   </td>
                   <td className="p-3 text-right space-x-2">
                     {isDummyListingRow(row) ? null : (

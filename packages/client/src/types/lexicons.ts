@@ -302,10 +302,3 @@ export type ActorMerchant = {
 };
 
 export type CatalogItem = DigitalItem | Collection | PhysicalItem;
-
-export type CompletenessScore = {
-  score: number;
-  required: string[];
-  recommended: string[];
-  optional: string[];
-};
