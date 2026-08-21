@@ -597,6 +597,28 @@ export async function getRecordValue<T>(uri: string): Promise<T | null> {
   }
 }
 
+/** Same as `getRecordValue`, but also returns the record's CID. */
+export async function getRecordValueWithCid<T>(
+  uri: string,
+): Promise<{ value: T; cid: string } | null> {
+  try {
+    const at = new AtUri(uri);
+    const repo = at.hostname;
+    const collection = at.collection;
+    const rkey = at.rkey;
+    if (!collection || !rkey) return null;
+    const agent = await agentForRepo(repo);
+    const res = (await agent.com.atproto.repo.getRecord({
+      repo,
+      collection,
+      rkey,
+    })) as GetRecordResponse;
+    return { value: res.data.value as T, cid: res.data.cid };
+  } catch {
+    return null;
+  }
+}
+
 /** Resolve `item` + `cid` for a new listing from a catalog AT-URI. */
 export async function buildItemRefFromUri(
   itemUri: string,

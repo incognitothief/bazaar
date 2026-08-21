@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   getRecordValue,
+  getRecordValueWithCid,
   listListingRows,
   listPurchaseReceiptRows,
   resolveCatalogItemUriFromRkey,
@@ -91,6 +92,7 @@ export function ItemDetailPage() {
   const [allArtistListings, setAllArtistListings] = useState<ListingRow[]>([]);
   const [ownsCollection, setOwnsCollection] = useState(false);
   const [license, setLicense] = useState<LicenseTerms | null>(null);
+  const [licenseCid, setLicenseCid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloadBusyUri, setDownloadBusyUri] = useState<string | null>(null);
   const [zipBusy, setZipBusy] = useState(false);
@@ -212,11 +214,13 @@ export function ItemDetailPage() {
           licUri = (v as DigitalItem).defaultLicenseUri;
         }
         if (licUri) {
-          const lt = await getRecordValue<LicenseTerms>(licUri);
+          const lt = await getRecordValueWithCid<LicenseTerms>(licUri);
           if (cancelled) return;
-          setLicense(lt ?? (dummyTarget ? buildDummyLicenseTerms() : null));
+          setLicense(lt?.value ?? (dummyTarget ? buildDummyLicenseTerms() : null));
+          setLicenseCid(lt?.cid ?? null);
         } else {
           setLicense(dummyTarget ? buildDummyLicenseTerms() : null);
+          setLicenseCid(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -696,10 +700,20 @@ export function ItemDetailPage() {
 
       <section>
         <h2 className="text-lg font-medium mb-2">License</h2>
-        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+        <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
           {license?.licenseText ??
             "Personal use license. Download and listen for your own enjoyment."}
         </p>
+        {licenseCid ? (
+          <a
+            href={`/license/${encodeURIComponent(licenseCid)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 inline-block text-sm text-primary underline-offset-2 hover:underline"
+          >
+            View full license →
+          </a>
+        ) : null}
       </section>
 
       {"isrc" in item && item.isrc ? (
