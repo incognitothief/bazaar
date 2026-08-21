@@ -9,6 +9,7 @@ import { AtpSessionProvider } from "@/hooks/useAtpSession";
 import { PublicLayout } from "@/routes/PublicLayout";
 import { HomePage } from "@/routes/HomePage";
 import { ItemDetailPage } from "@/routes/ItemDetailPage";
+import { LicenseInspectorPage } from "@/routes/LicenseInspectorPage";
 import { PurchaseDetailPage } from "@/routes/PurchaseDetailPage";
 import { PurchaseSuccessPage } from "@/routes/PurchaseSuccessPage";
 import { MerchantLayout } from "@/routes/MerchantLayout";
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
       { path: "/refunds", element: <RefundsPage /> },
       { path: "/item/:rkey/:slug", element: <ItemDetailPage /> },
       { path: "/item/:rkey", element: <ItemDetailPage /> },
+      { path: "/license/:cid", element: <LicenseInspectorPage /> },
       { path: "/purchase/success", element: <PurchaseSuccessPage /> },
       { path: "/merchant/signin", element: <SignInPage /> },
       { path: "/dashboard", element: <CustomerDashboardPage /> },
