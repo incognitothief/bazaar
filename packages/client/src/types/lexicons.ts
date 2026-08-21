@@ -194,45 +194,8 @@ export type Listing = {
 export type LicenseTerms = {
   $type: "diamonds.whereditgo.bazaar.license.terms";
   title: string;
-  tier:
-    | "personal"
-    | "commercial"
-    | "syncMaster"
-    | "syncPublishing"
-    | "syncFull"
-    | "mechanical"
-    | "broadcast"
-    | "stemLicense";
-  rightsType: "master" | "publishing" | "both";
   version: string;
-  territoryCoverage: TerritoryCoverage;
-  term?: { durationMonths?: number; expiresAt?: string };
-  usageRestrictions?: {
-    allowsStreaming?: boolean;
-    allowsDownload?: boolean;
-    allowsCommercialUse?: boolean;
-    allowsDerivatives?: boolean;
-    allowsSync?: boolean;
-    allowsBroadcast?: boolean;
-    requiresAttribution?: boolean;
-    requiresMechanicalReporting?: boolean;
-    requiresShareAlike?: boolean;
-  };
-  proNotice?: {
-    compositionPro?: string;
-    publishingOwnerIpi?: string;
-    masterOwnerDid?: string;
-  };
-  legalMetadata?: {
-    governingLaw?: string;
-    disputeVenue?: string;
-    copyrightRegistrationId?: string;
-    copyrightYear?: number;
-    proMembership?: string;
-  };
-  humanReadableUrl?: string;
-  summary?: string;
-  editionSize?: number;
+  licenseText: string;
   checkoutConsentRequired: boolean;
   createdAt: string;
 };
@@ -267,8 +230,6 @@ export type PurchaseConsent = {
   buyerDid: string;
   consentedAt: string;
   appSig: string;
-  usageTier?: "personal" | "commercial" | "sync";
-  syncProject?: string;
 };
 
 export type Recording = {
