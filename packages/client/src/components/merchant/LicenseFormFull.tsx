@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { LICENSE_TEMPLATE_DEFINITIONS } from "@bazaar/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createLicenseTerms } from "@/lib/atproto/records";
 import type { ATPRepoClient } from "@/lib/atproto/session";
+import { cn } from "@/lib/utils";
 
 export function LicenseFormFull({
   agent,
@@ -20,8 +22,19 @@ export function LicenseFormFull({
   const [checkoutConsentRequired, setCheckoutConsentRequired] =
     useState(true);
   const [saving, setSaving] = useState(false);
+  const [startedFrom, setStartedFrom] = useState<string | null>(null);
 
   const canSave = title.trim().length > 0 && licenseText.trim().length > 0;
+
+  function startFromTemplate(id: string) {
+    const def = LICENSE_TEMPLATE_DEFINITIONS.find((d) => d.id === id);
+    if (!def) return;
+    setTitle(def.record.title);
+    setVersion(def.record.version);
+    setLicenseText(def.record.licenseText);
+    setCheckoutConsentRequired(def.record.checkoutConsentRequired);
+    setStartedFrom(id);
+  }
 
   async function save() {
     if (!canSave) {
@@ -43,6 +56,7 @@ export function LicenseFormFull({
       setVersion("1.0");
       setLicenseText("");
       setCheckoutConsentRequired(true);
+      setStartedFrom(null);
       onLicensesChanged?.();
     } catch (e) {
       toast.error("Failed to save license", {
@@ -56,12 +70,32 @@ export function LicenseFormFull({
   return (
     <div className="space-y-4 rounded-lg border border-border p-4">
       <div className="space-y-1">
-        <h3 className="text-sm font-semibold">Write your own license</h3>
+        <h3 className="text-sm font-semibold">Write your license</h3>
         <p className="text-sm text-muted-foreground">
-          Start from a template above and edit it, or write a license from
-          scratch. What you write here is exactly what buyers will read and
-          agree to at checkout.
+          What you write here is exactly what buyers will read and agree to
+          at checkout.
         </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Start from a template (optional)</Label>
+        <div className="flex flex-wrap gap-2">
+          {LICENSE_TEMPLATE_DEFINITIONS.map((def) => (
+            <button
+              key={def.id}
+              type="button"
+              onClick={() => startFromTemplate(def.id)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                startedFrom === def.id
+                  ? "border-ring bg-muted/60"
+                  : "border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {def.record.title}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">

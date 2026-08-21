@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { LicenseFormFull } from "@/components/merchant/LicenseFormFull";
-import { LicenseTemplateGallery } from "@/components/merchant/LicenseTemplateGallery";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   listLicenseTermsRows,
   type LicenseTermsRow,
@@ -38,114 +43,121 @@ export function LicensePage() {
   if (!session || !agent) return null;
 
   return (
-    <div className="w-full min-w-0 max-w-5xl space-y-8">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">License templates</h1>
+    <div className="w-full min-w-0 max-w-5xl space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold">Licenses</h1>
         <p className="text-sm text-muted-foreground max-w-2xl">
-          Each template is a full{" "}
+          Each license is a full{" "}
           <code className="text-xs rounded bg-muted px-1 py-0.5">
             license.terms
           </code>{" "}
-          record — a plain-language contract you write yourself. Start from a
-          starter template or write one from scratch below.
-        </p>
-        <p className="text-sm text-muted-foreground max-w-2xl">
-          Save a license to your PDS once; uploads and listings can reference
-          it by URI. If a matching record already exists (same title and
-          version), we reuse it instead of creating a duplicate.
+          record — a plain-language contract you write yourself. Save it once
+          on your PDS; uploads and listings reference it by URI.
         </p>
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight">
-          Saved on your PDS
-        </h2>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-4 py-6">
-            No <code className="text-xs">license.terms</code> records yet.
-            Pick a template below and save it to your repo.
-          </p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Title</th>
-                  <th className="px-3 py-2 font-medium">Version</th>
-                  <th className="px-3 py-2 font-medium">Record URI</th>
-                  <th className="px-3 py-2 font-medium">CID</th>
-                  <th className="px-3 py-2 font-medium">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr
-                    key={r.uri}
-                    className="border-b border-border last:border-0"
-                  >
-                    <td className="px-3 py-2 align-top font-medium">
-                      {r.terms.title}
-                    </td>
-                    <td className="px-3 py-2 align-top text-muted-foreground">
-                      {r.terms.version}
-                    </td>
-                    <td className="px-3 py-2 align-top">
-                      {(() => {
-                        const href = pdslsRecordUrl(r.uri);
-                        const label = ellipsizeMiddle(r.uri, 28, 12);
-                        if (!href) {
+      <Tabs defaultValue="editor">
+        <TabsList>
+          <TabsTrigger value="editor">License editor</TabsTrigger>
+          <TabsTrigger value="my-licenses">My licenses</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="editor" className="pt-4">
+          <LicenseFormFull
+            agent={agent}
+            onLicensesChanged={() => void refreshLicenses()}
+          />
+        </TabsContent>
+
+        <TabsContent value="my-licenses" className="pt-4">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-4 py-6">
+              No <code className="text-xs">license.terms</code> records yet.
+              Write one in the License editor tab.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium text-muted-foreground">
+                    <th className="px-3 py-2 font-medium">Title</th>
+                    <th className="px-3 py-2 font-medium">Version</th>
+                    <th className="px-3 py-2 font-medium">Record URI</th>
+                    <th className="px-3 py-2 font-medium">CID</th>
+                    <th className="px-3 py-2 font-medium">Created</th>
+                    <th className="px-3 py-2 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.uri}
+                      className="border-b border-border last:border-0"
+                    >
+                      <td className="px-3 py-2 align-top font-medium">
+                        {r.terms.title}
+                      </td>
+                      <td className="px-3 py-2 align-top text-muted-foreground">
+                        {r.terms.version}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        {(() => {
+                          const href = pdslsRecordUrl(r.uri);
+                          const label = ellipsizeMiddle(r.uri, 28, 12);
+                          if (!href) {
+                            return (
+                              <code
+                                className="text-[0.7rem] break-all text-muted-foreground"
+                                title={r.uri}
+                              >
+                                {label}
+                              </code>
+                            );
+                          }
                           return (
-                            <code
-                              className="text-[0.7rem] break-all text-muted-foreground"
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[0.7rem] break-all font-mono text-primary underline-offset-2 hover:underline"
                               title={r.uri}
                             >
                               {label}
-                            </code>
+                            </a>
                           );
-                        }
-                        return (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[0.7rem] break-all font-mono text-primary underline-offset-2 hover:underline"
-                            title={r.uri}
-                          >
-                            {label}
-                          </a>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-3 py-2 align-top">
-                      <code
-                        className="text-[0.7rem] break-all text-muted-foreground"
-                        title={r.cid}
-                      >
-                        {ellipsizeMiddle(r.cid, 10, 8)}
-                      </code>
-                    </td>
-                    <td className="px-3 py-2 align-top text-muted-foreground whitespace-nowrap">
-                      {r.terms.createdAt?.slice(0, 10) ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <LicenseTemplateGallery
-        agent={agent}
-        onLicensesChanged={() => void refreshLicenses()}
-      />
-
-      <LicenseFormFull
-        agent={agent}
-        onLicensesChanged={() => void refreshLicenses()}
-      />
+                        })()}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <code
+                          className="text-[0.7rem] break-all text-muted-foreground"
+                          title={r.cid}
+                        >
+                          {ellipsizeMiddle(r.cid, 10, 8)}
+                        </code>
+                      </td>
+                      <td className="px-3 py-2 align-top text-muted-foreground whitespace-nowrap">
+                        {r.terms.createdAt?.slice(0, 10) ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 align-top whitespace-nowrap">
+                        <a
+                          href={`/license/${encodeURIComponent(r.cid)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline-offset-2 hover:underline"
+                        >
+                          Inspect
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
