@@ -2,12 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { LicenseFormFull } from "@/components/merchant/LicenseFormFull";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   listLicenseTermsRows,
   type LicenseTermsRow,
@@ -47,12 +42,12 @@ export function LicensePage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">Licenses</h1>
         <p className="text-sm text-muted-foreground max-w-2xl">
-          Each license is a full{" "}
+          Licenses are purchase agreements that outline the terms of a sale.
+          This document is saved to your PDS as a{" "}
           <code className="text-xs rounded bg-muted px-1 py-0.5">
             license.terms
           </code>{" "}
-          record — a plain-language contract you write yourself. Save it once
-          on your PDS; uploads and listings reference it by URI.
+          record. You can write your own license, or start from a template.
         </p>
       </div>
 
