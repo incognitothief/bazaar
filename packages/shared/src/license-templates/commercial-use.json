@@ -1,0 +1,7 @@
+{
+  "$type": "diamonds.whereditgo.bazaar.license.terms",
+  "title": "Commercial Use",
+  "version": "1.0",
+  "checkoutConsentRequired": true,
+  "licenseText": "This license grants the buyer the right to stream, download, and use this work for commercial purposes. Attribution to the original creator is required. This license does not include the right to create derivative works, synchronize this work with video, or broadcast it. If this work is based on an underlying composition owned by a third party, the buyer is responsible for separately clearing any composition-side (publishing) rights."
+}

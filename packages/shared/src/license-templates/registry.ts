@@ -1,37 +1,17 @@
-import broadcast from "./broadcast.json" with { type: "json" };
 import ccBy4 from "./cc-by-4.json" with { type: "json" };
 import ccByNc4 from "./cc-by-nc-4.json" with { type: "json" };
 import ccByNcNd4 from "./cc-by-nc-nd-4.json" with { type: "json" };
 import ccByNcSa4 from "./cc-by-nc-sa-4.json" with { type: "json" };
 import ccBySa4 from "./cc-by-sa-4.json" with { type: "json" };
-import commercialDerivativesMaster from "./commercial-derivatives-master.json" with { type: "json" };
-import commercialMasterOnly from "./commercial-master-only.json" with { type: "json" };
-import mechanical from "./mechanical.json" with { type: "json" };
+import commercialUse from "./commercial-use.json" with { type: "json" };
 import personalUse from "./personal-use.json" with { type: "json" };
-import personalUseAttribution from "./personal-use-attribution.json" with { type: "json" };
-import stemLicense from "./stem-license.json" with { type: "json" };
-import syncFullClearance from "./sync-full-clearance.json" with { type: "json" };
-import syncMasterOnly from "./sync-master-only.json" with { type: "json" };
-import syncPublishingOnly from "./sync-publishing-only.json" with { type: "json" };
 
 /** How much context the merchant (and often the buyer) must understand to use the template responsibly. */
-export type LicenseTemplateComplexity =
-  | "simple"
-  | "moderate"
-  | "advanced"
-  | "creativeCommons";
+export type LicenseTemplateComplexity = "simple" | "creativeCommons";
 
 export type LicenseTemplateId =
   | "personal-use"
-  | "personal-use-attribution"
-  | "commercial-master-only"
-  | "commercial-derivatives-master"
-  | "stem-license"
-  | "sync-master-only"
-  | "sync-publishing-only"
-  | "sync-full-clearance"
-  | "broadcast"
-  | "mechanical"
+  | "commercial-use"
   | "cc-by-4"
   | "cc-by-nc-4"
   | "cc-by-nc-nd-4"
@@ -42,18 +22,9 @@ export type LicenseTemplateId =
 export type LicenseTemplateRecord = {
   $type: "diamonds.whereditgo.bazaar.license.terms";
   title: string;
-  tier: string;
-  rightsType: string;
   version: string;
-  territoryCoverage: { scope: string; territories?: string[] };
+  licenseText: string;
   checkoutConsentRequired: boolean;
-  usageRestrictions?: Record<string, boolean | undefined>;
-  summary?: string;
-  humanReadableUrl?: string;
-  term?: { durationMonths?: number; expiresAt?: string };
-  proNotice?: Record<string, string | undefined>;
-  legalMetadata?: Record<string, string | number | undefined>;
-  editionSize?: number;
 };
 
 export type LicenseTemplateDefinition = {
@@ -71,71 +42,15 @@ const RAW: readonly (Omit<LicenseTemplateDefinition, "record"> & {
     id: "personal-use",
     complexity: "simple",
     guidance:
-      "No extra configuration — the default paid personal-listening grant. Buyers confirm terms at checkout.",
+      "No extra configuration — the default paid personal-use grant. Buyers confirm terms at checkout.",
     record: personalUse,
   },
   {
-    id: "personal-use-attribution",
+    id: "commercial-use",
     complexity: "simple",
     guidance:
-      "Like personal use, but buyers must credit you when they share or reference the work in public.",
-    record: personalUseAttribution,
-  },
-  {
-    id: "commercial-master-only",
-    complexity: "moderate",
-    guidance:
-      "Buyers may monetize the recording; they remain responsible for composition / publishing clearance.",
-    record: commercialMasterOnly,
-  },
-  {
-    id: "commercial-derivatives-master",
-    complexity: "moderate",
-    guidance:
-      "Adds remix and edit rights on the master. Publishing is still on the buyer — set expectations in your listing copy.",
-    record: commercialDerivativesMaster,
-  },
-  {
-    id: "stem-license",
-    complexity: "moderate",
-    guidance:
-      "For stem packs: buyers may build new commercial works from stems; attribution stays required.",
-    record: stemLicense,
-  },
-  {
-    id: "sync-master-only",
-    complexity: "advanced",
-    guidance:
-      "Sync on the recording only — buyers still clear publishing. Often paired with project disclosure at checkout.",
-    record: syncMasterOnly,
-  },
-  {
-    id: "sync-publishing-only",
-    complexity: "advanced",
-    guidance:
-      "Composition-side sync only; buyers must license the master elsewhere. Best when you control publishing, not the recording.",
-    record: syncPublishingOnly,
-  },
-  {
-    id: "sync-full-clearance",
-    complexity: "advanced",
-    guidance:
-      "You are offering both master and publishing for sync in one sale — only choose if you truly control both stacks.",
-    record: syncFullClearance,
-  },
-  {
-    id: "broadcast",
-    complexity: "advanced",
-    guidance:
-      "Radio, TV, and platform broadcast; mechanical reporting applies. Buyers need a clear picture of performance obligations.",
-    record: broadcast,
-  },
-  {
-    id: "mechanical",
-    complexity: "advanced",
-    guidance:
-      "Cover-version / new-recording right on the composition only — not your original master. Buyers record their own version.",
-    record: mechanical,
+      "Buyers may use the work commercially. Review the text and adjust it if you need to carve out rights you don't actually hold.",
+    record: commercialUse,
   },
   {
     id: "cc-by-4",
@@ -185,7 +100,7 @@ export const LICENSE_TEMPLATE_IDS = LICENSE_TEMPLATE_DEFINITIONS.map(
 ) as unknown as readonly LicenseTemplateId[];
 
 export const LICENSE_TEMPLATE_COMPLEXITY_ORDER: readonly LicenseTemplateComplexity[] =
-  ["simple", "moderate", "advanced", "creativeCommons"];
+  ["simple", "creativeCommons"];
 
 export const LICENSE_TEMPLATE_COMPLEXITY_META: Record<
   LicenseTemplateComplexity,
@@ -194,17 +109,7 @@ export const LICENSE_TEMPLATE_COMPLEXITY_META: Record<
   simple: {
     label: "Simple",
     description:
-      "Straightforward paid licenses — few follow-up questions from buyers if your listing matches the template.",
-  },
-  moderate: {
-    label: "Moderate",
-    description:
-      "Commercial use on the master; buyers often must clear publishing or understand remix boundaries themselves.",
-  },
-  advanced: {
-    label: "Advanced",
-    description:
-      "Sync, broadcast, or mechanical grants — split rights, PRO reporting, and project context matter.",
+      "Starter contracts you can use as-is or edit freely before saving — few follow-up questions from buyers if your listing matches the text.",
   },
   creativeCommons: {
     label: "Creative Commons",
@@ -234,23 +139,18 @@ export function stripLicenseTemplateType(
 }
 
 /**
- * Match dedupe per alignment: `title` + `version` + `tier` + `rightsType`.
+ * Dedupe match: `title` + `version`. Once a merchant edits a template's text
+ * in the document editor, it's a distinct license even if title/version
+ * happen to match — this is intentionally a light heuristic, not identity.
  * Pass a license record value from the PDS (with those fields).
  */
 export function licenseRecordMatchesTemplate(
   value: {
     title?: string;
     version?: string;
-    tier?: string;
-    rightsType?: string;
   },
   def: LicenseTemplateDefinition,
 ): boolean {
   const r = def.record;
-  return (
-    value.title === r.title &&
-    value.version === r.version &&
-    value.tier === r.tier &&
-    value.rightsType === r.rightsType
-  );
+  return value.title === r.title && value.version === r.version;
 }

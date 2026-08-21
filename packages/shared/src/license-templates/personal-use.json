@@ -1,21 +1,7 @@
 {
   "$type": "diamonds.whereditgo.bazaar.license.terms",
   "title": "Personal Use",
-  "tier": "personal",
-  "rightsType": "master",
   "version": "1.0",
-  "territoryCoverage": { "scope": "worldwide" },
   "checkoutConsentRequired": true,
-  "usageRestrictions": {
-    "allowsStreaming": true,
-    "allowsDownload": true,
-    "allowsCommercialUse": false,
-    "allowsDerivatives": false,
-    "allowsSync": false,
-    "allowsBroadcast": false,
-    "requiresAttribution": false,
-    "requiresMechanicalReporting": false,
-    "requiresShareAlike": false
-  },
-  "summary": "For personal listening only. No commercial use, sync, broadcast, or derivative works permitted."
+  "licenseText": "This license grants the buyer the right to stream and download this work for personal, non-commercial use only. Commercial use, synchronization with video, broadcast, and creation of derivative works are not permitted under this license."
 }
