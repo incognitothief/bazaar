@@ -642,7 +642,7 @@ export function ListingsPage() {
                     >
                       <span className="font-medium">{row.terms.title}</span>
                       <span className="block text-xs text-muted-foreground mt-1">
-                        {row.terms.tier} · {row.terms.version}
+                        {row.terms.version}
                       </span>
                     </button>
                   );

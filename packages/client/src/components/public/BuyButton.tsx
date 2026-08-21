@@ -32,9 +32,6 @@ export function BuyButton({
   const consentOk = !needsConsent || agreed;
   const disabled = !consentOk || loading;
 
-  const href =
-    licenseTerms?.humanReadableUrl ?? "https://creativecommons.org/licenses/";
-
   async function onBuy() {
     if (!session?.did) return;
     setErr(null);
@@ -113,16 +110,7 @@ export function BuyButton({
                   htmlFor="license-consent"
                   className="font-normal leading-snug"
                 >
-                  I agree to the{" "}
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-primary underline underline-offset-2"
-                  >
-                    license terms
-                  </a>{" "}
-                  for this purchase.
+                  I agree to the license terms for this purchase.
                 </Label>
                 <p
                   id="license-consent-desc"
@@ -130,6 +118,16 @@ export function BuyButton({
                 >
                   {item.title}
                 </p>
+                {licenseTerms?.licenseText ? (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer text-primary underline underline-offset-2">
+                      Read license terms
+                    </summary>
+                    <p className="mt-1 whitespace-pre-wrap">
+                      {licenseTerms.licenseText}
+                    </p>
+                  </details>
+                ) : null}
               </div>
             </div>
           ) : null}

@@ -100,9 +100,9 @@ export function LicenseTemplateGallery({
                         <span className="font-medium leading-snug">
                           {def.record.title}
                         </span>
-                        {def.record.summary ? (
-                          <span className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                            {def.record.summary}
+                        {def.record.licenseText ? (
+                          <span className="mt-2 line-clamp-4 text-sm text-muted-foreground leading-relaxed">
+                            {def.record.licenseText}
                           </span>
                         ) : null}
                         <span className="mt-3 text-xs text-muted-foreground border-t border-border/60 pt-3 leading-relaxed">

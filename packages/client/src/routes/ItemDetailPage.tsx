@@ -696,8 +696,8 @@ export function ItemDetailPage() {
 
       <section>
         <h2 className="text-lg font-medium mb-2">License</h2>
-        <p className="text-sm text-muted-foreground">
-          {license?.summary ??
+        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+          {license?.licenseText ??
             "Personal use license. Download and listen for your own enjoyment."}
         </p>
       </section>

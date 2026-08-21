@@ -77,14 +77,10 @@ export function scoreCompleteness(item: CompletenessSubject): CompletenessScore 
   }
 
   if (!item.isrc?.trim()) optKeys.push("isrc");
-  const pro = (
-    item as { legalMetadata?: { proMembership?: string } }
-  ).legalMetadata?.proMembership;
-  if (!pro?.trim()) optKeys.push("proMembership");
 
   const nReq = 6;
   const nRec = item.itemClass === "track" ? 4 : 3;
-  const nOpt = 2;
+  const nOpt = 1;
   const perReq = 55 / nReq;
   const perRec = 30 / nRec;
   const perOpt = 15 / nOpt;

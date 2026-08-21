@@ -617,8 +617,7 @@ export function UploadDigitalPage() {
                         >
                           <p className="text-sm font-medium">{row.terms.title}</p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {row.terms.tier} · {row.terms.rightsType} · v
-                            {row.terms.version}
+                            v{row.terms.version}
                           </p>
                         </button>
                       );
@@ -659,7 +658,7 @@ export function UploadDigitalPage() {
                               {def.record.title}
                             </p>
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                              {def.record.summary}
+                              {def.record.licenseText}
                             </p>
                           </button>
                         ))}

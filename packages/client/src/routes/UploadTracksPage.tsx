@@ -3609,7 +3609,7 @@ export function UploadTracksPage() {
                       >
                         <p className="font-medium">{row.terms.title}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {row.terms.tier} · {row.terms.rightsType}
+                          {row.terms.version}
                         </p>
                       </button>
                     );
@@ -3647,7 +3647,7 @@ export function UploadTracksPage() {
                           >
                             <p className="font-medium">{def.record.title}</p>
                             <p className="text-xs text-muted-foreground line-clamp-2">
-                              {def.record.summary}
+                              {def.record.licenseText}
                             </p>
                           </button>
                         ))}

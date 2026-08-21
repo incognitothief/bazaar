@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { useAtpSession } from "@/hooks/useAtpSession";
+import { LicenseFormFull } from "@/components/merchant/LicenseFormFull";
 import { LicenseTemplateGallery } from "@/components/merchant/LicenseTemplateGallery";
 import {
   listLicenseTermsRows,
@@ -45,14 +46,13 @@ export function LicensePage() {
           <code className="text-xs rounded bg-muted px-1 py-0.5">
             license.terms
           </code>{" "}
-          record. Templates are grouped by how much you and your buyers need to
-          understand to use them well — from everyday paid downloads to sync,
-          broadcast, and Creative Commons public grants.
+          record — a plain-language contract you write yourself. Start from a
+          starter template or write one from scratch below.
         </p>
         <p className="text-sm text-muted-foreground max-w-2xl">
-          Save a template to your PDS once; uploads and listings can reference
-          it by URI. If a matching record already exists (same title, version,
-          tier, and rights type), we reuse it instead of creating a duplicate.
+          Save a license to your PDS once; uploads and listings can reference
+          it by URI. If a matching record already exists (same title and
+          version), we reuse it instead of creating a duplicate.
         </p>
       </div>
 
@@ -73,8 +73,6 @@ export function LicensePage() {
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Title</th>
-                  <th className="px-3 py-2 font-medium">Tier</th>
-                  <th className="px-3 py-2 font-medium">Rights</th>
                   <th className="px-3 py-2 font-medium">Version</th>
                   <th className="px-3 py-2 font-medium">Record URI</th>
                   <th className="px-3 py-2 font-medium">CID</th>
@@ -89,12 +87,6 @@ export function LicensePage() {
                   >
                     <td className="px-3 py-2 align-top font-medium">
                       {r.terms.title}
-                    </td>
-                    <td className="px-3 py-2 align-top text-muted-foreground">
-                      {r.terms.tier}
-                    </td>
-                    <td className="px-3 py-2 align-top text-muted-foreground">
-                      {r.terms.rightsType}
                     </td>
                     <td className="px-3 py-2 align-top text-muted-foreground">
                       {r.terms.version}
@@ -146,6 +138,11 @@ export function LicensePage() {
       </section>
 
       <LicenseTemplateGallery
+        agent={agent}
+        onLicensesChanged={() => void refreshLicenses()}
+      />
+
+      <LicenseFormFull
         agent={agent}
         onLicensesChanged={() => void refreshLicenses()}
       />

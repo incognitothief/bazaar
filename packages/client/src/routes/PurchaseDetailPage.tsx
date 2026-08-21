@@ -304,17 +304,11 @@ export function PurchaseDetailPage() {
 
       <section className="space-y-2">
         <h2 className="text-lg font-medium">Terms at time of purchase</h2>
-        <p className="text-sm text-muted-foreground">
-          {license?.summary ?? "License terms could not be loaded."}
+        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+          {license?.licenseText ?? "License terms could not be loaded."}
         </p>
         {consent ? (
           <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-            {consent.usageTier ? (
-              <li>Tier selected: {consent.usageTier}</li>
-            ) : null}
-            {consent.syncProject ? (
-              <li>Project: {consent.syncProject}</li>
-            ) : null}
             <li>
               Consented at: {new Date(consent.consentedAt).toLocaleString()}
             </li>
