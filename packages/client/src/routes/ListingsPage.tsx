@@ -616,9 +616,9 @@ export function ListingsPage() {
             <Label>License</Label>
             {licenseRows.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Save templates on{" "}
+                No licenses yet.{" "}
                 <Link to="/merchant/license" className="underline underline-offset-2">
-                  License templates
+                  Create one
                 </Link>
                 .
               </p>
@@ -649,6 +649,14 @@ export function ListingsPage() {
                 })}
               </div>
             )}
+            {licenseRows.length > 0 ? (
+              <Link
+                to="/merchant/license"
+                className="text-sm text-primary underline-offset-2 hover:underline"
+              >
+                Don't see the right license? Create one
+              </Link>
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
