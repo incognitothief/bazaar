@@ -19,7 +19,55 @@ function clientScope(oauthClient: OAuthClient): string {
   return oauthClient.clientMetadata.scope ?? buildOAuthScopeString();
 }
 import type { Db } from "../db";
-import { meta } from "../db/schema";
+import { licenses, meta } from "../db/schema";
+
+const LICENSE_TERMS_COLLECTION = "diamonds.whereditgo.bazaar.license.terms";
+
+/**
+ * Best-effort write-time capture of license.terms content into the local
+ * licenses table, keyed by CID. Never throws — the PDS write already
+ * succeeded by the time this runs, so a capture failure must not fail the
+ * request. license.terms is create-only (no update scope), so this only
+ * needs to hook createRecord, not putRecord.
+ */
+async function captureLicenseTerms(
+  db: Db,
+  merchantDid: string,
+  record: unknown,
+  uri: string,
+  cid: string,
+): Promise<void> {
+  if (typeof record !== "object" || record === null) return;
+  const r = record as Record<string, unknown>;
+  const title = r.title;
+  const version = r.version;
+  const licenseText = r.licenseText;
+  const checkoutConsentRequired = r.checkoutConsentRequired;
+  if (
+    typeof title !== "string" ||
+    typeof version !== "string" ||
+    typeof licenseText !== "string" ||
+    typeof checkoutConsentRequired !== "boolean"
+  ) {
+    return;
+  }
+  try {
+    await db
+      .insert(licenses)
+      .values({
+        cid,
+        uri,
+        merchantDid,
+        title,
+        version,
+        licenseText,
+        checkoutConsentRequired,
+      })
+      .onConflictDoNothing();
+  } catch {
+    // Best-effort — the PDS write already succeeded.
+  }
+}
 
 const COOKIE = "bazaar_atp_session";
 const COOKIE_OPTS = {
@@ -249,6 +297,15 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       record: body.record as Record<string, unknown>,
       ...(body.rkey ? { rkey: body.rkey } : {}),
     });
+    if (body.collection === LICENSE_TERMS_COLLECTION) {
+      await captureLicenseTerms(
+        db,
+        did,
+        body.record,
+        res.data.uri,
+        res.data.cid,
+      );
+    }
     return c.json({ uri: res.data.uri, cid: res.data.cid });
   });
 

@@ -50,6 +50,13 @@
       "when": 1775453019837,
       "tag": "0006_merchant_business_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787275983951,
+      "tag": "0007_quick_robin_chapel",
+      "breakpoints": true
     }
   ]
 }
