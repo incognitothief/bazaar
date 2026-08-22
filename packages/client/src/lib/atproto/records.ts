@@ -619,6 +619,123 @@ export function incrementLicenseVersion(version: string): string {
   return `${prefix}${Number(num) + 1}${suffix}`;
 }
 
+export type CatalogItemRow = {
+  uri: string;
+  cid: string;
+  sellerDid: string;
+  title: string;
+  category: string | null;
+  description: string | null;
+  format: string | null;
+  fileChecksum: string | null;
+  fileCid: string | null;
+  supersedes: string | null;
+  recordCreatedAt: string | null;
+  capturedAt: string;
+  updatedAt: string;
+};
+
+export type CatalogProductRow = {
+  uri: string;
+  cid: string;
+  sellerDid: string;
+  title: string;
+  description: string | null;
+  items: Array<{ uri: string; cid?: string; itemType: string; variantSku?: string }>;
+  recordCreatedAt: string | null;
+  capturedAt: string;
+  updatedAt: string;
+};
+
+/** ERP-first: the merchant's full catalog.item list, from GET /api/merchant/catalog/items. */
+export async function listCatalogItemRows(): Promise<CatalogItemRow[]> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/items"), {
+    credentials: "include",
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { items: CatalogItemRow[] };
+  return data.items;
+}
+
+/** ERP-first: the merchant's full catalog.product list, from GET /api/merchant/catalog/products. */
+export async function listCatalogProductRows(): Promise<CatalogProductRow[]> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products"), {
+    credentials: "include",
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { products: CatalogProductRow[] };
+  return data.products;
+}
+
+/** ERP-first, public: a single catalog.item by URI (no auth needed, same data storefront reads use). */
+export async function getCatalogItem(uri: string): Promise<CatalogItemRow | null> {
+  const res = await fetch(
+    browserApiUrl(`/api/catalog/items?uri=${encodeURIComponent(uri)}`),
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { item: CatalogItemRow };
+  return data.item;
+}
+
+/** ERP-first, public: a single catalog.product by URI. */
+export async function getCatalogProduct(uri: string): Promise<CatalogProductRow | null> {
+  const res = await fetch(
+    browserApiUrl(`/api/catalog/products?uri=${encodeURIComponent(uri)}`),
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { product: CatalogProductRow };
+  return data.product;
+}
+
+/** Manual "Sync with PDS": re-fetches live and refreshes the ERP row. */
+export async function syncCatalogItem(uri: string): Promise<CatalogItemRow | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/items/sync"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uri }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { item: CatalogItemRow | null };
+  return data.item;
+}
+
+/** Manual "Sync with PDS" for a product. */
+export async function syncCatalogProduct(uri: string): Promise<CatalogProductRow | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/sync"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uri }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { product: CatalogProductRow | null };
+  return data.product;
+}
+
+/**
+ * Listings that pinned itemUri's CID (at listing-creation time) but would
+ * no longer match after saving newCid -- these need to be surfaced to the
+ * merchant before a product/item edit is saved, since the checkout-time
+ * pin check (see stripe.ts /checkout) would otherwise reject them cold for
+ * a buyer with no warning. Terminal statuses are excluded since they're
+ * already not purchasable for unrelated reasons.
+ */
+export function findStaleListingsForItem(
+  listingRows: ListingRow[],
+  itemUri: string,
+  newCid: string,
+): ListingRow[] {
+  return listingRows.filter((row) => {
+    const status = row.listing.status;
+    if (status === "archived" || status === "soldOut" || status === "superseded") {
+      return false;
+    }
+    const pinnedCid = row.listing.item.cid;
+    return row.listing.item.uri === itemUri && !!pinnedCid && pinnedCid !== newCid;
+  });
+}
+
 /**
  * Resolve storefront catalog item AT-URI from record key (TID) in the artist repo.
  * Tries digital → collection → physical (same order as storefront catalog).
