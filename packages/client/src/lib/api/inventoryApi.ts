@@ -223,6 +223,23 @@ export async function publishInventorySession(
   return res.json() as Promise<PublishInventorySnapshot>;
 }
 
+export type PublishProductSnapshot = {
+  productUri: string;
+  productCid: string;
+  items: Array<{ uri: string; cid: string }>;
+};
+
+/** Publishes a "product" inventoryKind session as catalog.item/catalog.product records. */
+export async function publishProductSession(
+  sessionId: string,
+): Promise<PublishProductSnapshot> {
+  const res = await invFetch(`/sessions/${sessionId}/publish-product`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
+  return res.json() as Promise<PublishProductSnapshot>;
+}
+
 export type InventoryPrefillPayload = {
   v: number;
   primaryItemUri: string;

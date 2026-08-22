@@ -17,6 +17,7 @@ import { DashboardPage } from "@/routes/DashboardPage";
 import { CustomerDashboardPage } from "./routes/CustomerDashboardPage";
 import { MerchantInventoryPage } from "@/routes/MerchantInventoryPage";
 import { MerchantInventoryEditPage } from "@/routes/MerchantInventoryEditPage";
+import { AddProductPage } from "@/routes/AddProductPage";
 import { UploadTracksPage } from "@/routes/UploadTracksPage";
 import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
 import { ListingsPage } from "@/routes/ListingsPage";
@@ -57,6 +58,7 @@ const router = createBrowserRouter([
         element: <Navigate to="/merchant/upload/tracks" replace />,
       },
       { path: "inventory", element: <MerchantInventoryPage /> },
+      { path: "inventory/new", element: <AddProductPage /> },
       {
         path: "inventory/edit",
         element: <MerchantInventoryEditPage />,
