@@ -17,6 +17,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db";
 import {
+  catalogProductAssets,
   inventoryPrefillLog,
   inventoryUploadObject,
   inventoryUploadPart,
@@ -24,6 +25,7 @@ import {
 } from "../db/schema";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { getSessionAgent } from "../lib/atproto/session";
+import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import { cidFromSha256Digest32 } from "../lib/r2/cid";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import {
@@ -1159,6 +1161,153 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     return c.json(snapshot);
   });
 
+  /**
+   * Publish path for catalog.item/catalog.product -- parallel to /publish
+   * above, not a replacement for it. Creates one catalog.item per uploaded
+   * item file, then one catalog.product referencing them via itemRef[],
+   * then captures both into the ERP mirror tables directly (server-side PDS
+   * writes here bypass the /repo/createRecord proxy's automatic capture
+   * hook, so this calls captureCatalogItem/captureCatalogProduct itself --
+   * the same functions that hook and the merchant "Sync with PDS" action
+   * use). No rights/composition sub-flow and no license step: catalog.item
+   * has no fields for either, and licensing is chosen only when a listing
+   * is created.
+   */
+  r.post("/sessions/:sessionId/publish-product", async (c) => {
+    const sess = await getSessionAgent(c, oauthClient);
+    if (!sess) return c.json({ error: "Unauthorized" }, 401);
+    const sessionId = c.req.param("sessionId");
+    const [session] = await db
+      .select()
+      .from(inventoryUploadSession)
+      .where(eq(inventoryUploadSession.id, sessionId));
+    if (!session || session.merchantDid !== sess.did)
+      return c.json({ error: "not_found" }, 404);
+    if (session.status !== "active")
+      return c.json({ error: "session_not_active" }, 400);
+
+    const objects = await db
+      .select()
+      .from(inventoryUploadObject)
+      .where(eq(inventoryUploadObject.sessionId, sessionId));
+    const masters = objects.filter((o) => o.role === "master");
+    for (const m of masters) {
+      if (m.status !== "completed" || !m.fileChecksum || !m.fileCid) {
+        return c.json({ error: "incomplete_uploads", objectId: m.id }, 400);
+      }
+    }
+
+    let draft: PublishProductDraftV1;
+    try {
+      draft = parsePublishProductDraft(session.draftJson);
+    } catch {
+      return c.json({ error: "invalid_draft" }, 400);
+    }
+    if (!draft.product?.title?.trim()) {
+      return c.json({ error: "product_title_required" }, 400);
+    }
+    if (!draft.items?.length) {
+      return c.json({ error: "items_required" }, 400);
+    }
+
+    let artObj: (typeof objects)[number] | undefined;
+    if (draft.product.artworkObjectId) {
+      artObj = objects.find(
+        (o) => o.id === draft.product.artworkObjectId && o.role === "artwork",
+      );
+      if (!artObj || artObj.status !== "completed") {
+        return c.json(
+          { error: "invalid_product_artwork", objectId: draft.product.artworkObjectId },
+          400,
+        );
+      }
+    }
+
+    const masterByObjectId = new Map(masters.map((m) => [m.id, m]));
+    const itemType = col("catalog.item");
+    const productType = col("catalog.product");
+
+    const createdItems: Array<{ uri: string; cid: string }> = [];
+    for (const it of draft.items) {
+      const mo = masterByObjectId.get(it.objectId);
+      if (!mo) {
+        return c.json({ error: "unknown_item_object", objectId: it.objectId }, 400);
+      }
+      if (!it.title?.trim()) {
+        return c.json({ error: "item_title_required", objectId: it.objectId }, 400);
+      }
+      const record: Record<string, unknown> = {
+        $type: itemType,
+        title: it.title.trim(),
+        sellerDid: sess.did,
+        fileChecksum: mo.fileChecksum!,
+        fileCid: mo.fileCid!,
+        format: it.format?.trim() || inferFormat(mo.fileName, mo.contentType),
+        createdAt: new Date().toISOString(),
+      };
+      if (it.category?.trim()) record.category = it.category.trim();
+
+      const res = await sess.agent.com.atproto.repo.createRecord({
+        repo: sess.did,
+        collection: itemType,
+        record,
+      });
+      await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid);
+      createdItems.push({ uri: res.data.uri, cid: res.data.cid });
+    }
+
+    const productRecord: Record<string, unknown> = {
+      $type: productType,
+      title: draft.product.title.trim(),
+      sellerDid: sess.did,
+      items: createdItems.map((it) => ({ uri: it.uri, cid: it.cid, itemType })),
+      createdAt: new Date().toISOString(),
+    };
+    if (draft.product.description?.trim()) {
+      productRecord.description = draft.product.description.trim().slice(0, 4096);
+    }
+
+    const productRes = await sess.agent.com.atproto.repo.createRecord({
+      repo: sess.did,
+      collection: productType,
+      record: productRecord,
+    });
+    await captureCatalogProduct(
+      db,
+      sess.did,
+      productRecord,
+      productRes.data.uri,
+      productRes.data.cid,
+    );
+
+    if (artObj) {
+      await db.insert(catalogProductAssets).values({
+        id: randomUUID(),
+        productUri: productRes.data.uri,
+        objectId: artObj.id,
+        role: "coverArt",
+      });
+    }
+
+    const snapshot = {
+      productUri: productRes.data.uri,
+      productCid: productRes.data.cid,
+      items: createdItems,
+    };
+    await db
+      .update(inventoryUploadSession)
+      .set({
+        status: "completed",
+        publishedAt: new Date(),
+        publishError: null,
+        pdsSnapshotJson: JSON.stringify(snapshot),
+        updatedAt: new Date(),
+      })
+      .where(eq(inventoryUploadSession.id, sessionId));
+
+    return c.json(snapshot);
+  });
+
   return r;
 }
 
@@ -1302,6 +1451,36 @@ function parsePublishDraft(raw: string | null): PublishDraftV1 {
   const d = JSON.parse(raw) as PublishDraftV1;
   if (!d.tracks || !Array.isArray(d.tracks)) throw new Error("tracks");
   return d;
+}
+
+type PublishProductDraftV1 = {
+  product: {
+    title: string;
+    description?: string;
+    artworkObjectId?: string;
+  };
+  items: Array<{
+    objectId: string;
+    title: string;
+    category?: string;
+    format?: string;
+  }>;
+};
+
+function parsePublishProductDraft(raw: string | null): PublishProductDraftV1 {
+  if (!raw) throw new Error("empty");
+  const d = JSON.parse(raw) as PublishProductDraftV1;
+  if (!d.product || typeof d.product !== "object") throw new Error("product");
+  if (!d.items || !Array.isArray(d.items)) throw new Error("items");
+  return d;
+}
+
+/** Generic, non-audio-specific single-format guess: file extension, falling back to the MIME subtype. */
+function inferFormat(fileName: string, contentType?: string | null): string {
+  const ext = fileName.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (ext) return ext;
+  const subtype = contentType?.split("/")[1];
+  return subtype || "other";
 }
 
 function inferFormats(fileName: string, contentType?: string | null): string[] {
