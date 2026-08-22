@@ -1,0 +1,65 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.catalog.item",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "title",
+          "sellerDid",
+          "createdAt"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Freely mutable via putRecord."
+          },
+          "sellerDid": {
+            "type": "string",
+            "format": "did",
+            "description": "Immutable. Ownership transfer is not supported."
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Freeform, seller-authored category (e.g. track, sample pack, ebook, brush pack). No fixed taxonomy. Freely mutable via putRecord."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Freely mutable via putRecord."
+          },
+          "format": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "e.g. flac, mp3-320, wav, pdf, zip. Absent for non-file (dispensable) items. [immutable — new record required if changed]"
+          },
+          "fileChecksum": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "SHA-256 hex digest computed server-side from the received file bytes before S3 write. Verifiable by any standard tooling without ATProto context. Absent for non-file (dispensable) items — a license key or similar is not one fixed, publicly hashable payload. [immutable — new record required if changed]"
+          },
+          "fileCid": {
+            "type": "string",
+            "format": "cid",
+            "description": "IPLD CID computed by the backend from the file content locally, not derived from any PDS operation. Content-addressed reference used for integrity verification. Absent for non-file (dispensable) items. [immutable — new record required if changed]"
+          },
+          "supersedes": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the previous version of this item record. Present only when this record was created to replace an earlier version. Forms a resolvable version chain. The superseded record is never deleted."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Immutable."
+          }
+        }
+      }
+    }
+  }
+}

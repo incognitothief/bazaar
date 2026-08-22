@@ -16,13 +16,14 @@ import { pdslsRecordUrl } from "@/lib/pdsls";
 import { getRecordValue, listPurchaseConsentRows } from "@/lib/atproto/records";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { agentForRepo } from "@/lib/atproto/pdsResolve";
-import type {
-  CatalogItem,
-  Collection,
-  DigitalItem,
-  LicenseTerms,
-  PurchaseConsent,
-  PurchaseReceipt,
+import {
+  catalogItemArtworkCid,
+  type CatalogItem,
+  type Collection,
+  type DigitalItem,
+  type LicenseTerms,
+  type PurchaseConsent,
+  type PurchaseReceipt,
 } from "@/types/lexicons";
 
 function formatMoney(m: { amount: number; currency: string }): string {
@@ -234,7 +235,7 @@ export function PurchaseDetailPage() {
           <ArtworkImage
             agent={agent}
             did={blobDid}
-            cid={item.artworkCid}
+            cid={catalogItemArtworkCid(item)}
             itemUri={receipt.item.uri}
             alt=""
             className="h-full w-full"

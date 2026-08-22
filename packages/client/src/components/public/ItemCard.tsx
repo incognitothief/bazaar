@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { formatMoney } from "@/lib/format";
-import type { CatalogItem, Listing } from "@/types/lexicons";
+import { catalogItemArtworkCid, type CatalogItem, type Listing } from "@/types/lexicons";
 import { ArtworkImage } from "./ArtworkImage";
 
 export function ItemCard({
@@ -25,7 +25,7 @@ export function ItemCard({
   preview?: boolean;
 }) {
   const title = item.title;
-  const artworkCid = item.artworkCid;
+  const artworkCid = catalogItemArtworkCid(item);
   const trackCount =
     item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
       ? item.items.filter((i) => i.role === "track").length

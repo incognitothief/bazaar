@@ -25,6 +25,10 @@ function repoAction(collection: string, action: "create" | "update"): string {
 export function bazaarRepoOAuthScopes(): string[] {
   const ns = lexiconNamespace();
   return [
+    repoAction(col(ns, "catalog.item"), "create"),
+    repoAction(col(ns, "catalog.item"), "update"),
+    repoAction(col(ns, "catalog.product"), "create"),
+    repoAction(col(ns, "catalog.product"), "update"),
     repoAction(col(ns, "catalog.item.digital"), "create"),
     repoAction(col(ns, "catalog.collection"), "create"),
     repoAction(col(ns, "catalog.listing"), "create"),

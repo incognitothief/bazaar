@@ -56,12 +56,14 @@ import {
   TrackList,
 } from "@/components/public/TrackList";
 import { Button } from "@/components/ui/button";
-import type {
-  ActorMerchant,
-  CatalogItem,
-  DigitalItem,
-  LicenseTerms,
-  Listing,
+import {
+  catalogItemArtworkCid,
+  catalogItemSellerDid,
+  type ActorMerchant,
+  type CatalogItem,
+  type DigitalItem,
+  type LicenseTerms,
+  type Listing,
 } from "@/types/lexicons";
 
 function formatMoney(m: { amount: number; currency: string }): string {
@@ -236,7 +238,7 @@ export function ItemDetailPage() {
   }, [relayAvatarUrl]);
 
   useEffect(() => {
-    const authorDid = item?.artistDid?.trim();
+    const authorDid = (item ? catalogItemSellerDid(item) : undefined)?.trim();
     if (!authorDid?.startsWith("did:")) {
       setRelayAvatarUrl(null);
       setAuthorDisplayName(null);
@@ -318,7 +320,7 @@ export function ItemDetailPage() {
         return null;
       });
     };
-  }, [agent, item?.artistDid]);
+  }, [agent, item ? catalogItemSellerDid(item) : undefined]);
 
   const isCollection =
     item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
@@ -406,7 +408,7 @@ export function ItemDetailPage() {
   const collectionTrackCount = isCollection
     ? item.items.filter((i) => i.role === "track").length
     : 0;
-  const authorDid = item.artistDid;
+  const authorDid = catalogItemSellerDid(item);
   const authorInitial =
     authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
 
@@ -528,7 +530,7 @@ export function ItemDetailPage() {
           <ArtworkImage
             agent={agent}
             did={blobDid}
-            cid={item.artworkCid}
+            cid={catalogItemArtworkCid(item)}
             itemUri={itemUri}
             alt=""
             className="h-full w-full"
