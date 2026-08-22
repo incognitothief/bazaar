@@ -422,7 +422,7 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
     } else if (body.collection === CATALOG_PRODUCT_COLLECTION) {
       await captureCatalogProduct(db, did, body.record, res.data.uri, res.data.cid);
     }
-    return c.json({ ok: true });
+    return c.json({ ok: true, uri: res.data.uri, cid: res.data.cid });
   });
 
   r.post("/repo/deleteRecord", async (c) => {

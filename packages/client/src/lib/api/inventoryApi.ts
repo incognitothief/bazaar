@@ -240,6 +240,17 @@ export async function publishProductSession(
   return res.json() as Promise<PublishProductSnapshot>;
 }
 
+/** Creates catalog.item records with no product wrapper -- used to add a new item to an existing product. */
+export async function publishItemsSession(
+  sessionId: string,
+): Promise<{ items: Array<{ uri: string; cid: string }> }> {
+  const res = await invFetch(`/sessions/${sessionId}/publish-items`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
+  return res.json() as Promise<{ items: Array<{ uri: string; cid: string }> }>;
+}
+
 export type InventoryPrefillPayload = {
   v: number;
   primaryItemUri: string;

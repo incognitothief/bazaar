@@ -10,6 +10,7 @@ import { agentForRepo } from "./pdsResolve";
 import type { ATPRepoClient } from "./session";
 import type {
   ActorMerchant,
+  BazaarItem,
   BazaarItemType,
   CatalogItem,
   Collection,
@@ -19,6 +20,7 @@ import type {
   LicenseTerms,
   Listing,
   PhysicalItem,
+  Product,
   PurchaseConsent,
   PurchaseReceipt,
   Recording,
@@ -714,25 +716,26 @@ export async function syncCatalogProduct(uri: string): Promise<CatalogProductRow
 }
 
 /**
- * Listings that pinned itemUri's CID (at listing-creation time) but would
- * no longer match after saving newCid -- these need to be surfaced to the
- * merchant before a product/item edit is saved, since the checkout-time
- * pin check (see stripe.ts /checkout) would otherwise reject them cold for
- * a buyer with no warning. Terminal statuses are excluded since they're
- * already not purchasable for unrelated reasons.
+ * Listings currently pinned to itemUri's CID -- i.e. the ones a save is
+ * about to invalidate. A record's post-edit CID isn't knowable ahead of
+ * the actual putRecord (it's content-addressed), so the check works off
+ * the *current* CID instead: any listing accurately pinned to it right now
+ * is exactly the set that will go stale the moment this save succeeds
+ * (the checkout-time pin check in stripe.ts /checkout would otherwise
+ * reject them cold for a buyer with no warning). Terminal statuses are
+ * excluded since they're already not purchasable for unrelated reasons.
  */
 export function findStaleListingsForItem(
   listingRows: ListingRow[],
   itemUri: string,
-  newCid: string,
+  currentCid: string,
 ): ListingRow[] {
   return listingRows.filter((row) => {
     const status = row.listing.status;
     if (status === "archived" || status === "soldOut" || status === "superseded") {
       return false;
     }
-    const pinnedCid = row.listing.item.cid;
-    return row.listing.item.uri === itemUri && !!pinnedCid && pinnedCid !== newCid;
+    return row.listing.item.uri === itemUri && row.listing.item.cid === currentCid;
   });
 }
 
@@ -978,6 +981,89 @@ export async function putPhysicalItem(
     swapRecord: cur.data.cid,
     record: merged as unknown as Record<string, unknown>,
   });
+}
+
+/** Only title/category/description are editable -- fileCid/fileChecksum/format/sellerDid are preserved as-authored. */
+export async function putCatalogItem(
+  agent: ATPRepoClient,
+  uri: string,
+  draft: { title: string; category?: string; description?: string },
+): Promise<{ cid: string }> {
+  const did = agent.session?.did;
+  if (!did) throw new Error("Not authenticated");
+  const at = new AtUri(uri);
+  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
+  if (at.hostname !== did) throw new Error("Record must be in your repo");
+  if (at.collection !== BAZAAR_COLLECTION.item) {
+    throw new Error("Not a catalog.item record");
+  }
+  const readAgent = await agentForRepo(did);
+  const cur = (await readAgent.com.atproto.repo.getRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+  })) as GetRecordResponse;
+  const prev = cur.data.value as BazaarItem;
+  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.item") {
+    throw new Error("Invalid record type");
+  }
+  const merged: BazaarItem = {
+    ...prev,
+    title: draft.title,
+    category: draft.category,
+    description: draft.description,
+  };
+  const res = (await agent.com.atproto.repo.putRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+    swapRecord: cur.data.cid,
+    record: merged as unknown as Record<string, unknown>,
+  })) as { cid: string };
+  return { cid: res.cid };
+}
+
+/** title/description/items are all editable -- items[] is mutable (see catalog.product.json). sellerDid/createdAt are preserved. */
+export async function putCatalogProduct(
+  agent: ATPRepoClient,
+  uri: string,
+  draft: { title: string; description?: string; items: ItemRef[] },
+): Promise<{ cid: string }> {
+  const did = agent.session?.did;
+  if (!did) throw new Error("Not authenticated");
+  const at = new AtUri(uri);
+  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
+  if (at.hostname !== did) throw new Error("Record must be in your repo");
+  if (at.collection !== BAZAAR_COLLECTION.product) {
+    throw new Error("Not a catalog.product record");
+  }
+  const readAgent = await agentForRepo(did);
+  const cur = (await readAgent.com.atproto.repo.getRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+  })) as GetRecordResponse;
+  const prev = cur.data.value as Product;
+  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.product") {
+    throw new Error("Invalid record type");
+  }
+  if (draft.items.length === 0) {
+    throw new Error("A product needs at least one item");
+  }
+  const merged: Product = {
+    ...prev,
+    title: draft.title,
+    description: draft.description,
+    items: draft.items,
+  };
+  const res = (await agent.com.atproto.repo.putRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+    swapRecord: cur.data.cid,
+    record: merged as unknown as Record<string, unknown>,
+  })) as { cid: string };
+  return { cid: res.cid };
 }
 
 export async function listTracksForArtist(

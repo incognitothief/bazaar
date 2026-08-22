@@ -1308,6 +1308,95 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     return c.json(snapshot);
   });
 
+  /**
+   * Publish just catalog.item records with no product wrapper -- used when
+   * adding a new item to an *existing* product (the product itself is
+   * updated separately via a normal putRecord once the item exists). Same
+   * validation/capture pattern as publish-product's item loop, factored out
+   * so both endpoints stay in sync rather than duplicating the field logic.
+   */
+  r.post("/sessions/:sessionId/publish-items", async (c) => {
+    const sess = await getSessionAgent(c, oauthClient);
+    if (!sess) return c.json({ error: "Unauthorized" }, 401);
+    const sessionId = c.req.param("sessionId");
+    const [session] = await db
+      .select()
+      .from(inventoryUploadSession)
+      .where(eq(inventoryUploadSession.id, sessionId));
+    if (!session || session.merchantDid !== sess.did)
+      return c.json({ error: "not_found" }, 404);
+    if (session.status !== "active")
+      return c.json({ error: "session_not_active" }, 400);
+
+    const objects = await db
+      .select()
+      .from(inventoryUploadObject)
+      .where(eq(inventoryUploadObject.sessionId, sessionId));
+    const masters = objects.filter((o) => o.role === "master");
+    for (const m of masters) {
+      if (m.status !== "completed" || !m.fileChecksum || !m.fileCid) {
+        return c.json({ error: "incomplete_uploads", objectId: m.id }, 400);
+      }
+    }
+
+    let draft: { items?: PublishProductDraftV1["items"] };
+    try {
+      draft = JSON.parse(session.draftJson ?? "null") as {
+        items?: PublishProductDraftV1["items"];
+      };
+    } catch {
+      return c.json({ error: "invalid_draft" }, 400);
+    }
+    if (!draft.items?.length) {
+      return c.json({ error: "items_required" }, 400);
+    }
+
+    const masterByObjectId = new Map(masters.map((m) => [m.id, m]));
+    const itemType = col("catalog.item");
+
+    const createdItems: Array<{ uri: string; cid: string }> = [];
+    for (const it of draft.items) {
+      const mo = masterByObjectId.get(it.objectId);
+      if (!mo) {
+        return c.json({ error: "unknown_item_object", objectId: it.objectId }, 400);
+      }
+      if (!it.title?.trim()) {
+        return c.json({ error: "item_title_required", objectId: it.objectId }, 400);
+      }
+      const record: Record<string, unknown> = {
+        $type: itemType,
+        title: it.title.trim(),
+        sellerDid: sess.did,
+        fileChecksum: mo.fileChecksum!,
+        fileCid: mo.fileCid!,
+        format: it.format?.trim() || inferFormat(mo.fileName, mo.contentType),
+        createdAt: new Date().toISOString(),
+      };
+      if (it.category?.trim()) record.category = it.category.trim();
+
+      const res = await sess.agent.com.atproto.repo.createRecord({
+        repo: sess.did,
+        collection: itemType,
+        record,
+      });
+      await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid);
+      createdItems.push({ uri: res.data.uri, cid: res.data.cid });
+    }
+
+    await db
+      .update(inventoryUploadSession)
+      .set({
+        status: "completed",
+        publishedAt: new Date(),
+        publishError: null,
+        pdsSnapshotJson: JSON.stringify({ items: createdItems }),
+        updatedAt: new Date(),
+      })
+      .where(eq(inventoryUploadSession.id, sessionId));
+
+    return c.json({ items: createdItems });
+  });
+
   return r;
 }
 

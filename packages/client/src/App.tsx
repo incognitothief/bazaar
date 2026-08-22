@@ -18,6 +18,7 @@ import { CustomerDashboardPage } from "./routes/CustomerDashboardPage";
 import { MerchantInventoryPage } from "@/routes/MerchantInventoryPage";
 import { MerchantInventoryEditPage } from "@/routes/MerchantInventoryEditPage";
 import { AddProductPage } from "@/routes/AddProductPage";
+import { MerchantProductDetailPage } from "@/routes/MerchantProductDetailPage";
 import { UploadTracksPage } from "@/routes/UploadTracksPage";
 import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
 import { ListingsPage } from "@/routes/ListingsPage";
@@ -59,6 +60,7 @@ const router = createBrowserRouter([
       },
       { path: "inventory", element: <MerchantInventoryPage /> },
       { path: "inventory/new", element: <AddProductPage /> },
+      { path: "inventory/products", element: <MerchantProductDetailPage /> },
       {
         path: "inventory/edit",
         element: <MerchantInventoryEditPage />,
