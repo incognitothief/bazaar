@@ -36,7 +36,7 @@
               "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
             },
             "minLength": 1,
-            "description": "The catalog.item records that compose this product, in display order. [immutable — new record required if changed]"
+            "description": "The catalog.item records that compose this product, in display order. Freely mutable via putRecord -- a listing pins the item/product CID it was created against (itemRef.cid), so editing a product's composition later cannot silently change what an existing buyer already paid for."
           },
           "createdAt": {
             "type": "string",
