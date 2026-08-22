@@ -5,6 +5,7 @@ import {
   stripLicenseTemplateType,
   type LicenseTemplateId,
 } from "@bazaar/shared";
+import { browserApiUrl } from "@/lib/browserApi";
 import { agentForRepo } from "./pdsResolve";
 import type { ATPRepoClient } from "./session";
 import type {
@@ -546,6 +547,76 @@ export async function listLicenseTermsRows(
 export async function listLicenseTerms(did: string): Promise<LicenseTerms[]> {
   const rows = await listLicenseTermsRows(did);
   return rows.map((r) => r.terms);
+}
+
+export type LicenseListRow = {
+  cid: string;
+  uri: string;
+  title: string;
+  version: string;
+  licenseText: string;
+  checkoutConsentRequired: boolean;
+  capturedAt: string;
+  /** True when this CID no longer resolves live on the PDS (deleted or
+   * otherwise changed) — the ERP-captured copy is what's being shown. */
+  retired: boolean;
+};
+
+type MerchantLicensesResponse = {
+  licenses: Array<{
+    cid: string;
+    uri: string;
+    title: string;
+    version: string;
+    licenseText: string;
+    checkoutConsentRequired: boolean;
+    capturedAt: string;
+  }>;
+};
+
+/**
+ * Full license history for the signed-in merchant (active and retired),
+ * sourced from the ERP (`GET /api/merchant/licenses`) and cross-referenced
+ * against a single live PDS listRecords call to determine which are still
+ * actually offered. This is the list-view counterpart to the inspector
+ * page's per-record PDS-first lookup — here we already need N rows of
+ * status, so one list call to annotate all of them is the efficient
+ * version of the same idea, not a repeat of the per-lookup case.
+ */
+export async function listLicensesWithStatus(
+  did: string,
+): Promise<LicenseListRow[]> {
+  const [captured, live] = await Promise.all([
+    fetch(browserApiUrl("/api/merchant/licenses"), {
+      credentials: "include",
+    })
+      .then(async (res) => {
+        if (!res.ok) return [];
+        const data = (await res.json()) as MerchantLicensesResponse;
+        return data.licenses;
+      })
+      .catch(() => [] as MerchantLicensesResponse["licenses"]),
+    listAllRecordsForCollection(did, BAZAAR_COLLECTION.licenseTerms).catch(
+      () => [] as Array<{ uri: string; cid: string; value: unknown }>,
+    ),
+  ]);
+  const liveCids = new Set(live.map((r) => r.cid));
+  return captured.map((row) => ({
+    ...row,
+    retired: !liveCids.has(row.cid),
+  }));
+}
+
+/** Increments the trailing numeric segment of a version string
+ * ("1.0" -> "1.1", "4.0" -> "4.1"). Falls back to an appended suffix if
+ * there's no trailing digit run to increment. Used by Revive to avoid
+ * a merchant having to hand-pick a version when recreating a retired
+ * license — not enforced anywhere, just a sane default. */
+export function incrementLicenseVersion(version: string): string {
+  const match = version.match(/^(.*?)(\d+)(\D*)$/);
+  if (!match) return `${version}-2`;
+  const [, prefix, num, suffix] = match;
+  return `${prefix}${Number(num) + 1}${suffix}`;
 }
 
 /**
