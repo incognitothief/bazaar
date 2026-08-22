@@ -18,12 +18,12 @@ const SIDEBAR_COLLAPSED_KEY = "bazaar_merchant_sidebar_collapsed";
 function isMerchantInventorySection(path: string): boolean {
   return (
     path.startsWith("/merchant/upload") ||
-    path.startsWith("/merchant/inventory")
+    path.startsWith("/merchant/inventory") ||
+    path.startsWith("/merchant/listings")
   );
 }
 
 const mainNav: { to: string; label: string }[] = [
-  { to: "/merchant/listings", label: "Listings" },
   { to: "/merchant/license", label: "Licenses" },
   { to: "/merchant/settings", label: "Settings" },
 ];
@@ -93,43 +93,48 @@ function MerchantNavPanel({
         </NavLink>
 
         <div className="shrink-0 rounded-md">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-left"
-            onClick={() => setInventoryOpen((o) => !o)}
-            aria-expanded={inventoryOpen}
-          >
-            <span className="font-medium">Inventory</span>
-            <ChevronDown
+          <div className="flex items-center">
+            <Link
+              to="/merchant/inventory"
               className={cn(
-                "size-4 shrink-0 text-muted-foreground transition-transform",
-                inventoryOpen && "rotate-180",
+                "flex-1 rounded-md px-2 py-1.5 text-sm font-medium hover:bg-muted",
+                location.pathname.startsWith("/merchant/inventory") &&
+                  "bg-muted",
               )}
-            />
-          </button>
+              onClick={() => {
+                setInventoryOpen(true);
+                onNavigate?.();
+              }}
+            >
+              Inventory
+            </Link>
+            <button
+              type="button"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
+              onClick={() => setInventoryOpen((o) => !o)}
+              aria-expanded={inventoryOpen}
+              aria-label="Toggle inventory submenu"
+            >
+              <ChevronDown
+                className={cn(
+                  "size-4 shrink-0 transition-transform",
+                  inventoryOpen && "rotate-180",
+                )}
+              />
+            </button>
+          </div>
           {inventoryOpen ? (
             <div className="mt-1 flex flex-col gap-0.5 border-l border-border ml-2 pl-2">
               <Link
-                to="/merchant/inventory"
+                to="/merchant/listings"
                 className={cn(
                   "rounded-md px-2 py-1.5 text-sm hover:bg-muted block",
-                  location.pathname.startsWith("/merchant/inventory") &&
+                  location.pathname.startsWith("/merchant/listings") &&
                     "bg-muted font-medium",
                 )}
                 onClick={onNavigate}
               >
-                All items
-              </Link>
-              <Link
-                to="/merchant/upload/tracks"
-                className={cn(
-                  "rounded-md px-2 py-1.5 text-sm hover:bg-muted block",
-                  location.pathname === "/merchant/upload/tracks" &&
-                    "bg-muted font-medium",
-                )}
-                onClick={onNavigate}
-              >
-                Upload tracks
+                Listings
               </Link>
             </div>
           ) : null}

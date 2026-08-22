@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   INVENTORY_VIEW_MODE_KEY,
   InventoryViewToggle,
@@ -12,7 +13,10 @@ import { MerchantItemCard } from "@/components/merchant/MerchantItemCard";
 import { MerchantItemRow } from "@/components/merchant/MerchantItemRow";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
-import { useMerchantCatalog } from "@/hooks/useMerchantCatalog";
+import {
+  useMerchantCatalog,
+  type MerchantItemRow as MerchantItemRowData,
+} from "@/hooks/useMerchantCatalog";
 import { putListing, type ListingRow } from "@/lib/atproto/records";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { createPublicAgent } from "@/lib/atproto/session";
@@ -52,6 +56,11 @@ function ListSkeleton() {
       ))}
     </div>
   );
+}
+
+/** Products/collections group items for sale; everything else is an atomic item. */
+function isGroupingKind(kind: MerchantItemRowData["kind"]): boolean {
+  return kind === "product" || kind === "collection";
 }
 
 export function MerchantInventoryPage() {
@@ -115,32 +124,77 @@ export function MerchantInventoryPage() {
     [agent, listingRows, applyListingUpdates],
   );
 
-  const empty = useMemo(
-    () => !loading && itemRows.length === 0 && !error,
-    [loading, itemRows.length, error],
+  const productRows = useMemo(
+    () => itemRows.filter((r) => isGroupingKind(r.kind)),
+    [itemRows],
+  );
+  const flatItemRows = useMemo(
+    () => itemRows.filter((r) => !isGroupingKind(r.kind)),
+    [itemRows],
   );
 
   if (!session || !agent) return null;
 
+  function renderRows(rows: MerchantItemRowData[]) {
+    if (view === "grid") {
+      return (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+          {rows.map((row) => (
+            <MerchantItemCard
+              key={row.uri}
+              agent={artworkAgent}
+              merchantDid={session!.did}
+              row={row}
+              listingRow={listingRowByItemUri[row.uri]}
+              pending={
+                listingRowByItemUri[row.uri]
+                  ? pendingUris.has(listingRowByItemUri[row.uri]!.uri)
+                  : false
+              }
+              onToggleStatus={() => {
+                const lr = listingRowByItemUri[row.uri];
+                if (lr) void toggleStatus(lr);
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
+    return (
+      <div className="overflow-hidden rounded-lg border border-border">
+        {rows.map((row) => (
+          <MerchantItemRow
+            key={row.uri}
+            agent={artworkAgent}
+            merchantDid={session!.did}
+            row={row}
+            listingRow={listingRowByItemUri[row.uri]}
+            pending={
+              listingRowByItemUri[row.uri]
+                ? pendingUris.has(listingRowByItemUri[row.uri]!.uri)
+                : false
+            }
+            onToggleStatus={() => {
+              const lr = listingRowByItemUri[row.uri];
+              if (lr) void toggleStatus(lr);
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="w-full min-w-0 space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Inventory</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Every item in your catalog. Prices and status come from{" "}
-            <Link
-              to="/merchant/listings"
-              className="underline underline-offset-2"
-            >
-              Listings
-            </Link>{" "}
-            — pause or activate an existing listing right here.
-          </p>
-        </div>
-        {!empty ? (
-          <InventoryViewToggle value={view} onChange={handleViewChange} />
-        ) : null}
+      <div>
+        <h1 className="text-2xl font-semibold">Inventory</h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Prices and status come from{" "}
+          <Link to="/merchant/listings" className="underline underline-offset-2">
+            Listings
+          </Link>{" "}
+          — pause or activate an existing listing right here.
+        </p>
       </div>
 
       {error ? (
@@ -149,65 +203,63 @@ export function MerchantInventoryPage() {
         </div>
       ) : null}
 
-      {loading ? (view === "grid" ? <GridSkeleton /> : <ListSkeleton />) : null}
-
-      {empty ? (
-        <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
-          <p>No catalog items yet.</p>
-          <Link
-            to="/merchant/upload/tracks"
-            className={cn(buttonVariants(), "mt-4 inline-flex")}
-          >
-            Upload tracks
-          </Link>
+      <Tabs defaultValue="products">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <TabsList>
+            <TabsTrigger value="products">Products</TabsTrigger>
+            <TabsTrigger value="items">All items</TabsTrigger>
+          </TabsList>
+          {!loading && itemRows.length > 0 ? (
+            <InventoryViewToggle value={view} onChange={handleViewChange} />
+          ) : null}
         </div>
-      ) : null}
 
-      {!loading && itemRows.length > 0 ? (
-        view === "grid" ? (
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-            {itemRows.map((row) => (
-              <MerchantItemCard
-                key={row.uri}
-                agent={artworkAgent}
-                merchantDid={session.did}
-                row={row}
-                listingRow={listingRowByItemUri[row.uri]}
-                pending={
-                  listingRowByItemUri[row.uri]
-                    ? pendingUris.has(listingRowByItemUri[row.uri]!.uri)
-                    : false
-                }
-                onToggleStatus={() => {
-                  const lr = listingRowByItemUri[row.uri];
-                  if (lr) void toggleStatus(lr);
-                }}
-              />
-            ))}
+        <TabsContent value="products" className="space-y-4">
+          <div className="flex justify-end">
+            <Link to="/merchant/inventory/new" className={cn(buttonVariants())}>
+              + Add a product
+            </Link>
           </div>
-        ) : (
-          <div className="overflow-hidden rounded-lg border border-border">
-            {itemRows.map((row) => (
-              <MerchantItemRow
-                key={row.uri}
-                agent={artworkAgent}
-                merchantDid={session.did}
-                row={row}
-                listingRow={listingRowByItemUri[row.uri]}
-                pending={
-                  listingRowByItemUri[row.uri]
-                    ? pendingUris.has(listingRowByItemUri[row.uri]!.uri)
-                    : false
-                }
-                onToggleStatus={() => {
-                  const lr = listingRowByItemUri[row.uri];
-                  if (lr) void toggleStatus(lr);
-                }}
-              />
-            ))}
-          </div>
-        )
-      ) : null}
+          {loading ? (
+            view === "grid" ? (
+              <GridSkeleton />
+            ) : (
+              <ListSkeleton />
+            )
+          ) : productRows.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
+              <p>No products yet.</p>
+              <Link
+                to="/merchant/inventory/new"
+                className={cn(buttonVariants(), "mt-4 inline-flex")}
+              >
+                + Add a product
+              </Link>
+            </div>
+          ) : (
+            renderRows(productRows)
+          )}
+        </TabsContent>
+
+        <TabsContent value="items" className="space-y-4">
+          {loading ? (
+            view === "grid" ? (
+              <GridSkeleton />
+            ) : (
+              <ListSkeleton />
+            )
+          ) : flatItemRows.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
+              <p>
+                No items yet — items are created as part of adding a
+                product.
+              </p>
+            </div>
+          ) : (
+            renderRows(flatItemRows)
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
