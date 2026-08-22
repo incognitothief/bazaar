@@ -74,20 +74,26 @@ export function LicenseInspectorPage() {
       const live = await getRecordValueWithCid<LicenseTerms>(captured.uri);
       if (cancelled) return;
 
-      // A CID match alone isn't enough -- a record still live on the PDS
-      // under a pre-reshape shape (no licenseText) would match on CID and
-      // then render blank if trusted outright. Only prefer live content
-      // when it actually has the field this page renders; otherwise the
-      // captured copy (which may hold a raw-JSON fallback for exactly this
-      // case) is the correct thing to show even though the record isn't
-      // technically retired.
-      if (live && live.cid === cid && typeof live.value.licenseText === "string") {
+      // "Retired" means the CID's content is no longer the current content
+      // at this URI -- genuinely gone, deleted, or superseded. A shape
+      // mismatch (a still-live pre-reshape record with no licenseText) is
+      // NOT retirement -- it's still exactly the current, active record,
+      // it just needs to render differently. Only fall back to the
+      // captured copy, and only mark Retired, when the live fetch actually
+      // failed or came back with different content than requested.
+      if (live && live.cid === cid) {
+        const rawLive = live.value as unknown as Record<string, unknown>;
+        const licenseText =
+          typeof rawLive.licenseText === "string"
+            ? rawLive.licenseText
+            : JSON.stringify(rawLive, null, 2);
         setLicense({
           cid,
           uri: captured.uri,
-          title: live.value.title,
-          version: live.value.version,
-          licenseText: live.value.licenseText,
+          title: typeof rawLive.title === "string" ? rawLive.title : captured.title,
+          version:
+            typeof rawLive.version === "string" ? rawLive.version : captured.version,
+          licenseText,
           retired: false,
         });
       } else {
