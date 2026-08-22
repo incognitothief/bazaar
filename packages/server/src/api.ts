@@ -44,7 +44,7 @@ export function createApiRouter(db: Db, oauthClient: OAuthClient) {
 
   api.route("/atproto", createAtprotoRouter(db, oauthClient));
   api.route("/stripe", createStripeRouter(db, oauthClient));
-  api.route("/catalog", createCatalogRouter());
+  api.route("/catalog", createCatalogRouter(db));
   api.route("/merchant", createMerchantRouter(db));
   api.route("/identifiers", createIdentifiersRouter(oauthClient));
   api.route("/inventory", createInventoryRouter(db, oauthClient));

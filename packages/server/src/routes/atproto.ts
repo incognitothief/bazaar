@@ -81,7 +81,7 @@ async function captureLicenseTerms(
  * still succeeded on the PDS, it just won't show up via ERP-first reads
  * until the merchant uses "Sync with PDS".
  */
-async function captureCatalogItem(
+export async function captureCatalogItem(
   db: Db,
   sellerDid: string,
   record: unknown,
@@ -119,7 +119,7 @@ async function captureCatalogItem(
 }
 
 /** Same upsert-by-URI pattern as captureCatalogItem, for catalog.product. */
-async function captureCatalogProduct(
+export async function captureCatalogProduct(
   db: Db,
   sellerDid: string,
   record: unknown,

@@ -1,14 +1,19 @@
 import { getCookie } from "hono/cookie";
+import { AtUri } from "@atproto/syntax";
 import { desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db";
 import {
+  catalogItems,
+  catalogProducts,
   licenses,
   merchantBusinessProfile,
   merchantStripeConfig,
   paymentFulfillment,
 } from "../db/schema";
+import { getAgentForDid } from "../lib/atproto/resolvePds";
+import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import {
   businessEmailFromEnv,
   businessNameFromEnv,
@@ -339,6 +344,110 @@ export function createMerchantRouter(db: Db) {
 
     const src = await stripeCredentialSources(db);
     return c.json({ ok: true, ...src });
+  });
+
+  /** Store-owner: ERP-first catalog.item list (the primary read path for merchant item views). */
+  r.get("/catalog/items", (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const rows = db
+      .select()
+      .from(catalogItems)
+      .where(eq(catalogItems.sellerDid, owner))
+      .orderBy(desc(catalogItems.capturedAt))
+      .all();
+    return c.json({ items: rows });
+  });
+
+  /** Store-owner: ERP-first catalog.product list. */
+  r.get("/catalog/products", (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const rows = db
+      .select()
+      .from(catalogProducts)
+      .where(eq(catalogProducts.sellerDid, owner))
+      .orderBy(desc(catalogProducts.capturedAt))
+      .all();
+    return c.json({
+      products: rows.map((row) => ({
+        ...row,
+        items: JSON.parse(row.items) as unknown,
+      })),
+    });
+  });
+
+  /**
+   * Store-owner: manual "Sync with PDS" for one catalog.item -- live
+   * getRecord + upsert into catalog_items. The event-triggered half of
+   * "PDS as keep-me-honest" (the other half is the checkout-time CID
+   * check); no background reconciliation job.
+   */
+  r.post("/catalog/items/sync", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const body = (await c.req.json().catch(() => null)) as { uri?: string } | null;
+    const uri = body?.uri;
+    if (!uri) return c.json({ error: "uri required" }, 400);
+    let at: AtUri;
+    try {
+      at = new AtUri(uri);
+    } catch {
+      return c.json({ error: "invalid_uri" }, 400);
+    }
+    if (at.hostname !== owner) {
+      return c.json({ error: "forbidden", detail: "uri does not belong to this deployment's ARTIST_DID" }, 403);
+    }
+    try {
+      const agent = await getAgentForDid(owner);
+      const res = await agent.com.atproto.repo.getRecord({
+        repo: at.hostname,
+        collection: at.collection,
+        rkey: at.rkey,
+      });
+      await captureCatalogItem(db, owner, res.data.value, res.data.uri, res.data.cid!);
+    } catch {
+      return c.json({ error: "sync_failed" }, 502);
+    }
+    const row = db.select().from(catalogItems).where(eq(catalogItems.uri, uri)).get();
+    return c.json({ item: row });
+  });
+
+  /** Store-owner: manual "Sync with PDS" for one catalog.product. Same shape as the item sync above. */
+  r.post("/catalog/products/sync", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const body = (await c.req.json().catch(() => null)) as { uri?: string } | null;
+    const uri = body?.uri;
+    if (!uri) return c.json({ error: "uri required" }, 400);
+    let at: AtUri;
+    try {
+      at = new AtUri(uri);
+    } catch {
+      return c.json({ error: "invalid_uri" }, 400);
+    }
+    if (at.hostname !== owner) {
+      return c.json({ error: "forbidden", detail: "uri does not belong to this deployment's ARTIST_DID" }, 403);
+    }
+    try {
+      const agent = await getAgentForDid(owner);
+      const res = await agent.com.atproto.repo.getRecord({
+        repo: at.hostname,
+        collection: at.collection,
+        rkey: at.rkey,
+      });
+      await captureCatalogProduct(db, owner, res.data.value, res.data.uri, res.data.cid!);
+    } catch {
+      return c.json({ error: "sync_failed" }, 502);
+    }
+    const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
+    return c.json({
+      product: row ? { ...row, items: JSON.parse(row.items) as unknown } : null,
+    });
   });
 
   return r;
