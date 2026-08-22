@@ -24,10 +24,10 @@ import {
   getRecordValue,
   listCollectionRows,
   listDigitalItemRows,
-  listLicenseTermsRows,
+  listLicensesWithStatus,
   listListingRows,
   putListing,
-  type LicenseTermsRow,
+  type LicenseListRow,
   type ListingRow,
 } from "@/lib/atproto/records";
 import {
@@ -93,7 +93,7 @@ export function ListingsPage() {
   const [rows, setRows] = useState<ListingRow[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [catalogOptions, setCatalogOptions] = useState<CatalogPick[]>([]);
-  const [licenseRows, setLicenseRows] = useState<LicenseTermsRow[]>([]);
+  const [licenseRows, setLicenseRows] = useState<LicenseListRow[]>([]);
   const [editRow, setEditRow] = useState<ListingRow | null>(null);
   const [editDollars, setEditDollars] = useState("");
   const [newItemUri, setNewItemUri] = useState("");
@@ -121,11 +121,11 @@ export function ListingsPage() {
       listListingRows(session.did),
       listDigitalItemRows(session.did),
       listCollectionRows(session.did),
-      listLicenseTermsRows(session.did),
+      listLicensesWithStatus(session.did),
     ]);
     setRows(list);
     setTitles(await loadListingTitles(session.did, list));
-    setLicenseRows(licenses);
+    setLicenseRows(licenses.filter((l) => !l.retired));
     const listed = new Set(list.map((r) => r.listing.item.uri));
     const opts: CatalogPick[] = [
       ...digital
@@ -638,9 +638,9 @@ export function ListingsPage() {
                         picked && "ring-2 ring-ring bg-muted/40",
                       )}
                     >
-                      <span className="font-medium">{row.terms.title}</span>
+                      <span className="font-medium">{row.title}</span>
                       <span className="block text-xs text-muted-foreground mt-1">
-                        {row.terms.version}
+                        {row.version}
                       </span>
                     </button>
                   );

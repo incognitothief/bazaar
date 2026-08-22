@@ -35,9 +35,9 @@ import {
 import { Progress } from "@/components/ui/progress";
 import {
   listCompositionRows,
-  listLicenseTermsRows,
+  listLicensesWithStatus,
   type CompositionRow,
-  type LicenseTermsRow,
+  type LicenseListRow,
 } from "@/lib/atproto/records";
 import { postIdentifierWid } from "@/lib/api/identifiersApi";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -504,7 +504,7 @@ export function UploadTracksPage() {
     uri: string;
     cid: string;
   } | null>(null);
-  const [licenseRows, setLicenseRows] = useState<LicenseTermsRow[]>([]);
+  const [licenseRows, setLicenseRows] = useState<LicenseListRow[]>([]);
   const [licenseRowsLoading, setLicenseRowsLoading] = useState(false);
 
   const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
@@ -762,9 +762,9 @@ export function UploadTracksPage() {
     if (step !== 3 || !agent || !session?.did) return;
     let cancelled = false;
     setLicenseRowsLoading(true);
-    void listLicenseTermsRows(session.did)
+    void listLicensesWithStatus(session.did)
       .then((rows) => {
-        if (!cancelled) setLicenseRows(rows);
+        if (!cancelled) setLicenseRows(rows.filter((r) => !r.retired));
       })
       .catch(() => {
         if (!cancelled) setLicenseRows([]);
@@ -3557,9 +3557,9 @@ export function UploadTracksPage() {
                           picked && "ring-2 ring-ring bg-muted/30",
                         )}
                       >
-                        <p className="font-medium">{row.terms.title}</p>
+                        <p className="font-medium">{row.title}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {row.terms.version}
+                          {row.version}
                         </p>
                       </button>
                     );
