@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db";
 import {
+  licenses,
   merchantBusinessProfile,
   merchantStripeConfig,
   paymentFulfillment,
@@ -177,6 +178,20 @@ export function createMerchantRouter(db: Db) {
       canEditBusinessState: !businessStateFromEnv(),
       canEditBusinessEmail: !businessEmailFromEnv(),
     });
+  });
+
+  /** Store-owner: full captured license history (ERP source for list views — active and retired). */
+  r.get("/licenses", (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const rows = db
+      .select()
+      .from(licenses)
+      .where(eq(licenses.merchantDid, owner))
+      .orderBy(desc(licenses.capturedAt))
+      .all();
+    return c.json({ licenses: rows });
   });
 
   /** Store-owner only: lists `payment_fulfillment` rows for the Stripe → PDS pipeline. */
