@@ -11,29 +11,46 @@
  * a handful of historical records at most. This is a faithful, unedited
  * copy of exactly what was on the PDS at capture time, not a rewrite.
  *
+ * MERCHANT DID COMES FROM THE ENVIRONMENT, NEVER FROM AN ARGUMENT.
+ * Every other authenticated route in this app (merchantGuard in
+ * merchant.ts) determines "who is the merchant on this deployment" from
+ * process.env.ARTIST_DID -- this script does the same, and refuses to
+ * run if it's unset. If you pass a full at:// URI whose DID doesn't
+ * match ARTIST_DID, the script aborts loudly instead of writing a row
+ * under the wrong merchant. This isn't a hypothetical: an earlier
+ * version took a bare DID as a copy-pasted argument, and running an
+ * example command copied from one environment (with that environment's
+ * DID baked into it) against a *different* environment (staging vs.
+ * production) silently captured a row under the wrong merchant_did --
+ * mechanically "successful," semantically wrong. Reading ARTIST_DID from
+ * the environment the script is actually running in makes that class of
+ * mistake structurally impossible instead of relying on the operator to
+ * notice.
+ *
  * DELIBERATELY DEPENDENCY-FREE: production's Docker image ships only
  * dist/ (a single bundled file, deps already inlined), config/, drizzle/,
  * and static/ -- no packages/server/src tree, no node_modules. This
- * script can't import from "../src/*" or any @atproto/* package the way
- * the app itself does; it only uses bun:sqlite (built into the Bun
- * runtime, not an npm package) and the global fetch(). That also means
- * it doesn't need to live inside the packages/server tree to run --
- * it's a single file you can copy anywhere bun is available and point at
- * the database.
+ * script only uses bun:sqlite (built into the Bun runtime, not an npm
+ * package) and the global fetch(). It doesn't need to live inside the
+ * packages/server tree to run -- it's a single portable file.
  *
  * IMPORTANT: only run this after the `licenses` table migration
- * (0007_licenses.sql) has been deployed -- the table doesn't exist on
- * production until this branch ships.
+ * (0007_licenses.sql) has been deployed -- the table doesn't exist until
+ * then.
  *
- * Usage:
- *   DATABASE_PATH=/path/to/app.db bun run backfill-license.ts <at-uri>
+ * Usage (rkey only -- the normal case, DID always comes from ARTIST_DID):
+ *   bun run backfill-license.ts <rkey>
  *
- * (DATABASE_PATH defaults to ./data/app.db if unset, matching the app's
- * own default; on the production container it's /data/app.db.)
+ * Usage (full at:// URI -- also accepted, but its DID must match
+ * ARTIST_DID or the script refuses to proceed):
+ *   bun run backfill-license.ts <at-uri>
+ *
+ * DATABASE_PATH defaults to ./data/app.db if unset, matching the app's
+ * own default; on the production/staging container it's /data/app.db,
+ * already set in that environment.
  *
  * Example:
- *   bun run backfill-license.ts \
- *     at://did:plc:t44345nyd7jmxfs5hxs4doch/diamonds.whereditgo.bazaar.license.terms/3mishw2b4pr2e
+ *   bun run backfill-license.ts 3mishw2b4pr2e
  *
  * Safe to re-run -- inserts are "on conflict do nothing" on the cid
  * primary key.
@@ -42,14 +59,27 @@ import { Database } from "bun:sqlite";
 
 const LICENSE_TERMS_COLLECTION = "diamonds.whereditgo.bazaar.license.terms";
 
-function parseAtUri(uri: string): {
-  did: string;
-  collection: string;
-  rkey: string;
-} {
-  const m = uri.match(/^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/);
-  if (!m) throw new Error(`Not a valid at:// record URI: ${uri}`);
+function parseRkeyOrAtUri(
+  arg: string,
+  merchantDid: string,
+): { did: string; collection: string; rkey: string } {
+  if (!arg.startsWith("at://")) {
+    // Bare rkey -- the merchant DID always comes from the environment.
+    return { did: merchantDid, collection: LICENSE_TERMS_COLLECTION, rkey: arg };
+  }
+  const m = arg.match(/^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  if (!m) throw new Error(`Not a valid at:// record URI: ${arg}`);
   const [, did, collection, rkey] = m;
+  if (did !== merchantDid) {
+    throw new Error(
+      `Refusing to proceed: the URI's DID (${did}) does not match this ` +
+        `deployment's ARTIST_DID (${merchantDid}). Running an example or ` +
+        `copy-pasted URI from a different environment against this one ` +
+        `would capture a row under the wrong merchant. If you actually ` +
+        `mean to backfill a record on this deployment, pass just the ` +
+        `rkey (${rkey}) instead of the full URI.`,
+    );
+  }
   return { did, collection, rkey };
 }
 
@@ -85,18 +115,24 @@ async function resolvePds(did: string): Promise<string> {
 }
 
 async function main() {
-  const atUriArg = process.argv[2];
-  if (!atUriArg) {
-    console.error("Usage: bun run backfill-license.ts <at-uri>");
+  const arg = process.argv[2];
+  if (!arg) {
+    console.error(
+      "Usage: bun run backfill-license.ts <rkey>  (or a full at:// URI matching this deployment's ARTIST_DID)",
+    );
     process.exit(1);
   }
 
-  const { did, collection, rkey } = parseAtUri(atUriArg);
-  if (collection !== LICENSE_TERMS_COLLECTION) {
+  const merchantDid = process.env.ARTIST_DID?.trim();
+  if (!merchantDid?.startsWith("did:")) {
     throw new Error(
-      `Expected a ${LICENSE_TERMS_COLLECTION} URI, got collection "${collection}"`,
+      "ARTIST_DID is not set in this environment -- refusing to guess which merchant this is. " +
+        "Same requirement as merchantGuard() in routes/merchant.ts.",
     );
   }
+  console.log(`Merchant (from ARTIST_DID): ${merchantDid}`);
+
+  const { did, collection, rkey } = parseRkeyOrAtUri(arg, merchantDid);
 
   console.log(`Resolving PDS for ${did}...`);
   const pds = await resolvePds(did);
