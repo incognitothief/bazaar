@@ -139,6 +139,82 @@ export const licenses = sqliteTable("licenses", {
     .$defaultFn(() => new Date()),
 });
 
+/**
+ * ERP-first mirror of catalog.item content, keyed by URI (not CID) — unlike
+ * license.terms, catalog.item supports putRecord, so a given URI's row is
+ * upserted on every create/put/sync rather than accumulating one row per
+ * CID. `cid` tracks the current live CID for checkout-time pinning checks.
+ * This table is the primary read path for storefront/merchant item views;
+ * the PDS is consulted at checkout time and via the manual "Sync with PDS"
+ * action, not on every read.
+ */
+export const catalogItems = sqliteTable("catalog_items", {
+  uri: text("uri").primaryKey(),
+  cid: text("cid").notNull(),
+  sellerDid: text("seller_did").notNull(),
+  title: text("title").notNull(),
+  category: text("category"),
+  description: text("description"),
+  format: text("format"),
+  fileChecksum: text("file_checksum"),
+  fileCid: text("file_cid"),
+  supersedes: text("supersedes"),
+  /** The record's own createdAt field, as authored (immutable on the PDS). */
+  recordCreatedAt: text("record_created_at"),
+  capturedAt: integer("captured_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/** ERP-first mirror of catalog.product content. Same upsert-by-URI shape as catalogItems. */
+export const catalogProducts = sqliteTable("catalog_products", {
+  uri: text("uri").primaryKey(),
+  cid: text("cid").notNull(),
+  sellerDid: text("seller_did").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  /** JSON-serialized itemRef[] — the product's declared composition. */
+  items: text("items").notNull(),
+  recordCreatedAt: text("record_created_at"),
+  capturedAt: integer("captured_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/**
+ * Permanent link between a catalog.product and an internal-only companion
+ * asset (cover art, liner notes) uploaded via the existing inventory
+ * upload mechanism. Unlike inventoryUploadObject's normal lifecycle
+ * (staging en route to a PDS publish), these objects are never meant to
+ * become their own PDS record -- they aren't essential to the product's
+ * public identity, just internal metadata served from the ERP.
+ */
+export const catalogProductAssets = sqliteTable(
+  "catalog_product_assets",
+  {
+    id: text("id").primaryKey(),
+    productUri: text("product_uri").notNull(),
+    objectId: text("object_id")
+      .notNull()
+      .references(() => inventoryUploadObject.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => ({
+    productUriIdx: index("idx_catalog_product_assets_product_uri").on(
+      t.productUri,
+    ),
+  }),
+);
+
 export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   paymentIntentId: text("payment_intent_id").primaryKey(),
   checkoutSessionId: text("checkout_session_id"),
