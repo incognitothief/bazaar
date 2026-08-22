@@ -701,8 +701,11 @@ export function ItemDetailPage() {
       <section>
         <h2 className="text-lg font-medium mb-2">License</h2>
         <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
-          {license?.licenseText ??
-            "Personal use license. Download and listen for your own enjoyment."}
+          {license
+            ? typeof license.licenseText === "string"
+              ? license.licenseText
+              : "Legacy license format — see full terms."
+            : "Personal use license. Download and listen for your own enjoyment."}
         </p>
         {licenseCid ? (
           <a
