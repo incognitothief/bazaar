@@ -74,7 +74,14 @@ export function LicenseInspectorPage() {
       const live = await getRecordValueWithCid<LicenseTerms>(captured.uri);
       if (cancelled) return;
 
-      if (live && live.cid === cid) {
+      // A CID match alone isn't enough -- a record still live on the PDS
+      // under a pre-reshape shape (no licenseText) would match on CID and
+      // then render blank if trusted outright. Only prefer live content
+      // when it actually has the field this page renders; otherwise the
+      // captured copy (which may hold a raw-JSON fallback for exactly this
+      // case) is the correct thing to show even though the record isn't
+      // technically retired.
+      if (live && live.cid === cid && typeof live.value.licenseText === "string") {
         setLicense({
           cid,
           uri: captured.uri,
