@@ -1,12 +1,32 @@
 import { useCallback, useEffect, useState } from "react";
+import { AtUri } from "@atproto/syntax";
+import { toast } from "sonner";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { LicenseFormFull } from "@/components/merchant/LicenseFormFull";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  listLicenseTermsRows,
-  type LicenseTermsRow,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
+  createLicenseTerms,
+  incrementLicenseVersion,
+  listLicensesWithStatus,
+  type LicenseListRow,
 } from "@/lib/atproto/records";
+import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { pdslsRecordUrl } from "@/lib/pdsls";
 
 function ellipsizeMiddle(s: string, head: number, tail: number): string {
@@ -17,14 +37,19 @@ function ellipsizeMiddle(s: string, head: number, tail: number): string {
 export function LicensePage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
-  const [rows, setRows] = useState<LicenseTermsRow[]>([]);
+  const [rows, setRows] = useState<LicenseListRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [retireTarget, setRetireTarget] = useState<LicenseListRow | null>(
+    null,
+  );
+  const [retiring, setRetiring] = useState(false);
+  const [revivingCid, setRevivingCid] = useState<string | null>(null);
 
   const refreshLicenses = useCallback(async () => {
     if (!agent || !session?.did) return;
     setLoading(true);
     try {
-      const list = await listLicenseTermsRows(session.did);
+      const list = await listLicensesWithStatus(session.did);
       setRows(list);
     } finally {
       setLoading(false);
@@ -34,6 +59,52 @@ export function LicensePage() {
   useEffect(() => {
     void refreshLicenses();
   }, [refreshLicenses]);
+
+  async function confirmRetire() {
+    if (!agent || !session?.did || !retireTarget) return;
+    setRetiring(true);
+    try {
+      const at = new AtUri(retireTarget.uri);
+      await agent.com.atproto.repo.deleteRecord({
+        repo: session.did,
+        collection: BAZAAR_COLLECTION.licenseTerms,
+        rkey: at.rkey,
+      });
+      toast.success("License retired");
+      setRetireTarget(null);
+      await refreshLicenses();
+    } catch (e) {
+      toast.error("Failed to retire license", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setRetiring(false);
+    }
+  }
+
+  async function revive(row: LicenseListRow) {
+    if (!agent) return;
+    setRevivingCid(row.cid);
+    try {
+      const newVersion = incrementLicenseVersion(row.version);
+      const created = await createLicenseTerms(agent, {
+        title: row.title,
+        version: newVersion,
+        licenseText: row.licenseText,
+        checkoutConsentRequired: row.checkoutConsentRequired,
+      });
+      toast.success(`Revived as version ${newVersion}`, {
+        description: `${created.uri}\nCID: ${created.cid}`,
+      });
+      await refreshLicenses();
+    } catch (e) {
+      toast.error("Failed to revive license", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setRevivingCid(null);
+    }
+  }
 
   if (!session || !agent) return null;
 
@@ -74,28 +145,35 @@ export function LicensePage() {
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[720px] text-sm">
+              <table className="w-full min-w-[820px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium text-muted-foreground">
                     <th className="px-3 py-2 font-medium">Title</th>
                     <th className="px-3 py-2 font-medium">Version</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
                     <th className="px-3 py-2 font-medium">Record URI</th>
                     <th className="px-3 py-2 font-medium">CID</th>
-                    <th className="px-3 py-2 font-medium">Created</th>
+                    <th className="px-3 py-2 font-medium">Captured</th>
+                    <th className="px-3 py-2 font-medium"></th>
                     <th className="px-3 py-2 font-medium"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr
-                      key={r.uri}
+                      key={r.cid}
                       className="border-b border-border last:border-0"
                     >
                       <td className="px-3 py-2 align-top font-medium">
-                        {r.terms.title}
+                        {r.title}
                       </td>
                       <td className="px-3 py-2 align-top text-muted-foreground">
-                        {r.terms.version}
+                        {r.version}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <Badge variant={r.retired ? "secondary" : "default"}>
+                          {r.retired ? "Retired" : "Active"}
+                        </Badge>
                       </td>
                       <td className="px-3 py-2 align-top">
                         {(() => {
@@ -133,7 +211,27 @@ export function LicensePage() {
                         </code>
                       </td>
                       <td className="px-3 py-2 align-top text-muted-foreground whitespace-nowrap">
-                        {r.terms.createdAt?.slice(0, 10) ?? "—"}
+                        {r.capturedAt?.slice(0, 10) ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 align-top whitespace-nowrap">
+                        {r.retired ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={revivingCid === r.cid}
+                            onClick={() => void revive(r)}
+                          >
+                            {revivingCid === r.cid ? "Reviving…" : "Revive"}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setRetireTarget(r)}
+                          >
+                            Retire
+                          </Button>
+                        )}
                       </td>
                       <td className="px-3 py-2 align-top whitespace-nowrap">
                         <a
@@ -153,6 +251,42 @@ export function LicensePage() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={!!retireTarget}
+        onOpenChange={(open) => {
+          if (!open) setRetireTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Retire "{retireTarget?.title}"?</DialogTitle>
+            <DialogDescription>
+              Retiring removes this license from your public storefront.
+              Buyers who already purchased under it can still view the
+              terms — retiring never affects a completed sale. If you want
+              to offer similar terms again later, create a new license with
+              a new version rather than reusing this one.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRetireTarget(null)}
+              disabled={retiring}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmRetire()}
+              disabled={retiring}
+            >
+              {retiring ? "Retiring…" : "Retire license"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
