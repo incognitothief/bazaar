@@ -24,7 +24,7 @@ function isMerchantInventorySection(path: string): boolean {
 
 const mainNav: { to: string; label: string }[] = [
   { to: "/merchant/listings", label: "Listings" },
-  { to: "/merchant/license", label: "License templates" },
+  { to: "/merchant/license", label: "Licenses" },
   { to: "/merchant/settings", label: "Settings" },
 ];
 

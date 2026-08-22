@@ -55,20 +55,6 @@
             "type": "string",
             "maxLength": 64,
             "description": "Key identifier for the app service keypair that produced appSig. Format: app-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. app-key-2026-04-17. Allows verifiers to select the correct historical key from the appDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
-          },
-          "usageTier": {
-            "type": "string",
-            "knownValues": [
-              "personal",
-              "commercial",
-              "sync"
-            ],
-            "description": "The license tier the buyer selected at checkout. Surfaces the buyer's affirmative acknowledgment of which tier applies — redundant with the license.terms tier field but records the buyer's explicit selection."
-          },
-          "syncProject": {
-            "type": "string",
-            "maxLength": 512,
-            "description": "For sync tier only. Human-readable description of the project this license covers, e.g. 'Short film: The Last Train, dir. A. Smith, 2026'. Optional but strongly recommended for sync purchases."
           }
         }
       }

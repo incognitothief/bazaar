@@ -34,20 +34,10 @@ import {
 } from "@/lib/api/inventoryApi";
 import { Progress } from "@/components/ui/progress";
 import {
-  LICENSE_TEMPLATE_COMPLEXITY_META,
-  LICENSE_TEMPLATE_COMPLEXITY_ORDER,
-  licenseTemplatesForComplexity,
-  type LicenseTemplateComplexity,
-  type LicenseTemplateId,
-} from "@bazaar/shared";
-import {
-  createLicenseTerms,
-  findLicenseByTemplateId,
-  licenseTermsPayloadFromTemplateId,
   listCompositionRows,
-  listLicenseTermsRows,
+  listLicensesWithStatus,
   type CompositionRow,
-  type LicenseTermsRow,
+  type LicenseListRow,
 } from "@/lib/atproto/records";
 import { postIdentifierWid } from "@/lib/api/identifiersApi";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -510,16 +500,11 @@ export function UploadTracksPage() {
   const step2ArtworkEmptyInputId = useId();
   const step2ArtworkReplaceInputRef = useRef<HTMLInputElement>(null);
 
-  const [licensePickMode, setLicensePickMode] = useState<"saved" | "template">(
-    "saved",
-  );
   const [savedLicense, setSavedLicense] = useState<{
     uri: string;
     cid: string;
   } | null>(null);
-  const [licenseTemplateId, setLicenseTemplateId] =
-    useState<LicenseTemplateId | null>("personal-use");
-  const [licenseRows, setLicenseRows] = useState<LicenseTermsRow[]>([]);
+  const [licenseRows, setLicenseRows] = useState<LicenseListRow[]>([]);
   const [licenseRowsLoading, setLicenseRowsLoading] = useState(false);
 
   const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
@@ -730,11 +715,7 @@ export function UploadTracksPage() {
     audioRows.every((r) => r.title.trim()) &&
     extraRows.every((r) => r.title.trim());
 
-  const step3LicenseOk =
-    licensePickMode === "saved"
-      ? !!savedLicense
-      : !!licenseTemplateId &&
-        !!licenseTermsPayloadFromTemplateId(licenseTemplateId);
+  const step3LicenseOk = !!savedLicense;
 
   const requiredGateOk =
     step1Valid &&
@@ -781,9 +762,9 @@ export function UploadTracksPage() {
     if (step !== 3 || !agent || !session?.did) return;
     let cancelled = false;
     setLicenseRowsLoading(true);
-    void listLicenseTermsRows(session.did)
+    void listLicensesWithStatus(session.did)
       .then((rows) => {
-        if (!cancelled) setLicenseRows(rows);
+        if (!cancelled) setLicenseRows(rows.filter((r) => !r.retired));
       })
       .catch(() => {
         if (!cancelled) setLicenseRows([]);
@@ -1296,19 +1277,9 @@ export function UploadTracksPage() {
     cid: string;
   }> => {
     if (!agent || !session) throw new Error("Not signed in");
-    if (licensePickMode === "saved") {
-      if (!savedLicense) throw new Error("Select a license");
-      return savedLicense;
-    }
-    const tid = licenseTemplateId;
-    if (!tid) throw new Error("Select a template");
-    const payload = licenseTermsPayloadFromTemplateId(tid);
-    if (!payload) throw new Error("Invalid license template");
-    const existing = await findLicenseByTemplateId(session.did, tid);
-    if (existing) return { uri: existing.uri, cid: existing.cid };
-    const lic = await createLicenseTerms(agent, payload);
-    return { uri: lic.uri, cid: lic.cid };
-  }, [agent, session, licensePickMode, savedLicense, licenseTemplateId]);
+    if (!savedLicense) throw new Error("Select a license");
+    return savedLicense;
+  }, [agent, session, savedLicense]);
 
   const runPublish = useCallback(async () => {
     if (!sessionId || busy || !session?.did) return;
@@ -3554,42 +3525,21 @@ export function UploadTracksPage() {
               affect past purchases.
             </p>
           </details>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant={licensePickMode === "saved" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setLicensePickMode("saved")}
-            >
-              Saved on my PDS
-            </Button>
-            <Button
-              type="button"
-              variant={licensePickMode === "template" ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setLicensePickMode("template");
-                setSavedLicense(null);
-              }}
-            >
-              Templates
-            </Button>
-          </div>
-          {licensePickMode === "saved" ? (
-            <div className="space-y-2">
-              {licenseRowsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading…</p>
-              ) : licenseRows.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground space-y-2">
-                  <p>No license records in your repo yet.</p>
-                  <Link
-                    to="/merchant/license"
-                    className={cn(buttonVariants({ variant: "secondary" }))}
-                  >
-                    Open license page
-                  </Link>
-                </div>
-              ) : (
+          <div className="space-y-2">
+            {licenseRowsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : licenseRows.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground space-y-2">
+                <p>No license records in your repo yet.</p>
+                <Link
+                  to="/merchant/license"
+                  className={cn(buttonVariants({ variant: "secondary" }))}
+                >
+                  Create a license
+                </Link>
+              </div>
+            ) : (
+              <>
                 <div className="grid gap-2 max-h-72 overflow-y-auto">
                   {licenseRows.map((row) => {
                     const picked =
@@ -3607,57 +3557,23 @@ export function UploadTracksPage() {
                           picked && "ring-2 ring-ring bg-muted/30",
                         )}
                       >
-                        <p className="font-medium">{row.terms.title}</p>
+                        <p className="font-medium">{row.title}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {row.terms.tier} · {row.terms.rightsType}
+                          {row.version}
                         </p>
                       </button>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-6 max-h-[min(60vh,420px)] overflow-y-auto pr-1">
-              <p className="text-xs font-medium text-muted-foreground">
-                Templates — not yet published to your storefront until you
-                confirm at publish.
-              </p>
-              {LICENSE_TEMPLATE_COMPLEXITY_ORDER.map(
-                (complexity: LicenseTemplateComplexity) => {
-                  const meta = LICENSE_TEMPLATE_COMPLEXITY_META[complexity];
-                  const templates = licenseTemplatesForComplexity(complexity);
-                  return (
-                    <div key={complexity} className="space-y-2">
-                      <p className="text-sm font-medium">{meta.label}</p>
-                      <div className="grid gap-2">
-                        {templates.map((def) => (
-                          <button
-                            key={def.id}
-                            type="button"
-                            onClick={() => {
-                              setLicenseTemplateId(def.id);
-                              setSavedLicense(null);
-                            }}
-                            className={cn(
-                              "rounded-lg border p-3 text-left text-sm",
-                              licenseTemplateId === def.id &&
-                                "ring-2 ring-ring",
-                            )}
-                          >
-                            <p className="font-medium">{def.record.title}</p>
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {def.record.summary}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                },
-              )}
-            </div>
-          )}
+                <Link
+                  to="/merchant/license"
+                  className="text-sm text-primary underline-offset-2 hover:underline"
+                >
+                  Don't see the right license? Create one
+                </Link>
+              </>
+            )}
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(2)}>
               Back
@@ -3791,11 +3707,9 @@ export function UploadTracksPage() {
               </Button>
             </div>
             <p className="text-muted-foreground">
-              {licensePickMode === "saved" && savedLicense
+              {savedLicense
                 ? `Saved record (${savedLicense.uri.slice(0, 40)}…)`
-                : licenseTemplateId
-                  ? `Template: ${licenseTemplateId}`
-                  : "—"}
+                : "—"}
             </p>
           </section>
 

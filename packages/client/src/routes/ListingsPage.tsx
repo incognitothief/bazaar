@@ -11,7 +11,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { CompletenessIndicator } from "@/components/merchant/CompletenessIndicator";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
@@ -19,17 +18,16 @@ import {
   type InventoryPrefillPayload,
 } from "@/lib/api/inventoryApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
-import { scoreCompleteness } from "@/hooks/useCompletenessScore";
 import {
   buildItemRefFromUri,
   createListing,
   getRecordValue,
   listCollectionRows,
   listDigitalItemRows,
-  listLicenseTermsRows,
+  listLicensesWithStatus,
   listListingRows,
   putListing,
-  type LicenseTermsRow,
+  type LicenseListRow,
   type ListingRow,
 } from "@/lib/atproto/records";
 import {
@@ -95,7 +93,7 @@ export function ListingsPage() {
   const [rows, setRows] = useState<ListingRow[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [catalogOptions, setCatalogOptions] = useState<CatalogPick[]>([]);
-  const [licenseRows, setLicenseRows] = useState<LicenseTermsRow[]>([]);
+  const [licenseRows, setLicenseRows] = useState<LicenseListRow[]>([]);
   const [editRow, setEditRow] = useState<ListingRow | null>(null);
   const [editDollars, setEditDollars] = useState("");
   const [newItemUri, setNewItemUri] = useState("");
@@ -123,11 +121,11 @@ export function ListingsPage() {
       listListingRows(session.did),
       listDigitalItemRows(session.did),
       listCollectionRows(session.did),
-      listLicenseTermsRows(session.did),
+      listLicensesWithStatus(session.did),
     ]);
     setRows(list);
     setTitles(await loadListingTitles(session.did, list));
-    setLicenseRows(licenses);
+    setLicenseRows(licenses.filter((l) => !l.retired));
     const listed = new Set(list.map((r) => r.listing.item.uri));
     const opts: CatalogPick[] = [
       ...digital
@@ -616,9 +614,9 @@ export function ListingsPage() {
             <Label>License</Label>
             {licenseRows.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Save templates on{" "}
+                No licenses yet.{" "}
                 <Link to="/merchant/license" className="underline underline-offset-2">
-                  License templates
+                  Create one
                 </Link>
                 .
               </p>
@@ -640,15 +638,23 @@ export function ListingsPage() {
                         picked && "ring-2 ring-ring bg-muted/40",
                       )}
                     >
-                      <span className="font-medium">{row.terms.title}</span>
+                      <span className="font-medium">{row.title}</span>
                       <span className="block text-xs text-muted-foreground mt-1">
-                        {row.terms.tier} · {row.terms.version}
+                        {row.version}
                       </span>
                     </button>
                   );
                 })}
               </div>
             )}
+            {licenseRows.length > 0 ? (
+              <Link
+                to="/merchant/license"
+                className="text-sm text-primary underline-offset-2 hover:underline"
+              >
+                Don't see the right license? Create one
+              </Link>
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -711,7 +717,6 @@ export function ListingsPage() {
                 <th className="text-left p-3 font-medium">Type</th>
                 <th className="text-left p-3 font-medium">Price</th>
                 <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-left p-3 font-medium">Completeness</th>
                 <th className="text-right p-3 font-medium">Actions</th>
               </tr>
             </thead>
@@ -742,14 +747,6 @@ export function ListingsPage() {
                     >
                       {row.listing.status}
                     </Badge>
-                  </td>
-                  <td className="p-3 min-w-[120px]">
-                    <CompletenessIndicator
-                      compact
-                      score={scoreCompleteness({
-                        hasAudioFile: true,
-                      })}
-                    />
                   </td>
                   <td className="p-3 text-right space-x-2">
                     {isDummyListingRow(row) ? null : (

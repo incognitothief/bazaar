@@ -9,6 +9,7 @@ import { createDownloadRouter } from "./routes/download";
 import { createIdentifiersRouter } from "./routes/identifiers";
 import { createInventoryRouter } from "./routes/inventory";
 import { createInventoryPublicRouter } from "./routes/inventoryPublic";
+import { createLicensesRouter } from "./routes/licenses";
 import { createMerchantRouter } from "./routes/merchant";
 import { createStripeRouter } from "./routes/stripe";
 import type { OAuthClient } from "./lib/atproto/oauth";
@@ -48,6 +49,7 @@ export function createApiRouter(db: Db, oauthClient: OAuthClient) {
   api.route("/identifiers", createIdentifiersRouter(oauthClient));
   api.route("/inventory", createInventoryRouter(db, oauthClient));
   api.route("/inventory-public", createInventoryPublicRouter());
+  api.route("/licenses", createLicensesRouter(db));
   api.route("/download", createDownloadRouter(oauthClient));
 
   api.notFound((c) => c.json({ error: "not_found" }, 404));

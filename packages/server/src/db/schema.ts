@@ -116,6 +116,29 @@ export const inventoryUploadPart = sqliteTable(
   }),
 );
 
+/**
+ * Write-time capture of license.terms content, keyed by CID. license.terms
+ * has no update scope (create-only), so a given CID's content is permanent —
+ * a repeat capture of the same CID is a no-op, not a new historical state.
+ * This is what the public license inspector reads from; it never re-fetches
+ * from the PDS, so a license stays viewable even if the merchant later
+ * retires the record it came from.
+ */
+export const licenses = sqliteTable("licenses", {
+  cid: text("cid").primaryKey(),
+  uri: text("uri").notNull(),
+  merchantDid: text("merchant_did").notNull(),
+  title: text("title").notNull(),
+  version: text("version").notNull(),
+  licenseText: text("license_text").notNull(),
+  checkoutConsentRequired: integer("checkout_consent_required", {
+    mode: "boolean",
+  }).notNull(),
+  capturedAt: integer("captured_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   paymentIntentId: text("payment_intent_id").primaryKey(),
   checkoutSessionId: text("checkout_session_id"),

@@ -3,19 +3,15 @@ import { Link } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/button";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { cn } from "@/lib/utils";
-import { CompletenessIndicator } from "@/components/merchant/CompletenessIndicator";
 import { OnboardingChecklist } from "@/components/merchant/OnboardingChecklist";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { browserApiUrl } from "@/lib/browserApi";
 import {
-  catalogItemUriKey,
   listDigitalItemRows,
   listLicenseTerms,
   listListingRows,
-  listRecordingRows,
 } from "@/lib/atproto/records";
-import { scoreCompleteness } from "@/hooks/useCompletenessScore";
 import type { DigitalItem } from "@/types/lexicons";
 
 export function DashboardPage() {
@@ -27,9 +23,6 @@ export function DashboardPage() {
   const [listingCount, setListingCount] = useState(0);
   const [stripeConnected, setStripeConnected] = useState(false);
   const [hasLicense, setHasLicense] = useState(false);
-  const [recordingItemKeys, setRecordingItemKeys] = useState<Set<string>>(
-    () => new Set(),
-  );
 
   useEffect(() => {
     void (async () => {
@@ -52,20 +45,14 @@ export function DashboardPage() {
   useEffect(() => {
     if (!agent || !session) return;
     void (async () => {
-      const [rows, listings, licenses, recordings] = await Promise.all([
+      const [rows, listings, licenses] = await Promise.all([
         listDigitalItemRows(session.did),
         listListingRows(session.did),
         listLicenseTerms(session.did),
-        listRecordingRows(session.did),
       ]);
       setItems(rows.map((r) => ({ uri: r.uri, item: r.item })));
       setListingCount(listings.filter((l) => l.listing.status === "active").length);
       setHasLicense(licenses.length > 0);
-      setRecordingItemKeys(
-        new Set(
-          recordings.map((r) => catalogItemUriKey(r.recording.itemUri)),
-        ),
-      );
     })();
   }, [agent, session]);
 
@@ -111,7 +98,6 @@ export function DashboardPage() {
               <tr className="border-b border-border bg-muted/40">
                 <th className="text-left p-3 font-medium">Title</th>
                 <th className="text-left p-3 font-medium">Type</th>
-                <th className="text-left p-3 font-medium">Completeness</th>
                 <th className="text-right p-3 font-medium">Actions</th>
               </tr>
             </thead>
@@ -120,19 +106,6 @@ export function DashboardPage() {
                 <tr key={uri} className="border-b border-border last:border-0">
                   <td className="p-3 font-medium">{item.title}</td>
                   <td className="p-3 capitalize">{item.itemClass}</td>
-                  <td className="p-3 min-w-[140px]">
-                    <CompletenessIndicator
-                      compact
-                      score={scoreCompleteness({
-                        ...item,
-                        hasAudioFile: true,
-                        hasLinkedRecording:
-                          item.itemClass === "track"
-                            ? recordingItemKeys.has(catalogItemUriKey(uri))
-                            : undefined,
-                      })}
-                    />
-                  </td>
                   <td className="p-3 text-right space-x-2">
                     <Link
                       to={itemPathPretty(catalogItemRkey(uri), item.title)}
