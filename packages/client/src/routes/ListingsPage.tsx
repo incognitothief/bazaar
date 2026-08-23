@@ -48,6 +48,14 @@ function devDummyListingRow(merchantDid: string | undefined): ListingRow | null 
   };
 }
 
+function fmtCreatedAt(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString();
+  } catch {
+    return iso;
+  }
+}
+
 /** catalog.item/catalog.product don't have a public storefront page yet -- see merchantItemDisplay.ts's hasStorefrontPage. */
 function itemUriHasStorefrontPage(itemUri: string): boolean {
   const c = collectionFromAtUri(itemUri);
@@ -202,7 +210,7 @@ export function ListingsPage() {
             <thead>
               <tr className="border-b border-border bg-muted/40">
                 <th className="text-left p-3 font-medium">Item</th>
-                <th className="text-left p-3 font-medium">Type</th>
+                <th className="text-left p-3 font-medium">Created</th>
                 <th className="text-left p-3 font-medium">Price</th>
                 <th className="text-left p-3 font-medium">Status</th>
                 <th className="text-right p-3 font-medium">Actions</th>
@@ -221,10 +229,8 @@ export function ListingsPage() {
                       </Badge>
                     ) : null}
                   </td>
-                  <td className="p-3">
-                    <Badge variant="outline">
-                      {collectionFromAtUri(row.listing.item.uri) ?? "unknown"}
-                    </Badge>
+                  <td className="p-3 text-muted-foreground">
+                    {isDummyListingRow(row) ? "—" : fmtCreatedAt(row.listing.createdAt)}
                   </td>
                   <td className="p-3">
                     {formatMoney(row.listing.price)}
