@@ -5,6 +5,8 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
+  getCatalogItem,
+  getCatalogProduct,
   getRecordValue,
   getRecordValueWithCid,
   listListingRows,
@@ -93,6 +95,11 @@ export function ItemDetailPage() {
   const [listingUri, setListingUri] = useState<string | null>(null);
   const [allArtistListings, setAllArtistListings] = useState<ListingRow[]>([]);
   const [ownsCollection, setOwnsCollection] = useState(false);
+  const [ownsProduct, setOwnsProduct] = useState(false);
+  const [productCoverImages, setProductCoverImages] = useState<
+    Array<{ objectId: string; url: string }>
+  >([]);
+  const [productItemTitles, setProductItemTitles] = useState<Record<string, string>>({});
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [licenseCid, setLicenseCid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,6 +212,33 @@ export function ItemDetailPage() {
           }
         } else if (!cancelled) {
           setOwnsCollection(false);
+        }
+
+        if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.product) {
+          if (buyerAgent && session?.did) {
+            const receipts = await listPurchaseReceiptRows(session.did);
+            if (!cancelled) {
+              setOwnsProduct(receipts.some((r) => r.receipt.item.uri === itemUri));
+            }
+          } else if (!cancelled) {
+            setOwnsProduct(false);
+          }
+          const [p, resolvedItems] = await Promise.all([
+            getCatalogProduct(itemUri),
+            Promise.all(v.items.map((ref) => getCatalogItem(ref.uri))),
+          ]);
+          if (!cancelled) {
+            setProductCoverImages(p?.coverImages ?? []);
+            setProductItemTitles(
+              Object.fromEntries(
+                v.items.map((ref, i) => [ref.uri, resolvedItems[i]?.title ?? ref.uri]),
+              ),
+            );
+          }
+        } else if (!cancelled) {
+          setOwnsProduct(false);
+          setProductCoverImages([]);
+          setProductItemTitles({});
         }
 
         let licUri = listingRow?.licenseUri;
@@ -325,6 +359,8 @@ export function ItemDetailPage() {
 
   const isCollection =
     item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
+  const isProduct = item?.$type === BAZAAR_COLLECTION.product;
+  const isCatalogItemSingle = item?.$type === BAZAAR_COLLECTION.item;
 
   const purchaseByTrackUri = useMemo(() => {
     const m = new Map<string, { listingUri: string; listing: Listing }>();
@@ -469,6 +505,36 @@ export function ItemDetailPage() {
     }
   }
 
+  async function downloadProductZip() {
+    if (!session) {
+      toast.error("Sign in to download");
+      return;
+    }
+    setZipBusy(true);
+    try {
+      const url = createBrowserApiURL("/api/download/product-zip");
+      url.searchParams.set("productUri", itemUri);
+      const res = await fetch(url.href, { credentials: "include" });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || res.statusText);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get("Content-Disposition");
+      const match = dispo?.match(/filename="([^"]+)"/);
+      const name = match?.[1] ?? "product.zip";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setZipBusy(false);
+    }
+  }
+
   const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
 
   const blobDid = isDigital ? item.artistDid : (artistDid ?? "");
@@ -528,14 +594,22 @@ export function ItemDetailPage() {
       ) : null}
       <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
         <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)]">
-          <ArtworkImage
-            agent={agent}
-            did={blobDid}
-            cid={catalogItemArtworkCid(item)}
-            itemUri={itemUri}
-            alt=""
-            className="h-full w-full"
-          />
+          {isProduct && productCoverImages[0] ? (
+            <img
+              src={productCoverImages[0].url}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <ArtworkImage
+              agent={agent}
+              did={blobDid}
+              cid={catalogItemArtworkCid(item)}
+              itemUri={itemUri}
+              alt=""
+              className="h-full w-full"
+            />
+          )}
         </div>
         <div className="space-y-4">
           <div>
@@ -592,29 +666,15 @@ export function ItemDetailPage() {
               <p className="text-2xl font-medium">
                 {formatMoney(listing.price)}
               </p>
-              {isDigital || isCollection ? (
+              {isDigital || isCollection || isProduct || isCatalogItemSingle ? (
                 <p className="text-sm text-muted-foreground">
-                  {isCollection ? (
-                    <>
-                      After purchase, you can{" "}
-                      <a
-                        href="/dashboard"
-                        className="text-primary underline underline-offset-2"
-                      >
-                        download this release.
-                      </a>
-                    </>
-                  ) : (
-                    <>
-                      After purchase, you can{" "}
-                      <a
-                        href="/dashboard"
-                        className="text-primary underline underline-offset-2"
-                      >
-                        download this item.
-                      </a>
-                    </>
-                  )}
+                  After purchase, you can{" "}
+                  <a
+                    href="/dashboard"
+                    className="text-primary underline underline-offset-2"
+                  >
+                    download this {isCollection || isProduct ? "release" : "item"}.
+                  </a>
                 </p>
               ) : null}
             </>
@@ -665,6 +725,11 @@ export function ItemDetailPage() {
             {collectionTrackCount === 1 ? "track" : "tracks"}
           </MetadataChip>
         ) : null}
+        {isProduct && "items" in item ? (
+          <MetadataChip>
+            {item.items.length} {item.items.length === 1 ? "item" : "items"}
+          </MetadataChip>
+        ) : null}
         {"genre" in item && item.genre
           ? item.genre.map((g: string) => (
               <MetadataChip key={g}>{g}</MetadataChip>
@@ -691,6 +756,47 @@ export function ItemDetailPage() {
               purchaseByTrackUri={purchaseByTrackUri}
             />
           )}
+        </section>
+      ) : null}
+
+      {isProduct && "items" in item ? (
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium">
+            {ownsProduct ? "Your downloads" : "Items"}
+          </h2>
+          <div className="space-y-2">
+            {item.items.map((ref) => (
+              <div
+                key={ref.uri}
+                className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
+              >
+                <span className="truncate text-sm">
+                  {productItemTitles[ref.uri] ?? ref.uri}
+                </span>
+                {ownsProduct ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={downloadBusyUri === ref.uri}
+                    onClick={() => void downloadDigitalItemUri(ref.uri)}
+                  >
+                    {downloadBusyUri === ref.uri ? "Preparing…" : "Download"}
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          {ownsProduct ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={zipBusy}
+              onClick={() => void downloadProductZip()}
+            >
+              {zipBusy ? "Preparing…" : "Download all (.zip)"}
+            </Button>
+          ) : null}
         </section>
       ) : null}
 
@@ -742,7 +848,10 @@ export function ItemDetailPage() {
         </section>
       ) : null}
 
-      {listing && listingUri && !(isCollection && ownsCollection) ? (
+      {listing &&
+      listingUri &&
+      !(isCollection && ownsCollection) &&
+      !(isProduct && ownsProduct) ? (
         <section>
           <BuyButton
             listingUri={listingUri}

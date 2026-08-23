@@ -57,12 +57,6 @@ function fmtCreatedAt(iso: string): string {
   }
 }
 
-/** catalog.item/catalog.product don't have a public storefront page yet -- see merchantItemDisplay.ts's hasStorefrontPage. */
-function itemUriHasStorefrontPage(itemUri: string): boolean {
-  const c = collectionFromAtUri(itemUri);
-  return c !== BAZAAR_COLLECTION.item && c !== BAZAAR_COLLECTION.product;
-}
-
 type SortKey = "name" | "date" | "price" | "status";
 
 function SortHeader({
@@ -343,17 +337,15 @@ export function ListingsPage() {
                         </button>
                       </>
                     )}
-                    {itemUriHasStorefrontPage(row.listing.item.uri) ? (
-                      <Link
-                        to={itemPathPretty(
-                          catalogItemRkey(row.listing.item.uri),
-                          titles[row.uri],
-                        )}
-                        className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "inline-flex")}
-                      >
-                        Storefront
-                      </Link>
-                    ) : null}
+                    <Link
+                      to={itemPathPretty(
+                        catalogItemRkey(row.listing.item.uri),
+                        titles[row.uri],
+                      )}
+                      className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "inline-flex")}
+                    >
+                      Storefront
+                    </Link>
                   </td>
                 </tr>
               ))}

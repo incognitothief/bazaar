@@ -801,6 +801,8 @@ export async function resolveCatalogItemUriFromRkey(
     BAZAAR_COLLECTION.digitalItem,
     BAZAAR_COLLECTION.collection,
     BAZAAR_COLLECTION.physicalItem,
+    BAZAAR_COLLECTION.item,
+    BAZAAR_COLLECTION.product,
   ] as const;
   const agent = await agentForRepo(repoDid);
   for (const collection of collections) {

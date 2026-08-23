@@ -10,7 +10,6 @@ import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   editHref,
-  hasStorefrontPage,
   itemDetailText,
   kindLabel,
   listingStatusBadgeVariant,
@@ -97,16 +96,14 @@ export function MerchantItemRow({
         >
           <Pencil />
         </Link>
-        {hasStorefrontPage(row.kind) ? (
-          <Link
-            to={storefrontHref(row.uri, title)}
-            className={cn(buttonVariants({ variant: "ghost", size: "icon-xs" }))}
-            title="View on storefront"
-            aria-label="View on storefront"
-          >
-            <SquareArrowOutUpRight />
-          </Link>
-        ) : null}
+        <Link
+          to={storefrontHref(row.uri, title)}
+          className={cn(buttonVariants({ variant: "ghost", size: "icon-xs" }))}
+          title="View on storefront"
+          aria-label="View on storefront"
+        >
+          <SquareArrowOutUpRight />
+        </Link>
         {listing ? (
           <button
             type="button"

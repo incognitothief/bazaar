@@ -58,11 +58,6 @@ export function storefrontHref(uri: string, title: string): string {
   return itemPathPretty(catalogItemRkey(uri), title);
 }
 
-/** catalog.item/catalog.product don't have a public storefront page yet -- no link to show. */
-export function hasStorefrontPage(kind: MerchantItemRow["kind"]): boolean {
-  return kind !== "item" && kind !== "product";
-}
-
 /**
  * catalog.item has no artworkCid of its own. catalog.product's cover art
  * is also never a PDS blob CID -- it lives in catalogProductAssets, R2, not
