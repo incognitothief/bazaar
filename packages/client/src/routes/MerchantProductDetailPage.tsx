@@ -102,10 +102,12 @@ export function MerchantProductDetailPage() {
     setSavingSettings(true);
     try {
       const updated = await updateCatalogProductSettings(uri, next);
-      if (updated) {
-        setProductType(updated.productType);
-        setArtIncludedInDownload(updated.artIncludedInDownload);
+      if (!updated) {
+        toast.error("Could not save");
+        return;
       }
+      setProductType(updated.productType);
+      setArtIncludedInDownload(updated.artIncludedInDownload);
       toast.success("Saved");
     } catch (e) {
       toast.error("Could not save", { description: inventoryUserFacingError(e) });
@@ -187,6 +189,7 @@ export function MerchantProductDetailPage() {
       }
       await syncCatalogProduct(uri);
       toast.success("Saved");
+      setStaleListings(null);
       await load();
       setEditing(false);
     } catch (e) {

@@ -1216,6 +1216,7 @@ function CatalogItemEditForm({
       }
       await syncCatalogItem(uri);
       toast.success("Saved");
+      setStaleListings(null);
       await load();
       setEditing(false);
     } catch (err) {
