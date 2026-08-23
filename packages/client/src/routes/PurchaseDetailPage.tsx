@@ -254,6 +254,20 @@ export function PurchaseDetailPage() {
               label="Receipt record CID:"
             />
           ) : null}
+          {receipt.listingCid && receipt.listingUri ? (
+            <PdslsCidLink
+              cid={receipt.listingCid}
+              recordUri={receipt.listingUri}
+              label="Listing (at purchase) CID:"
+            />
+          ) : null}
+          {receipt.item.cid ? (
+            <PdslsCidLink
+              cid={receipt.item.cid}
+              recordUri={receipt.item.uri}
+              label="Item (at purchase) CID:"
+            />
+          ) : null}
           {receipt.licenseGrantCid && receipt.licenseGrantUri ? (
             <PdslsCidLink
               cid={receipt.licenseGrantCid}
