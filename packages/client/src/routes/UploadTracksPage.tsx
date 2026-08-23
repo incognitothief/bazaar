@@ -1380,7 +1380,7 @@ export function UploadTracksPage() {
       await publishInventorySession(sessionId);
       toast.success("Release published to your PDS.");
       skipLeaveGuardRef.current = true;
-      navigate("/merchant/listings?source=upload");
+      navigate("/merchant/listings/new?source=upload");
     } catch (e) {
       toast.error(inventoryUserFacingError(e));
     } finally {
