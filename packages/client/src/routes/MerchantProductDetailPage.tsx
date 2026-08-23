@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
@@ -39,7 +39,7 @@ import {
   type CatalogProductRow,
   type ListingRow,
 } from "@/lib/atproto/records";
-import { PRODUCT_TYPE_OPTIONS } from "@/lib/productTypes";
+import { PRODUCT_TYPE_OPTIONS, productTypeConfig } from "@/lib/productTypes";
 import { cn, moveArrayItem } from "@/lib/utils";
 import type { ItemRef } from "@/types/lexicons";
 
@@ -68,8 +68,8 @@ export function MerchantProductDetailPage() {
   const [productType, setProductType] = useState<string | null>(null);
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(false);
 
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
@@ -188,6 +188,7 @@ export function MerchantProductDetailPage() {
       await syncCatalogProduct(uri);
       toast.success("Saved");
       await load();
+      setEditing(false);
     } catch (e) {
       toast.error("Could not save changes", {
         description: inventoryUserFacingError(e),
@@ -212,17 +213,13 @@ export function MerchantProductDetailPage() {
     await doSave([]);
   }
 
-  async function onSync() {
-    setSyncing(true);
-    try {
-      await syncCatalogProduct(uri);
-      await load();
-      toast.success("Synced with PDS");
-    } catch (e) {
-      toast.error("Sync failed", { description: inventoryUserFacingError(e) });
-    } finally {
-      setSyncing(false);
+  function cancelEditing() {
+    if (product) {
+      setTitle(product.title);
+      setDescription(product.description ?? "");
+      setItems(product.items as ItemRef[]);
     }
+    setEditing(false);
   }
 
   if (!session || !agent) return null;
@@ -258,16 +255,20 @@ export function MerchantProductDetailPage() {
   return (
     <div className="w-full min-w-0 max-w-2xl space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">Edit product</h1>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={syncing}
-          onClick={() => void onSync()}
-        >
-          {syncing ? "Syncing…" : "Sync with PDS"}
-        </Button>
+        <h1 className="text-2xl font-semibold">
+          {editing ? "Edit product" : "Product"}
+        </h1>
+        {!editing ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Edit product"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil className="size-4" />
+          </Button>
+        ) : null}
         <a
           href={catalogProductDownloadUrl(uri)}
           className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
@@ -275,6 +276,14 @@ export function MerchantProductDetailPage() {
         >
           Download package
         </a>
+        {!editing ? (
+          <Link
+            to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            Create listing
+          </Link>
+        ) : null}
         <Link
           to="/merchant/inventory"
           className={cn(
@@ -282,7 +291,7 @@ export function MerchantProductDetailPage() {
             "ml-auto",
           )}
         >
-          Cancel
+          Back to inventory
         </Link>
       </div>
 
@@ -292,142 +301,203 @@ export function MerchantProductDetailPage() {
         </div>
       ) : null}
 
-      <div className="space-y-2">
-        <Label htmlFor="prod-title">Title</Label>
-        <Input
-          id="prod-title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-          maxLength={512}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="prod-desc">Description</Label>
-        <Textarea
-          id="prod-desc"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={4}
-          maxLength={4096}
-        />
-      </div>
+      {editing ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="prod-title">Title</Label>
+            <Input
+              id="prod-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              maxLength={512}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="prod-desc">Description</Label>
+            <Textarea
+              id="prod-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
+              maxLength={4096}
+            />
+          </div>
 
-      <div className="space-y-2 rounded-lg border border-border p-3">
-        <Label>Product type</Label>
-        <p className="text-xs text-muted-foreground">
-          UI-only — never part of the public record, so changing it doesn't
-          affect any existing listing.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {PRODUCT_TYPE_OPTIONS.map((opt) => (
-            <Button
-              key={opt.value}
-              type="button"
-              size="sm"
-              variant={productType === opt.value ? "default" : "outline"}
-              disabled={savingSettings}
-              onClick={() => void onSaveSettings({ productType: opt.value })}
-            >
-              {opt.label}
-            </Button>
-          ))}
-        </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={artIncludedInDownload}
-            disabled={savingSettings}
-            onChange={(e) =>
-              void onSaveSettings({ artIncludedInDownload: e.target.checked })
-            }
-          />
-          Include cover art in the buyer's download package
-        </label>
-      </div>
-
-      <div className="space-y-2">
-        <Label>Items ({items.length})</Label>
-        <p className="text-xs text-muted-foreground">
-          Order here is display order on the storefront.
-        </p>
-        <div className="space-y-2">
-          {items.map((ref, index) => {
-            const info = itemsByUri[ref.uri];
-            return (
-              <div
-                key={ref.uri}
-                className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
-              >
-                <div className="flex flex-col">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label="Move up"
-                    disabled={index === 0}
-                    onClick={() => moveItem(index, -1)}
-                  >
-                    <ChevronUp />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label="Move down"
-                    disabled={index === items.length - 1}
-                    onClick={() => moveItem(index, 1)}
-                  >
-                    <ChevronDown />
-                  </Button>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <Link
-                    to={`/merchant/inventory/edit?uri=${encodeURIComponent(ref.uri)}`}
-                    className="truncate text-sm font-medium hover:underline"
-                  >
-                    {info?.title ?? ref.uri}
-                  </Link>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {[info?.category, info?.format].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <Label>Product type</Label>
+            <p className="text-xs text-muted-foreground">
+              UI-only — never part of the public record, so changing it doesn't
+              affect any existing listing.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {PRODUCT_TYPE_OPTIONS.map((opt) => (
                 <Button
+                  key={opt.value}
                   type="button"
-                  variant="ghost"
                   size="sm"
-                  onClick={() => removeItem(ref.uri)}
+                  variant={productType === opt.value ? "default" : "outline"}
+                  disabled={savingSettings}
+                  onClick={() => void onSaveSettings({ productType: opt.value })}
                 >
-                  Remove
+                  {opt.label}
                 </Button>
-              </div>
-            );
-          })}
-        </div>
-        <label
-          className={cn(
-            buttonVariants({ variant: "outline", size: "sm" }),
-            "cursor-pointer",
-            addingItem && "pointer-events-none opacity-60",
-          )}
-        >
-          {addingItem ? "Adding…" : "Add item"}
-          <input
-            type="file"
-            className="sr-only"
-            disabled={addingItem}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void addItemFromFile(f);
-              e.target.value = "";
-            }}
-          />
-        </label>
-      </div>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={artIncludedInDownload}
+                disabled={savingSettings}
+                onChange={(e) =>
+                  void onSaveSettings({ artIncludedInDownload: e.target.checked })
+                }
+              />
+              Include cover art in the buyer's download package
+            </label>
+          </div>
 
-      <Button onClick={() => void onSave()} disabled={saving}>
-        {saving ? "Saving…" : "Save"}
-      </Button>
+          <div className="space-y-2">
+            <Label>Items ({items.length})</Label>
+            <p className="text-xs text-muted-foreground">
+              Order here is display order on the storefront.
+            </p>
+            <div className="space-y-2">
+              {items.map((ref, index) => {
+                const info = itemsByUri[ref.uri];
+                return (
+                  <div
+                    key={ref.uri}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
+                  >
+                    <div className="flex flex-col">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label="Move up"
+                        disabled={index === 0}
+                        onClick={() => moveItem(index, -1)}
+                      >
+                        <ChevronUp />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label="Move down"
+                        disabled={index === items.length - 1}
+                        onClick={() => moveItem(index, 1)}
+                      >
+                        <ChevronDown />
+                      </Button>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        to={`/merchant/inventory/edit?uri=${encodeURIComponent(ref.uri)}`}
+                        className="truncate text-sm font-medium hover:underline"
+                      >
+                        {info?.title ?? ref.uri}
+                      </Link>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {[info?.category, info?.format].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeItem(ref.uri)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+            <label
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "cursor-pointer",
+                addingItem && "pointer-events-none opacity-60",
+              )}
+            >
+              {addingItem ? "Adding…" : "Add item"}
+              <input
+                type="file"
+                className="sr-only"
+                disabled={addingItem}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void addItemFromFile(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button onClick={() => void onSave()} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={cancelEditing}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="space-y-1">
+            <h2 className="text-lg font-medium">{product.title}</h2>
+            {product.description ? (
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {product.description}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1 rounded-lg border border-border p-3 text-sm">
+            <p>
+              <span className="text-muted-foreground">Product type: </span>
+              {productTypeConfig(product.productType).label}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Cover art in download: </span>
+              {product.artIncludedInDownload ? "Yes" : "No"}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Items ({items.length})</Label>
+            <div className="space-y-2">
+              {items.map((ref) => {
+                const info = itemsByUri[ref.uri];
+                return (
+                  <div
+                    key={ref.uri}
+                    className="rounded-lg border border-border p-3"
+                  >
+                    <Link
+                      to={`/merchant/inventory/edit?uri=${encodeURIComponent(ref.uri)}`}
+                      className="truncate text-sm font-medium hover:underline"
+                    >
+                      {info?.title ?? ref.uri}
+                    </Link>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {[info?.category, info?.format].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
 
       <Dialog
         open={!!staleListings}

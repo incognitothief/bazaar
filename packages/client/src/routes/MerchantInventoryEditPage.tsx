@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Pencil } from "lucide-react";
 import { AtUri } from "@atproto/syntax";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -153,13 +154,7 @@ export function MerchantInventoryEditPage() {
   }
 
   if (isCatalogItemUri) {
-    return (
-      <CatalogItemEditForm
-        uri={itemUri}
-        agent={agent}
-        onSaved={() => navigate("/merchant/inventory")}
-      />
-    );
+    return <CatalogItemEditForm uri={itemUri} agent={agent} />;
   }
 
   if (loading) {
@@ -1167,21 +1162,19 @@ function PhysicalEditForm({
 function CatalogItemEditForm({
   uri,
   agent,
-  onSaved,
 }: {
   uri: string;
   agent: ATPRepoClient;
-  onSaved: () => void;
 }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [row, setRow] = useState<CatalogItemRow | null>(null);
 
+  const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
 
@@ -1223,7 +1216,8 @@ function CatalogItemEditForm({
       }
       await syncCatalogItem(uri);
       toast.success("Saved");
-      onSaved();
+      await load();
+      setEditing(false);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Could not save changes.",
@@ -1245,17 +1239,13 @@ function CatalogItemEditForm({
     await doSave([]);
   }
 
-  async function onSync() {
-    setSyncing(true);
-    try {
-      await syncCatalogItem(uri);
-      await load();
-      toast.success("Synced with PDS");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Sync failed.");
-    } finally {
-      setSyncing(false);
+  function cancelEditing() {
+    if (row) {
+      setTitle(row.title);
+      setCategory(row.category ?? "");
+      setDescription(row.description ?? "");
     }
+    setEditing(false);
   }
 
   /** Incident-response tool: get this file directly, not the buyer-facing download path. */
@@ -1298,16 +1288,20 @@ function CatalogItemEditForm({
       className="w-full min-w-0 max-w-2xl space-y-6"
     >
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">Edit item</h1>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={syncing}
-          onClick={() => void onSync()}
-        >
-          {syncing ? "Syncing…" : "Sync with PDS"}
-        </Button>
+        <h1 className="text-2xl font-semibold">
+          {editing ? "Edit item" : "Item"}
+        </h1>
+        {!editing ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Edit item"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil className="size-4" />
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="outline"
@@ -1318,6 +1312,14 @@ function CatalogItemEditForm({
         >
           {downloading ? "Preparing…" : "Download"}
         </Button>
+        {!editing ? (
+          <Link
+            to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            Create listing
+          </Link>
+        ) : null}
         <Link
           to="/merchant/inventory"
           className={cn(
@@ -1325,51 +1327,80 @@ function CatalogItemEditForm({
             "ml-auto",
           )}
         >
-          Cancel
+          Back to inventory
         </Link>
       </div>
 
-      <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1">
-        <p className="text-muted-foreground text-xs">
-          File identity (format, checksum, CID) is immutable — upload a new
-          file via a replace flow to change the asset.
-        </p>
-      </div>
+      {editing ? (
+        <>
+          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1">
+            <p className="text-muted-foreground text-xs">
+              File identity (format, checksum, CID) is immutable — upload a new
+              file via a replace flow to change the asset.
+            </p>
+          </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="ci-title">Title</Label>
-        <Input
-          id="ci-title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-          maxLength={512}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="ci-category">Category</Label>
-        <Input
-          id="ci-category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          placeholder="Freeform, e.g. track, ebook, sample pack"
-          maxLength={64}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="ci-desc">Description</Label>
-        <Textarea
-          id="ci-desc"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={4}
-          maxLength={4096}
-        />
-      </div>
+          <div className="space-y-2">
+            <Label htmlFor="ci-title">Title</Label>
+            <Input
+              id="ci-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              maxLength={512}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ci-category">Category</Label>
+            <Input
+              id="ci-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Freeform, e.g. track, ebook, sample pack"
+              maxLength={64}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ci-desc">Description</Label>
+            <Textarea
+              id="ci-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
+              maxLength={4096}
+            />
+          </div>
 
-      <button type="submit" className={cn(buttonVariants())} disabled={saving}>
-        {saving ? "Saving…" : "Save"}
-      </button>
+          <div className="flex items-center gap-3">
+            <button type="submit" className={cn(buttonVariants())} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              className={cn(buttonVariants({ variant: "ghost" }))}
+              onClick={cancelEditing}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-medium">{row.title}</h2>
+            {row.description ? (
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {row.description}
+              </p>
+            ) : null}
+          </div>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Category: </span>
+            {row.category || "—"}
+          </p>
+        </div>
+      )}
 
       <Dialog
         open={!!staleListings}
