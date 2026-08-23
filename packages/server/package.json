@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npx --yes bun@1.2.0 run --watch src/index.ts",
-    "build": "npx --yes bun@1.2.0 build src/index.ts --outdir=dist --target=bun",
-    "start": "npx --yes bun@1.2.0 dist/index.js",
+    "dev": "npx --yes bun@1.4.0 run --watch src/index.ts",
+    "build": "npx --yes bun@1.4.0 build src/index.ts --outdir=dist --target=bun",
+    "start": "npx --yes bun@1.4.0 dist/index.js",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "npx --yes bun@1.2.0 run src/migrate.ts",
-    "test": "npx --yes bun@1.2.0 test"
+    "db:migrate": "npx --yes bun@1.4.0 run src/migrate.ts",
+    "test": "npx --yes bun@1.4.0 test"
   },
   "dependencies": {
     "@atproto/api": "^0.19.5",
@@ -27,7 +27,7 @@
     "stripe": "^21.0.1"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.0",
+    "@types/bun": "^1.4.0",
     "drizzle-kit": "^0.30.1",
     "typescript": "~5.7.2"
   }
