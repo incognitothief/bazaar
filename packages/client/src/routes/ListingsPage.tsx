@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,49 @@ function itemUriHasStorefrontPage(itemUri: string): boolean {
   return c !== BAZAAR_COLLECTION.item && c !== BAZAAR_COLLECTION.product;
 }
 
+type SortKey = "name" | "date" | "price" | "status";
+
+function SortHeader({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey | null;
+  dir: "asc" | "desc";
+  onSort: (key: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = activeKey === sortKey;
+  return (
+    <th className={cn("p-3 font-medium", align === "right" ? "text-right" : "text-left")}>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-foreground",
+          align === "right" && "flex-row-reverse",
+        )}
+        onClick={() => onSort(sortKey)}
+      >
+        {label}
+        {active ? (
+          dir === "asc" ? (
+            <ChevronUp className="size-3.5" />
+          ) : (
+            <ChevronDown className="size-3.5" />
+          )
+        ) : (
+          <ChevronsUpDown className="size-3.5 text-muted-foreground/50" />
+        )}
+      </button>
+    </th>
+  );
+}
+
 async function loadListingTitles(
   sessionDid: string,
   list: ListingRow[],
@@ -85,6 +129,17 @@ export function ListingsPage() {
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [editRow, setEditRow] = useState<ListingRow | null>(null);
   const [editDollars, setEditDollars] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
 
   const refreshListings = useCallback(async () => {
     if (!agent || !session) return;
@@ -171,6 +226,26 @@ export function ListingsPage() {
   const displayRows = rows.length > 0 ? rows : dummy ? [dummy] : [];
   const showingListingsDummy = rows.length === 0 && dummy != null;
 
+  const sortedRows = useMemo(() => {
+    if (!sortKey) return displayRows;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...displayRows].sort((a, b) => {
+      switch (sortKey) {
+        case "name":
+          return (titles[a.uri] ?? "").localeCompare(titles[b.uri] ?? "") * dir;
+        case "date": {
+          const at = new Date(a.listing.createdAt).getTime();
+          const bt = new Date(b.listing.createdAt).getTime();
+          return ((Number.isNaN(at) ? 0 : at) - (Number.isNaN(bt) ? 0 : bt)) * dir;
+        }
+        case "price":
+          return (a.listing.price.amount - b.listing.price.amount) * dir;
+        case "status":
+          return a.listing.status.localeCompare(b.listing.status) * dir;
+      }
+    });
+  }, [displayRows, sortKey, sortDir, titles]);
+
   return (
     <div className="w-full min-w-0 space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -209,15 +284,15 @@ export function ListingsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="text-left p-3 font-medium">Item</th>
-                <th className="text-left p-3 font-medium">Created</th>
-                <th className="text-left p-3 font-medium">Price</th>
-                <th className="text-left p-3 font-medium">Status</th>
+                <SortHeader label="Item" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Created" sortKey="date" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Price" sortKey="price" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
                 <th className="text-right p-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {displayRows.map((row) => (
+              {sortedRows.map((row) => (
                 <tr key={row.uri} className="border-b border-border">
                   <td className="p-3">
                     {isDummyListingRow(row)
