@@ -21,6 +21,7 @@ import {
   listDigitalItemRows,
   listLicensesWithStatus,
   listListingRows,
+  type CatalogProductRow,
   type LicenseListRow,
   type ListingRow,
 } from "@/lib/atproto/records";
@@ -57,6 +58,7 @@ export function CreateListingPage() {
   const [rows, setRows] = useState<ListingRow[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [catalogOptions, setCatalogOptions] = useState<CatalogPick[]>([]);
+  const [productRows, setProductRows] = useState<CatalogProductRow[]>([]);
   const [licenseRows, setLicenseRows] = useState<LicenseListRow[]>([]);
   const [newItemUri, setNewItemUri] = useState("");
   const [newTitle, setNewTitle] = useState("");
@@ -89,6 +91,7 @@ export function CreateListingPage() {
         listLicensesWithStatus(session.did),
       ]);
     setRows(list);
+    setProductRows(products);
     const t: Record<string, string> = {};
     for (const r of list) {
       const item = await getRecordValue<CatalogItem>(r.listing.item.uri);
@@ -262,6 +265,30 @@ export function CreateListingPage() {
     const o = selectCatalogOptions.find((x) => x.uri === newItemUri);
     return o?.kind;
   }, [selectCatalogOptions, newItemUri]);
+
+  /** Item -> its containing product's catalog.product URI. An item is only ever created via exactly one product, so this is unambiguous. */
+  const productUriByItemUri = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of productRows) {
+      for (const ref of p.items) m.set(ref.uri, p.uri);
+    }
+    return m;
+  }, [productRows]);
+
+  /** Default the parent picker to the item's actual containing product's listing (if it has one) -- there's no ambiguity to ask the merchant to resolve, unlike legacy digital tracks which may not belong to any collection at all. */
+  useEffect(() => {
+    if (newItemKind !== "item") return;
+    const productUri = productUriByItemUri.get(newItemUri);
+    const productListing = productUri
+      ? rows.find(
+          (r) =>
+            collectionFromAtUri(r.listing.item.uri) === BAZAAR_COLLECTION.product &&
+            r.listing.item.uri === productUri,
+        )
+      : undefined;
+    setNewParentListingUri(productListing?.uri ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newItemKind, newItemUri]);
 
   /** A single track/item can be sold under a parent collection/product listing -- same cascade-pause mechanics either way, just a different parent record type. */
   const parentListingOptions =
@@ -527,7 +554,7 @@ export function CreateListingPage() {
                 value={newParentListingUri}
                 onChange={(e) => setNewParentListingUri(e.target.value)}
               >
-                <option value="">None (standalone single)</option>
+                <option value="">None (list as a standalone single)</option>
                 {parentListingOptions.map((r) => (
                   <option key={r.uri} value={r.uri}>
                     {titles[r.uri] ?? r.listing.item.uri}
