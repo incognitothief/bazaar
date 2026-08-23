@@ -64,6 +64,13 @@
       "when": 1787433501574,
       "tag": "0008_chubby_mentor",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787445821992,
+      "tag": "0009_milky_scorpion",
+      "breakpoints": true
     }
   ]
 }

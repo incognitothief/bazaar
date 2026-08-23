@@ -16,6 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  GENERIC_PRODUCT_TYPE,
+  PRODUCT_TYPE_OPTIONS,
+  productTypeConfig,
+  type ProductType,
+} from "@/lib/productTypes";
+import { cn } from "@/lib/utils";
 
 type ItemDraftRow = {
   id: string;
@@ -45,6 +52,10 @@ export function AddProductPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [productType, setProductType] = useState<ProductType>(GENERIC_PRODUCT_TYPE);
+  const [artIncludedInDownload, setArtIncludedInDownload] = useState(
+    () => productTypeConfig(GENERIC_PRODUCT_TYPE).defaultArtIncludedInDownload,
+  );
   const [artworkFile, setArtworkFile] = useState<File | null>(null);
   const [artworkPreview, setArtworkPreview] = useState<string | null>(null);
   const [artworkObjectId, setArtworkObjectId] = useState<string | null>(null);
@@ -198,6 +209,8 @@ export function AddProductPage() {
           title: title.trim(),
           description: description.trim() || undefined,
           artworkObjectId: artworkObjectId ?? undefined,
+          productType,
+          artIncludedInDownload: artworkObjectId ? artIncludedInDownload : false,
         },
         items: items.map((r) => ({
           objectId: r.objectId,
@@ -216,7 +229,16 @@ export function AddProductPage() {
     } finally {
       setPublishing(false);
     }
-  }, [sessionId, title, description, artworkObjectId, items, navigate]);
+  }, [
+    sessionId,
+    title,
+    description,
+    artworkObjectId,
+    productType,
+    artIncludedInDownload,
+    items,
+    navigate,
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6">
@@ -245,6 +267,36 @@ export function AddProductPage() {
       {step === 1 ? (
         <div className="space-y-4">
           <div className="space-y-1.5">
+            <Label>Product type</Label>
+            <div className="flex flex-wrap gap-2">
+              {PRODUCT_TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setProductType(opt.value);
+                    setArtIncludedInDownload(opt.defaultArtIncludedInDownload);
+                  }}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                    productType === opt.value
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:bg-muted/40",
+                  )}
+                >
+                  <span className="block font-medium">{opt.label}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {opt.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Customizes this onboarding flow and how the storefront presents
+              the product — never part of the public record itself.
+            </p>
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="product-title">Title</Label>
             <Input
               id="product-title"
@@ -267,9 +319,19 @@ export function AddProductPage() {
             <Label>Cover art (optional)</Label>
             <ImageDropzone onFile={handleArtworkFile} onError={(m) => toast.error(m)} />
             {artworkFile && artworkPreview ? (
-              <p className="text-xs text-muted-foreground">
-                {artworkUploading ? "Uploading…" : `${artworkFile.name} uploaded`}
-              </p>
+              <>
+                <p className="text-xs text-muted-foreground">
+                  {artworkUploading ? "Uploading…" : `${artworkFile.name} uploaded`}
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={artIncludedInDownload}
+                    onChange={(e) => setArtIncludedInDownload(e.target.checked)}
+                  />
+                  Include cover art in the buyer's download package
+                </label>
+              </>
             ) : null}
           </div>
           <div className="flex justify-end">
@@ -341,6 +403,14 @@ export function AddProductPage() {
         <div className="space-y-4">
           <div className="rounded-lg border border-border p-4 space-y-2">
             <p className="font-medium">{title}</p>
+            <p className="text-xs text-muted-foreground">
+              {productTypeConfig(productType).label}
+              {artworkFile
+                ? artIncludedInDownload
+                  ? " · cover art included in download"
+                  : " · cover art not included in download"
+                : ""}
+            </p>
             {description ? (
               <p className="text-sm text-muted-foreground">{description}</p>
             ) : null}

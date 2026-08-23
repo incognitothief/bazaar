@@ -1278,6 +1278,10 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       productRecord,
       productRes.data.uri,
       productRes.data.cid,
+      {
+        productType: draft.product.productType,
+        artIncludedInDownload: draft.product.artIncludedInDownload,
+      },
     );
 
     if (artObj) {
@@ -1547,6 +1551,10 @@ type PublishProductDraftV1 = {
     title: string;
     description?: string;
     artworkObjectId?: string;
+    /** UI-only classification (e.g. "music", "generic") -- see captureCatalogProduct. */
+    productType?: string;
+    /** Whether the cover art asset is bundled into the buyer's download package. */
+    artIncludedInDownload?: boolean;
   };
   items: Array<{
     objectId: string;

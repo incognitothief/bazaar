@@ -31,11 +31,13 @@ import {
   putCatalogProduct,
   putListing,
   syncCatalogProduct,
+  updateCatalogProductSettings,
   type CatalogItemRow,
   type CatalogProductRow,
   type ListingRow,
 } from "@/lib/atproto/records";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
+import { PRODUCT_TYPE_OPTIONS } from "@/lib/productTypes";
 import { cn } from "@/lib/utils";
 import type { ItemRef } from "@/types/lexicons";
 
@@ -61,10 +63,13 @@ export function MerchantProductDetailPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [items, setItems] = useState<ItemRef[]>([]);
+  const [productType, setProductType] = useState<string | null>(null);
+  const [artIncludedInDownload, setArtIncludedInDownload] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
 
   const load = useCallback(async () => {
@@ -85,9 +90,27 @@ export function MerchantProductDetailPage() {
     setTitle(p.title);
     setDescription(p.description ?? "");
     setItems(p.items as ItemRef[]);
+    setProductType(p.productType);
+    setArtIncludedInDownload(p.artIncludedInDownload);
     setItemsByUri(Object.fromEntries(allItems.map((r) => [r.uri, r])));
     setLoading(false);
   }, [uri]);
+
+  async function onSaveSettings(next: { productType?: string; artIncludedInDownload?: boolean }) {
+    setSavingSettings(true);
+    try {
+      const updated = await updateCatalogProductSettings(uri, next);
+      if (updated) {
+        setProductType(updated.productType);
+        setArtIncludedInDownload(updated.artIncludedInDownload);
+      }
+      toast.success("Saved");
+    } catch (e) {
+      toast.error("Could not save", { description: inventoryUserFacingError(e) });
+    } finally {
+      setSavingSettings(false);
+    }
+  }
 
   useEffect(() => {
     void load();
@@ -270,6 +293,39 @@ export function MerchantProductDetailPage() {
           rows={4}
           maxLength={4096}
         />
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-border p-3">
+        <Label>Product type</Label>
+        <p className="text-xs text-muted-foreground">
+          UI-only — never part of the public record, so changing it doesn't
+          affect any existing listing.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {PRODUCT_TYPE_OPTIONS.map((opt) => (
+            <Button
+              key={opt.value}
+              type="button"
+              size="sm"
+              variant={productType === opt.value ? "default" : "outline"}
+              disabled={savingSettings}
+              onClick={() => void onSaveSettings({ productType: opt.value })}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={artIncludedInDownload}
+            disabled={savingSettings}
+            onChange={(e) =>
+              void onSaveSettings({ artIncludedInDownload: e.target.checked })
+            }
+          />
+          Include cover art in the buyer's download package
+        </label>
       </div>
 
       <div className="space-y-2">

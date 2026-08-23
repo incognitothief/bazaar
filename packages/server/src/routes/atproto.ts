@@ -119,12 +119,21 @@ export async function captureCatalogItem(
 }
 
 /** Same upsert-by-URI pattern as captureCatalogItem, for catalog.product. */
+/**
+ * productType/artIncludedInDownload are UI-only, never on the PDS record,
+ * so they can only ever be known at genuine creation time (passed via
+ * opts, from the publish-product draft). Every later capture -- a routine
+ * putRecord edit through the proxy hook, or a manual "Sync with PDS" --
+ * must leave them untouched, which is why they're only present in the
+ * insert values, not the onConflictDoUpdate set.
+ */
 export async function captureCatalogProduct(
   db: Db,
   sellerDid: string,
   record: unknown,
   uri: string,
   cid: string,
+  opts?: { productType?: string; artIncludedInDownload?: boolean },
 ): Promise<void> {
   if (typeof record !== "object" || record === null) return;
   const r = record as Record<string, unknown>;
@@ -135,8 +144,7 @@ export async function captureCatalogProduct(
   const recordCreatedAt =
     typeof r.createdAt === "string" ? r.createdAt : null;
   try {
-    const values = {
-      uri,
+    const updateSet = {
       cid,
       sellerDid,
       title,
@@ -147,8 +155,13 @@ export async function captureCatalogProduct(
     };
     await db
       .insert(catalogProducts)
-      .values(values)
-      .onConflictDoUpdate({ target: catalogProducts.uri, set: values });
+      .values({
+        uri,
+        ...updateSet,
+        productType: opts?.productType ?? null,
+        artIncludedInDownload: opts?.artIncludedInDownload ?? false,
+      })
+      .onConflictDoUpdate({ target: catalogProducts.uri, set: updateSet });
   } catch {
     // Best-effort — the PDS write already succeeded.
   }

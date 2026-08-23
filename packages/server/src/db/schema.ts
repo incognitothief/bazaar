@@ -178,6 +178,25 @@ export const catalogProducts = sqliteTable("catalog_products", {
   description: text("description"),
   /** JSON-serialized itemRef[] — the product's declared composition. */
   items: text("items").notNull(),
+  /**
+   * UI-only classification (e.g. "music", "generic") -- deliberately NOT on
+   * the PDS record. It's not part of what the product publicly *is*, just
+   * how our own onboarding/storefront customize themselves; a buyer
+   * attesting a purchase never needs it. Set once at creation, preserved
+   * (never overwritten) by every later capture -- see captureCatalogProduct.
+   */
+  productType: text("product_type"),
+  /**
+   * Whether cover art (a catalogProductAssets row with role "coverArt")
+   * gets bundled into the buyer's download package. Also ERP-only -- same
+   * reasoning as productType. Everything else in catalogProductAssets is
+   * always included; this is the one asset with a toggle.
+   */
+  artIncludedInDownload: integer("art_included_in_download", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
   recordCreatedAt: text("record_created_at"),
   capturedAt: integer("captured_at", { mode: "timestamp" })
     .notNull()

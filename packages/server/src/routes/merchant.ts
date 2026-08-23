@@ -450,5 +450,42 @@ export function createMerchantRouter(db: Db) {
     });
   });
 
+  /**
+   * Store-owner: update productType/artIncludedInDownload -- both are
+   * UI-only ERP columns, never on the PDS record (see captureCatalogProduct),
+   * so this is a plain DB update with no PDS interaction, no CID change, and
+   * therefore no stale-listing concern.
+   */
+  r.post("/catalog/products/settings", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const body = (await c.req.json().catch(() => null)) as {
+      uri?: string;
+      productType?: string | null;
+      artIncludedInDownload?: boolean;
+    } | null;
+    const uri = body?.uri;
+    if (!uri) return c.json({ error: "uri required" }, 400);
+    const existing = db
+      .select()
+      .from(catalogProducts)
+      .where(eq(catalogProducts.uri, uri))
+      .get();
+    if (!existing || existing.sellerDid !== owner) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    const set: Partial<typeof catalogProducts.$inferInsert> = { updatedAt: new Date() };
+    if ("productType" in (body ?? {})) set.productType = body?.productType ?? null;
+    if ("artIncludedInDownload" in (body ?? {})) {
+      set.artIncludedInDownload = Boolean(body?.artIncludedInDownload);
+    }
+    db.update(catalogProducts).set(set).where(eq(catalogProducts.uri, uri)).run();
+    const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
+    return c.json({
+      product: row ? { ...row, items: JSON.parse(row.items) as unknown } : null,
+    });
+  });
+
   return r;
 }

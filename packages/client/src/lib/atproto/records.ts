@@ -644,6 +644,10 @@ export type CatalogProductRow = {
   title: string;
   description: string | null;
   items: Array<{ uri: string; cid?: string; itemType: string; variantSku?: string }>;
+  /** UI-only classification (e.g. "music", "generic") -- never on the PDS record. */
+  productType: string | null;
+  /** Whether cover art is bundled into the buyer's download package -- also UI-only. */
+  artIncludedInDownload: boolean;
   recordCreatedAt: string | null;
   capturedAt: string;
   updatedAt: string;
@@ -709,6 +713,26 @@ export async function syncCatalogProduct(uri: string): Promise<CatalogProductRow
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ uri }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { product: CatalogProductRow | null };
+  return data.product;
+}
+
+/**
+ * Updates productType/artIncludedInDownload -- both are ERP-only columns,
+ * never on the PDS record, so this never touches the CID and can never
+ * make a listing's pinned CID go stale.
+ */
+export async function updateCatalogProductSettings(
+  uri: string,
+  settings: { productType?: string | null; artIncludedInDownload?: boolean },
+): Promise<CatalogProductRow | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/settings"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uri, ...settings }),
   });
   if (!res.ok) return null;
   const data = (await res.json()) as { product: CatalogProductRow | null };
