@@ -2,14 +2,12 @@ import { getCookie } from "hono/cookie";
 import { AtUri } from "@atproto/syntax";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { zipSync } from "fflate";
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db";
 import {
   catalogItems,
-  catalogProductAssets,
   catalogProducts,
   inventoryUploadObject,
   licenses,
@@ -19,9 +17,9 @@ import {
 } from "../db/schema";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { r2ConfigFromEnv } from "../lib/r2/env";
-import { sanitizeInventoryFilename } from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import { resolveCoverImages } from "../lib/productAssets";
+import { buildProductZip } from "../lib/productZip";
 import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import {
   businessEmailFromEnv,
@@ -567,16 +565,13 @@ export function createMerchantRouter(db: Db) {
     return c.json({ url, fileName: obj.fileName });
   });
 
-  const MAX_PRODUCT_ZIP_TOTAL_BYTES = 250 * 1024 * 1024;
-
   /**
    * Store-owner: the same package a buyer would receive for this product,
    * assembled on demand -- for handing a customer their purchase directly
    * during support/incident triage, without needing a working purchase
-   * flow. Same zip-assembly shape as download.ts's /collection-zip (fetch
-   * each member individually, zipSync, stream back), generalized to items
-   * + the generic included-assets bin, respecting artIncludedInDownload
-   * for cover art -- everything else in the bin is always included.
+   * flow. Assembly itself lives in lib/productZip.ts, shared with the
+   * buyer-facing /api/download/product-zip route -- this endpoint's only
+   * job is the ownership check, not entitlement.
    */
   r.get("/catalog/products/download", async (c) => {
     const denied = merchantGuard(c);
@@ -589,74 +584,10 @@ export function createMerchantRouter(db: Db) {
 
     const r2 = r2ConfigFromEnv();
     if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
-    const client = getR2S3Client(r2);
 
-    const itemRefs = JSON.parse(product.items) as Array<{ uri: string }>;
-    const itemUris = itemRefs.map((ref) => ref.uri);
-    const itemRows = itemUris.length
-      ? db.select().from(catalogItems).where(inArray(catalogItems.uri, itemUris)).all()
-      : [];
-
-    const assetRows = db
-      .select()
-      .from(catalogProductAssets)
-      .where(eq(catalogProductAssets.productUri, uri))
-      .all();
-    const includedAssetRows = assetRows.filter(
-      (a) => a.role !== "coverArt" || product.artIncludedInDownload,
-    );
-
-    const toFetch: Array<{ objectId: string; label: string }> = [
-      ...itemRows
-        .filter((row): row is typeof row & { objectId: string } => !!row.objectId)
-        .map((row) => ({ objectId: row.objectId, label: row.title })),
-      ...includedAssetRows.map((a) => ({ objectId: a.objectId, label: a.role })),
-    ];
-
-    const zipEntries: Record<string, Uint8Array> = {};
-    let total = 0;
-    let index = 0;
-    for (const { objectId, label } of toFetch) {
-      const obj = db
-        .select()
-        .from(inventoryUploadObject)
-        .where(eq(inventoryUploadObject.id, objectId))
-        .get();
-      if (!obj || obj.status !== "completed") continue;
-      let got;
-      try {
-        got = await client.send(new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }));
-      } catch (e) {
-        console.warn("product download: skip object", objectId, e);
-        continue;
-      }
-      if (!got.Body) continue;
-      const buf = await got.Body.transformToByteArray();
-      total += buf.byteLength;
-      if (total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
-        return c.json({ error: "package_too_large" }, 413);
-      }
-      const ext = obj.fileName.match(/\.[a-z0-9]+$/i)?.[0] ?? "";
-      const safeBase = sanitizeInventoryFilename(
-        label.replace(/\.[^./\\]+$/, "") || `file_${index}`,
-      );
-      zipEntries[`${String(++index).padStart(2, "0")}_${safeBase}${ext}`] = new Uint8Array(buf);
-    }
-
-    if (Object.keys(zipEntries).length === 0) {
-      return c.json({ error: "no_downloadable_files" }, 400);
-    }
-
-    const zipped = zipSync(zipEntries, { level: 6 });
-    const titleSafe = sanitizeInventoryFilename(product.title || "product");
-    return new Response(new Uint8Array(zipped), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${titleSafe}.zip"`,
-        "Cache-Control": "private, no-store",
-      },
-    });
+    const result = await buildProductZip(db, r2, product);
+    if (result instanceof Response) return result;
+    return c.json({ error: result.error }, result.status);
   });
 
   return r;
