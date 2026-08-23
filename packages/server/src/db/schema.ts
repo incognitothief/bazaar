@@ -264,6 +264,9 @@ export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   receiptUri: text("receipt_uri"),
   receiptCid: text("receipt_cid"),
   consentUri: text("consent_uri"),
+  /** From the Checkout Session metadata that seeded this row -- lets the Sales page show what was bought without a PDS round trip. */
+  itemUri: text("item_uri"),
+  listingUri: text("listing_uri"),
   payloadSnapshot: text("payload_snapshot"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()

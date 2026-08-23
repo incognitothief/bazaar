@@ -2,7 +2,7 @@ import { getCookie } from "hono/cookie";
 import { AtUri } from "@atproto/syntax";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db";
@@ -218,6 +218,28 @@ export function createMerchantRouter(db: Db) {
       .limit(LIST_LIMIT)
       .all();
 
+    /** ERP-first title lookup -- covers every catalog.item/catalog.product sale with no PDS round trip. Rows from before this pipeline recorded itemUri, or sales of a legacy digital/physical/collection item, fall back to null and the client shows the raw URI. */
+    const itemUris = Array.from(
+      new Set(rows.map((r) => r.itemUri).filter((u): u is string => !!u)),
+    );
+    const titleByUri = new Map<string, string>();
+    if (itemUris.length > 0) {
+      for (const row of db
+        .select({ uri: catalogItems.uri, title: catalogItems.title })
+        .from(catalogItems)
+        .where(inArray(catalogItems.uri, itemUris))
+        .all()) {
+        titleByUri.set(row.uri, row.title);
+      }
+      for (const row of db
+        .select({ uri: catalogProducts.uri, title: catalogProducts.title })
+        .from(catalogProducts)
+        .where(inArray(catalogProducts.uri, itemUris))
+        .all()) {
+        titleByUri.set(row.uri, row.title);
+      }
+    }
+
     return c.json({
       rows: rows.map((row) => ({
         paymentIntentId: row.paymentIntentId,
@@ -230,6 +252,9 @@ export function createMerchantRouter(db: Db) {
         receiptUri: row.receiptUri,
         receiptCid: row.receiptCid,
         consentUri: row.consentUri,
+        itemUri: row.itemUri,
+        listingUri: row.listingUri,
+        itemTitle: row.itemUri ? (titleByUri.get(row.itemUri) ?? null) : null,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
       })),
