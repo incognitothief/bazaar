@@ -22,6 +22,8 @@ import {
   buildItemRefFromUri,
   createListing,
   getRecordValue,
+  listCatalogItemRows,
+  listCatalogProductRows,
   listCollectionRows,
   listDigitalItemRows,
   listLicensesWithStatus,
@@ -62,12 +64,27 @@ function devDummyListingRow(merchantDid: string | undefined): ListingRow | null 
 type CatalogPick = {
   uri: string;
   title: string;
-  kind: "digital" | "collection";
+  kind: "digital" | "collection" | "item" | "product";
 };
 
 function catalogItemKindFromAtUri(uri: string): CatalogPick["kind"] {
   if (uri.includes(`${BAZAAR_COLLECTION.collection}/`)) return "collection";
+  if (uri.includes(`${BAZAAR_COLLECTION.product}/`)) return "product";
+  if (uri.includes(`${BAZAAR_COLLECTION.item}/`)) return "item";
   return "digital";
+}
+
+const CATALOG_PICK_LABEL: Record<CatalogPick["kind"], string> = {
+  digital: "Digital",
+  collection: "Collection",
+  item: "Item",
+  product: "Product",
+};
+
+/** catalog.item/catalog.product don't have a public storefront page yet -- see merchantItemDisplay.ts's hasStorefrontPage. */
+function itemUriHasStorefrontPage(itemUri: string): boolean {
+  const c = collectionFromAtUri(itemUri);
+  return c !== BAZAAR_COLLECTION.item && c !== BAZAAR_COLLECTION.product;
 }
 
 async function loadListingTitles(
@@ -118,12 +135,15 @@ export function ListingsPage() {
 
   const refreshListingsAndCatalog = useCallback(async () => {
     if (!agent || !session) return;
-    const [list, digital, collections, licenses] = await Promise.all([
-      listListingRows(session.did),
-      listDigitalItemRows(session.did),
-      listCollectionRows(session.did),
-      listLicensesWithStatus(session.did),
-    ]);
+    const [list, digital, collections, items, products, licenses] =
+      await Promise.all([
+        listListingRows(session.did),
+        listDigitalItemRows(session.did),
+        listCollectionRows(session.did),
+        listCatalogItemRows(),
+        listCatalogProductRows(),
+        listLicensesWithStatus(session.did),
+      ]);
     setRows(list);
     setTitles(await loadListingTitles(session.did, list));
     setLicenseRows(licenses.filter((l) => !l.retired));
@@ -143,6 +163,12 @@ export function ListingsPage() {
           title: r.item.title,
           kind: "collection" as const,
         })),
+      ...items
+        .filter((r) => !listed.has(r.uri))
+        .map((r) => ({ uri: r.uri, title: r.title, kind: "item" as const })),
+      ...products
+        .filter((r) => !listed.has(r.uri))
+        .map((r) => ({ uri: r.uri, title: r.title, kind: "product" as const })),
     ];
     opts.sort((a, b) => a.title.localeCompare(b.title));
     setCatalogOptions(opts);
@@ -268,10 +294,28 @@ export function ListingsPage() {
     [rows],
   );
 
+  const productListingOptions = useMemo(
+    () =>
+      rows.filter(
+        (r) => collectionFromAtUri(r.listing.item.uri) === BAZAAR_COLLECTION.product,
+      ),
+    [rows],
+  );
+
   const newItemKind = useMemo(() => {
     const o = selectCatalogOptions.find((x) => x.uri === newItemUri);
     return o?.kind;
   }, [selectCatalogOptions, newItemUri]);
+
+  /** A single track/item can be sold under a parent collection/product listing -- same cascade-pause mechanics either way, just a different parent record type. */
+  const parentListingOptions =
+    newItemKind === "digital"
+      ? collectionListingOptions
+      : newItemKind === "item"
+        ? productListingOptions
+        : [];
+  const showParentListingPicker =
+    newItemKind === "digital" || newItemKind === "item";
 
   const showBulkIndividualTracks =
     newItemKind === "collection" &&
@@ -343,10 +387,9 @@ export function ListingsPage() {
         return;
       }
       const cents = Math.round(dollars * 100);
-      const parentForPrimary =
-        newItemKind === "digital"
-          ? newParentListingUri.trim() || undefined
-          : undefined;
+      const parentForPrimary = showParentListingPicker
+        ? newParentListingUri.trim() || undefined
+        : undefined;
 
       const { uri: createdListingUri } = await createListing(agent, {
         item: itemRef,
@@ -418,14 +461,16 @@ export function ListingsPage() {
     const nextStatus =
       row.listing.status === "active" ? "paused" : "active";
     const next: Listing = { ...row.listing, status: nextStatus };
-    const isCollectionListing =
-      collectionFromAtUri(row.listing.item.uri) === BAZAAR_COLLECTION.collection;
+    const rowCollection = collectionFromAtUri(row.listing.item.uri);
+    const isParentListing =
+      rowCollection === BAZAAR_COLLECTION.collection ||
+      rowCollection === BAZAAR_COLLECTION.product;
     const activeChildren = rows.filter(
       (x) =>
         x.listing.parentListing === row.uri && x.listing.status === "active",
     );
     try {
-      if (nextStatus === "paused" && isCollectionListing) {
+      if (nextStatus === "paused" && isParentListing) {
         for (const ch of activeChildren) {
           const paused: Listing = { ...ch.listing, status: "paused" };
           await putListing(agent, ch.uri, paused);
@@ -437,7 +482,7 @@ export function ListingsPage() {
           if (x.uri === row.uri) return { ...x, listing: next };
           if (
             nextStatus === "paused" &&
-            isCollectionListing &&
+            isParentListing &&
             activeChildren.some((c) => c.uri === x.uri)
           ) {
             return { ...x, listing: { ...x.listing, status: "paused" } };
@@ -531,7 +576,7 @@ export function ListingsPage() {
               <option value="">Select item…</option>
               {selectCatalogOptions.map((o) => (
                 <option key={o.uri} value={o.uri}>
-                  {o.title} ({o.kind === "digital" ? "Digital" : "Collection"})
+                  {o.title} ({CATALOG_PICK_LABEL[o.kind]})
                 </option>
               ))}
             </select>
@@ -588,9 +633,13 @@ export function ListingsPage() {
             </div>
           ) : null}
 
-          {newItemKind === "digital" ? (
+          {showParentListingPicker ? (
             <div className="space-y-2">
-              <Label htmlFor="new-parent-listing">Parent collection listing</Label>
+              <Label htmlFor="new-parent-listing">
+                {newItemKind === "digital"
+                  ? "Parent collection listing"
+                  : "Parent product listing"}
+              </Label>
               <select
                 id="new-parent-listing"
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -598,15 +647,16 @@ export function ListingsPage() {
                 onChange={(e) => setNewParentListingUri(e.target.value)}
               >
                 <option value="">None (standalone single)</option>
-                {collectionListingOptions.map((r) => (
+                {parentListingOptions.map((r) => (
                   <option key={r.uri} value={r.uri}>
                     {titles[r.uri] ?? r.listing.item.uri}
                   </option>
                 ))}
               </select>
               <p className="text-xs text-muted-foreground">
-                Set when selling a track as a single under an album listing. Pausing the
-                album listing pauses linked track listings.
+                {newItemKind === "digital"
+                  ? "Set when selling a track as a single under an album listing. Pausing the album listing pauses linked track listings."
+                  : "Set when selling an item as a single under a product listing. Pausing the product listing pauses linked item listings."}
               </p>
             </div>
           ) : null}
@@ -775,15 +825,17 @@ export function ListingsPage() {
                         </button>
                       </>
                     )}
-                    <Link
-                      to={itemPathPretty(
-                        catalogItemRkey(row.listing.item.uri),
-                        titles[row.uri],
-                      )}
-                      className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "inline-flex")}
-                    >
-                      Storefront
-                    </Link>
+                    {itemUriHasStorefrontPage(row.listing.item.uri) ? (
+                      <Link
+                        to={itemPathPretty(
+                          catalogItemRkey(row.listing.item.uri),
+                          titles[row.uri],
+                        )}
+                        className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "inline-flex")}
+                      >
+                        Storefront
+                      </Link>
+                    ) : null}
                   </td>
                 </tr>
               ))}
