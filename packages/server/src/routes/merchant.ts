@@ -1,18 +1,26 @@
 import { getCookie } from "hono/cookie";
 import { AtUri } from "@atproto/syntax";
-import { desc, eq } from "drizzle-orm";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { zipSync } from "fflate";
+import { desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db";
 import {
   catalogItems,
+  catalogProductAssets,
   catalogProducts,
+  inventoryUploadObject,
   licenses,
   merchantBusinessProfile,
   merchantStripeConfig,
   paymentFulfillment,
 } from "../db/schema";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
+import { r2ConfigFromEnv } from "../lib/r2/env";
+import { sanitizeInventoryFilename } from "../lib/r2/inventoryKey";
+import { getR2S3Client } from "../lib/r2/s3Client";
 import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import {
   businessEmailFromEnv,
@@ -484,6 +492,131 @@ export function createMerchantRouter(db: Db) {
     const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
     return c.json({
       product: row ? { ...row, items: JSON.parse(row.items) as unknown } : null,
+    });
+  });
+
+  /**
+   * Store-owner: presigned download for a single catalog.item's file. An
+   * incident-response tool, not a buyer-facing route -- no purchase/
+   * entitlement check, just "does this item belong to me." Resolves via
+   * catalogItems.objectId -> inventoryUploadObject.r2Key, the only way to
+   * find a new-scheme item's file (see newInventoryAssetKey).
+   */
+  r.get("/catalog/items/download", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const uri = c.req.query("uri");
+    if (!uri) return c.json({ error: "uri required" }, 400);
+    const item = db.select().from(catalogItems).where(eq(catalogItems.uri, uri)).get();
+    if (!item || item.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!item.objectId) return c.json({ error: "no_file" }, 404);
+    const obj = db
+      .select()
+      .from(inventoryUploadObject)
+      .where(eq(inventoryUploadObject.id, item.objectId))
+      .get();
+    if (!obj || obj.status !== "completed") return c.json({ error: "object_not_found" }, 404);
+    const r2 = r2ConfigFromEnv();
+    if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
+    const client = getR2S3Client(r2);
+    const url = await getSignedUrl(
+      client,
+      new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }),
+      { expiresIn: 3600 },
+    );
+    return c.json({ url, fileName: obj.fileName });
+  });
+
+  const MAX_PRODUCT_ZIP_TOTAL_BYTES = 250 * 1024 * 1024;
+
+  /**
+   * Store-owner: the same package a buyer would receive for this product,
+   * assembled on demand -- for handing a customer their purchase directly
+   * during support/incident triage, without needing a working purchase
+   * flow. Same zip-assembly shape as download.ts's /collection-zip (fetch
+   * each member individually, zipSync, stream back), generalized to items
+   * + the generic included-assets bin, respecting artIncludedInDownload
+   * for cover art -- everything else in the bin is always included.
+   */
+  r.get("/catalog/products/download", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const uri = c.req.query("uri");
+    if (!uri) return c.json({ error: "uri required" }, 400);
+    const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
+    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+
+    const r2 = r2ConfigFromEnv();
+    if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
+    const client = getR2S3Client(r2);
+
+    const itemRefs = JSON.parse(product.items) as Array<{ uri: string }>;
+    const itemUris = itemRefs.map((ref) => ref.uri);
+    const itemRows = itemUris.length
+      ? db.select().from(catalogItems).where(inArray(catalogItems.uri, itemUris)).all()
+      : [];
+
+    const assetRows = db
+      .select()
+      .from(catalogProductAssets)
+      .where(eq(catalogProductAssets.productUri, uri))
+      .all();
+    const includedAssetRows = assetRows.filter(
+      (a) => a.role !== "coverArt" || product.artIncludedInDownload,
+    );
+
+    const toFetch: Array<{ objectId: string; label: string }> = [
+      ...itemRows
+        .filter((row): row is typeof row & { objectId: string } => !!row.objectId)
+        .map((row) => ({ objectId: row.objectId, label: row.title })),
+      ...includedAssetRows.map((a) => ({ objectId: a.objectId, label: a.role })),
+    ];
+
+    const zipEntries: Record<string, Uint8Array> = {};
+    let total = 0;
+    let index = 0;
+    for (const { objectId, label } of toFetch) {
+      const obj = db
+        .select()
+        .from(inventoryUploadObject)
+        .where(eq(inventoryUploadObject.id, objectId))
+        .get();
+      if (!obj || obj.status !== "completed") continue;
+      let got;
+      try {
+        got = await client.send(new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }));
+      } catch (e) {
+        console.warn("product download: skip object", objectId, e);
+        continue;
+      }
+      if (!got.Body) continue;
+      const buf = await got.Body.transformToByteArray();
+      total += buf.byteLength;
+      if (total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
+        return c.json({ error: "package_too_large" }, 413);
+      }
+      const ext = obj.fileName.match(/\.[a-z0-9]+$/i)?.[0] ?? "";
+      const safeBase = sanitizeInventoryFilename(
+        label.replace(/\.[^./\\]+$/, "") || `file_${index}`,
+      );
+      zipEntries[`${String(++index).padStart(2, "0")}_${safeBase}${ext}`] = new Uint8Array(buf);
+    }
+
+    if (Object.keys(zipEntries).length === 0) {
+      return c.json({ error: "no_downloadable_files" }, 400);
+    }
+
+    const zipped = zipSync(zipEntries, { level: 6 });
+    const titleSafe = sanitizeInventoryFilename(product.title || "product");
+    return new Response(new Uint8Array(zipped), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${titleSafe}.zip"`,
+        "Cache-Control": "private, no-store",
+      },
     });
   });
 

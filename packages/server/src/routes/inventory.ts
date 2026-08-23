@@ -32,6 +32,7 @@ import {
   INVENTORY_ARTWORK_OBJECT_NAME,
   INVENTORY_MASTER_OBJECT_NAME,
   inventoryObjectKey,
+  newInventoryAssetKey,
 } from "../lib/r2/inventoryKey";
 import {
   isR2AccessDenied,
@@ -239,14 +240,19 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       } else {
         rkey = firstMasterRkeyInBatch ?? (o.rkey?.trim() || TID.nextStr());
       }
-      const nameInKey =
-        o.role === "artwork" ? INVENTORY_ARTWORK_OBJECT_NAME : INVENTORY_MASTER_OBJECT_NAME;
-      const r2Key = inventoryObjectKey(sess.did, rkey, nameInKey);
+      const id = randomUUID();
+      const r2Key =
+        session.inventoryKind === "product"
+          ? newInventoryAssetKey(sess.did, id, o.fileName)
+          : inventoryObjectKey(
+              sess.did,
+              rkey,
+              o.role === "artwork" ? INVENTORY_ARTWORK_OBJECT_NAME : INVENTORY_MASTER_OBJECT_NAME,
+            );
       const uploadKind =
         o.byteSize != null && o.byteSize >= MULTIPART_MIN_BYTES
           ? "multipart"
           : "single_put";
-      const id = randomUUID();
       await db.insert(inventoryUploadObject).values({
         id,
         sessionId,
@@ -1261,7 +1267,9 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         collection: itemType,
         record,
       });
-      await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid);
+      await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
+        objectId: mo.id,
+      });
       createdItems.push({ uri: res.data.uri, cid: res.data.cid });
     }
 
@@ -1400,7 +1408,9 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         collection: itemType,
         record,
       });
-      await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid);
+      await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
+        objectId: mo.id,
+      });
       createdItems.push({ uri: res.data.uri, cid: res.data.cid });
     }
 

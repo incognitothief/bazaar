@@ -25,6 +25,7 @@ import {
   putDigitalItem,
   putListing,
   putPhysicalItem,
+  getCatalogItemDownloadUrl,
   syncCatalogItem,
   type CatalogItemRow,
   type ListingRow,
@@ -1181,6 +1182,7 @@ function CatalogItemEditForm({
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
 
   const load = useCallback(async () => {
@@ -1256,6 +1258,21 @@ function CatalogItemEditForm({
     }
   }
 
+  /** Incident-response tool: get this file directly, not the buyer-facing download path. */
+  async function onDownload() {
+    setDownloading(true);
+    try {
+      const result = await getCatalogItemDownloadUrl(uri);
+      if (!result) {
+        toast.error("Could not get a download link for this item.");
+        return;
+      }
+      window.location.href = result.url;
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   if (loading) {
     return (
       <p className="text-sm text-muted-foreground">Loading item…</p>
@@ -1290,6 +1307,16 @@ function CatalogItemEditForm({
           onClick={() => void onSync()}
         >
           {syncing ? "Syncing…" : "Sync with PDS"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={downloading}
+          onClick={() => void onDownload()}
+          title="Get this file directly -- for support/incident handoff, not the buyer-facing download"
+        >
+          {downloading ? "Preparing…" : "Download"}
         </Button>
         <Link
           to="/merchant/inventory"

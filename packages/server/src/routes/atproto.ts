@@ -81,12 +81,20 @@ async function captureLicenseTerms(
  * still succeeded on the PDS, it just won't show up via ERP-first reads
  * until the merchant uses "Sync with PDS".
  */
+/**
+ * objectId links this item back to its R2 upload object (see
+ * lib/r2/inventoryKey.ts's newInventoryAssetKey) -- never on the PDS
+ * record, so like catalogProducts.productType it can only be known at
+ * genuine creation time (passed via opts) and must be preserved, not
+ * overwritten, on every later capture.
+ */
 export async function captureCatalogItem(
   db: Db,
   sellerDid: string,
   record: unknown,
   uri: string,
   cid: string,
+  opts?: { objectId?: string },
 ): Promise<void> {
   if (typeof record !== "object" || record === null) return;
   const r = record as Record<string, unknown>;
@@ -95,8 +103,7 @@ export async function captureCatalogItem(
   const optionalString = (v: unknown): string | undefined =>
     typeof v === "string" ? v : undefined;
   try {
-    const values = {
-      uri,
+    const updateSet = {
       cid,
       sellerDid,
       title,
@@ -111,16 +118,16 @@ export async function captureCatalogItem(
     };
     await db
       .insert(catalogItems)
-      .values(values)
-      .onConflictDoUpdate({ target: catalogItems.uri, set: values });
+      .values({ uri, ...updateSet, objectId: opts?.objectId ?? null })
+      .onConflictDoUpdate({ target: catalogItems.uri, set: updateSet });
   } catch {
     // Best-effort — the PDS write already succeeded.
   }
 }
 
-/** Same upsert-by-URI pattern as captureCatalogItem, for catalog.product. */
 /**
- * productType/artIncludedInDownload are UI-only, never on the PDS record,
+ * Same upsert-by-URI pattern as captureCatalogItem. productType/
+ * artIncludedInDownload are UI-only, never on the PDS record,
  * so they can only ever be known at genuine creation time (passed via
  * opts, from the publish-product draft). Every later capture -- a routine
  * putRecord edit through the proxy hook, or a manual "Sync with PDS" --

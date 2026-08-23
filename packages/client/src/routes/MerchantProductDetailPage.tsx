@@ -32,6 +32,7 @@ import {
   putCatalogProduct,
   putListing,
   syncCatalogProduct,
+  catalogProductDownloadUrl,
   updateCatalogProductSettings,
   type CatalogItemRow,
   type CatalogProductRow,
@@ -266,6 +267,13 @@ export function MerchantProductDetailPage() {
         >
           {syncing ? "Syncing…" : "Sync with PDS"}
         </Button>
+        <a
+          href={catalogProductDownloadUrl(uri)}
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          title="The same package a buyer would receive -- for handing off during support/incident triage"
+        >
+          Download package
+        </a>
         <Link
           to="/merchant/inventory"
           className={cn(

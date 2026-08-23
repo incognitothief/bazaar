@@ -739,6 +739,28 @@ export async function updateCatalogProductSettings(
 }
 
 /**
+ * Presigned URL for a single catalog.item's file -- an incident-response
+ * tool for the merchant dashboard, not the buyer-facing download path.
+ */
+export async function getCatalogItemDownloadUrl(
+  uri: string,
+): Promise<{ url: string; fileName: string } | null> {
+  const res = await fetch(
+    browserApiUrl(`/api/merchant/catalog/items/download?uri=${encodeURIComponent(uri)}`),
+    { credentials: "include" },
+  );
+  if (!res.ok) return null;
+  return (await res.json()) as { url: string; fileName: string };
+}
+
+/** URL for the full product package zip (same content a buyer's download would have). */
+export function catalogProductDownloadUrl(uri: string): string {
+  return browserApiUrl(
+    `/api/merchant/catalog/products/download?uri=${encodeURIComponent(uri)}`,
+  );
+}
+
+/**
  * Listings currently pinned to itemUri's CID -- i.e. the ones a save is
  * about to invalidate. A record's post-edit CID isn't knowable ahead of
  * the actual putRecord (it's content-addressed), so the check works off

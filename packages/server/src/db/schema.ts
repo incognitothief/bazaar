@@ -159,6 +159,13 @@ export const catalogItems = sqliteTable("catalog_items", {
   fileChecksum: text("file_checksum"),
   fileCid: text("file_cid"),
   supersedes: text("supersedes"),
+  /**
+   * Links back to inventoryUploadObject.id -- the only way to resolve this
+   * item's own R2 file (see lib/r2/inventoryKey.ts's newAssetKey). Not on
+   * the PDS record, so set once at creation (via captureCatalogItem's opts)
+   * and preserved on every later capture, same as catalogProducts.productType.
+   */
+  objectId: text("object_id"),
   /** The record's own createdAt field, as authored (immutable on the PDS). */
   recordCreatedAt: text("record_created_at"),
   capturedAt: integer("captured_at", { mode: "timestamp" })
