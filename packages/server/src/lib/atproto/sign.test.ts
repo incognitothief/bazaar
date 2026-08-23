@@ -37,6 +37,23 @@ describe("appServiceKidFromEnv", () => {
   });
 });
 
+/**
+ * Node/OpenSSL 3+ (and some Bun builds) reject `crypto.sign(null, …)` for EC keys with
+ * ERR_OSSL_NO_DEFAULT_DIGEST -- the very reason sign.ts always passes an explicit digest
+ * now. Environments built against that OpenSSL can no longer produce the "legacy"
+ * null-digest signature the test below checks backward-compat against, so there's
+ * nothing to verify here; skip rather than fail on a capability the runtime lacks.
+ */
+function supportsNullDigestEcSign(): boolean {
+  try {
+    const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    cryptoSign(null, Buffer.from("probe"), privateKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe("signReceiptPayload / verifyReceiptPayload", () => {
   test("round-trip", () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", {
@@ -136,44 +153,47 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
     ).toBe(true);
   });
 
-  test("verifies legacy cryptoSign(null, …) EC signatures (pre–explicit digest)", () => {
-    const { privateKey, publicKey } = generateKeyPairSync("ec", {
-      namedCurve: "prime256v1",
-    });
-    const privateKeyPem = privateKey.export({
-      type: "pkcs8",
-      format: "pem",
-    }) as string;
-    const publicKeyPem = publicKey.export({
-      type: "spki",
-      format: "pem",
-    }) as string;
-    const params = {
-      purchasedAt: new Date().toISOString(),
-      paymentRef: "pi_legacy_null_digest",
-      itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
-      listingCid: "bafyrei",
-      buyerDid: "did:plc:buyer",
-    };
-    const message = [
-      params.purchasedAt,
-      params.paymentRef,
-      params.itemUri,
-      params.listingCid,
-      params.buyerDid,
-    ].join(":");
-    const sk = createPrivateKey(normalizeAppServicePrivateKey(privateKeyPem));
-    const legacySig = Buffer.from(
-      cryptoSign(null, Buffer.from(message, "utf8"), sk),
-    ).toString("base64url");
-    expect(
-      verifyReceiptPayload({
-        ...params,
-        appSig: legacySig,
-        publicKeyPem,
-      }),
-    ).toBe(true);
-  });
+  test.skipIf(!supportsNullDigestEcSign())(
+    "verifies legacy cryptoSign(null, …) EC signatures (pre–explicit digest)",
+    () => {
+      const { privateKey, publicKey } = generateKeyPairSync("ec", {
+        namedCurve: "prime256v1",
+      });
+      const privateKeyPem = privateKey.export({
+        type: "pkcs8",
+        format: "pem",
+      }) as string;
+      const publicKeyPem = publicKey.export({
+        type: "spki",
+        format: "pem",
+      }) as string;
+      const params = {
+        purchasedAt: new Date().toISOString(),
+        paymentRef: "pi_legacy_null_digest",
+        itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
+        listingCid: "bafyrei",
+        buyerDid: "did:plc:buyer",
+      };
+      const message = [
+        params.purchasedAt,
+        params.paymentRef,
+        params.itemUri,
+        params.listingCid,
+        params.buyerDid,
+      ].join(":");
+      const sk = createPrivateKey(normalizeAppServicePrivateKey(privateKeyPem));
+      const legacySig = Buffer.from(
+        cryptoSign(null, Buffer.from(message, "utf8"), sk),
+      ).toString("base64url");
+      expect(
+        verifyReceiptPayload({
+          ...params,
+          appSig: legacySig,
+          publicKeyPem,
+        }),
+      ).toBe(true);
+    },
+  );
 });
 
 describe("signConsentPayload / verifyConsentPayload", () => {
