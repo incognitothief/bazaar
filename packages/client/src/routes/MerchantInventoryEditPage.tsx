@@ -1166,6 +1166,7 @@ function CatalogItemEditForm({
   uri: string;
   agent: ATPRepoClient;
 }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [row, setRow] = useState<CatalogItemRow | null>(null);
@@ -1215,7 +1216,20 @@ function CatalogItemEditForm({
         });
       }
       await syncCatalogItem(uri);
-      toast.success("Saved");
+      if (archiveTargets.length > 0) {
+        toast.success("Saved — the old listing has been de-listed", {
+          description: "Create a new listing to sell this item again.",
+          action: {
+            label: "Create listing",
+            onClick: () =>
+              navigate(
+                `/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`,
+              ),
+          },
+        });
+      } else {
+        toast.success("Saved");
+      }
       setStaleListings(null);
       await load();
       setEditing(false);
@@ -1413,17 +1427,17 @@ function CatalogItemEditForm({
           <DialogHeader>
             <DialogTitle>
               {staleListings?.length === 1
-                ? "1 listing will be archived"
-                : `${staleListings?.length ?? 0} listings will be archived`}
+                ? "1 listing will be de-listed"
+                : `${staleListings?.length ?? 0} listings will be de-listed`}
             </DialogTitle>
             <DialogDescription>
               Saving changes this item's content, which invalidates the CID
               that {staleListings?.length === 1 ? "this listing" : "these listings"}{" "}
               pinned when created. To protect buyers from checking out
               against terms they never saw,{" "}
-              {staleListings?.length === 1 ? "it" : "they"} will be archived.
-              Create a new listing afterward if you want to sell this item
-              again.
+              {staleListings?.length === 1 ? "it" : "they"} will be
+              permanently de-listed and can't be reactivated — create a new
+              listing afterward if you want to sell this item again.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1439,7 +1453,9 @@ function CatalogItemEditForm({
               onClick={() => void doSave(staleListings ?? [])}
               disabled={saving}
             >
-              {saving ? "Saving…" : "Save and archive"}
+              {saving
+                ? "Saving…"
+                : "I acknowledge this item will be de-listed"}
             </Button>
           </DialogFooter>
         </DialogContent>

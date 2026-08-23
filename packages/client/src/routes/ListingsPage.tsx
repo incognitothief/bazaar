@@ -174,9 +174,15 @@ export function ListingsPage() {
     }
   }
 
+  /** archived/superseded are permanent retirements (e.g. the item/product changed since this listing pinned its CID) -- never reactivate, only create a fresh listing. */
+  function isTerminalStatus(status: Listing["status"]): boolean {
+    return status === "archived" || status === "superseded";
+  }
+
   async function toggleStatus(row: ListingRow) {
     if (!agent) return;
     if (isDummyListingRow(row)) return;
+    if (isTerminalStatus(row.listing.status)) return;
     const nextStatus =
       row.listing.status === "active" ? "paused" : "active";
     const next: Listing = { ...row.listing, status: nextStatus };
@@ -314,7 +320,16 @@ export function ListingsPage() {
                     </Badge>
                   </td>
                   <td className="p-3 text-right space-x-2">
-                    {isDummyListingRow(row) ? null : (
+                    {isDummyListingRow(row) ? null : isTerminalStatus(
+                        row.listing.status,
+                      ) ? (
+                      <Link
+                        to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(row.listing.item.uri)}`}
+                        className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+                      >
+                        Create new listing
+                      </Link>
+                    ) : (
                       <>
                         <button
                           type="button"

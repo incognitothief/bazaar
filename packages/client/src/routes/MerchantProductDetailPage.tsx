@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
 import {
@@ -45,6 +45,7 @@ import type { ItemRef } from "@/types/lexicons";
 
 export function MerchantProductDetailPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const uriParam = searchParams.get("uri")?.trim() ?? "";
   const uri = useMemo(() => {
     try {
@@ -188,7 +189,20 @@ export function MerchantProductDetailPage() {
         });
       }
       await syncCatalogProduct(uri);
-      toast.success("Saved");
+      if (archiveTargets.length > 0) {
+        toast.success("Saved — the old listing has been de-listed", {
+          description: "Create a new listing to sell this product again.",
+          action: {
+            label: "Create listing",
+            onClick: () =>
+              navigate(
+                `/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`,
+              ),
+          },
+        });
+      } else {
+        toast.success("Saved");
+      }
       setStaleListings(null);
       await load();
       setEditing(false);
@@ -512,17 +526,17 @@ export function MerchantProductDetailPage() {
           <DialogHeader>
             <DialogTitle>
               {staleListings?.length === 1
-                ? "1 listing will be archived"
-                : `${staleListings?.length ?? 0} listings will be archived`}
+                ? "1 listing will be de-listed"
+                : `${staleListings?.length ?? 0} listings will be de-listed`}
             </DialogTitle>
             <DialogDescription>
               Saving changes this product's content, which invalidates the
               CID that {staleListings?.length === 1 ? "this listing" : "these listings"}{" "}
               pinned when created. To protect buyers from checking out
               against terms they never saw,{" "}
-              {staleListings?.length === 1 ? "it" : "they"} will be archived.
-              Create a new listing afterward if you want to sell this
-              product again.
+              {staleListings?.length === 1 ? "it" : "they"} will be
+              permanently de-listed and can't be reactivated — create a new
+              listing afterward if you want to sell this product again.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -538,7 +552,9 @@ export function MerchantProductDetailPage() {
               onClick={() => void doSave(staleListings ?? [])}
               disabled={saving}
             >
-              {saving ? "Saving…" : "Save and archive"}
+              {saving
+                ? "Saving…"
+                : "I acknowledge this item will be de-listed"}
             </Button>
           </DialogFooter>
         </DialogContent>
