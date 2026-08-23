@@ -886,7 +886,7 @@ export function ItemDetailPage() {
       <Dialog open={artworkPreviewOpen} onOpenChange={setArtworkPreviewOpen}>
         <DialogContent
           overlayClassName="bg-black/90 backdrop-blur-sm"
-          className="flex max-w-[95vw] items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-[95vw]"
+          className="flex w-auto max-w-[95vw] items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-[95vw]"
         >
           <div className="rounded-lg bg-muted p-2">
             {productCoverUrl ? (
