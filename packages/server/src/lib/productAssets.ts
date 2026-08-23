@@ -44,11 +44,15 @@ export async function resolveCoverImages(
   const out: CoverImage[] = [];
   for (const row of rows) {
     try {
+      // Storefront/dashboard display prefers the webp derivative when one
+      // exists; the download package (merchant.ts) never reads this column,
+      // it always serves r2Key -- see webpDerivative.ts.
+      const key = row.inventory_upload_object.webpR2Key ?? row.inventory_upload_object.r2Key;
       const url = await getSignedUrl(
         client,
         new GetObjectCommand({
           Bucket: r2.bucket,
-          Key: row.inventory_upload_object.r2Key,
+          Key: key,
         }),
         { expiresIn: 3600 },
       );

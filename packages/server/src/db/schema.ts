@@ -74,6 +74,14 @@ export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
   fileCid: text("file_cid"),
   durationMs: integer("duration_ms"),
   error: text("error"),
+  /**
+   * R2 key of a webp derivative for this object, if one was generated
+   * (best-effort, "artwork"-role objects only -- see lib/webpDerivative.ts).
+   * Null means either generation wasn't attempted (legacy upload, non-image
+   * file) or it failed; either way the read path falls back to r2Key.
+   * Never used for the product download package, only storefront display.
+   */
+  webpR2Key: text("webp_r2_key"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

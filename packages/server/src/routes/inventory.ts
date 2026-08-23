@@ -39,6 +39,7 @@ import {
   r2AccessDeniedHints,
 } from "../lib/r2/diagnostics";
 import { getR2S3Client } from "../lib/r2/s3Client";
+import { generateWebpDerivative } from "../lib/webpDerivative";
 import {
   buildBazaarPid,
   buildBazaarRid,
@@ -66,6 +67,41 @@ function loadR2():
   const cfg = r2ConfigFromEnv();
   if (!cfg.ok) return { ok: false, reason: cfg.reason };
   return { ok: true, cfg, client: getR2S3Client(cfg) };
+}
+
+/**
+ * Best-effort webp derivative, only for "artwork"-role objects in a
+ * "product"-kind session (cover images / the generic included-assets bin --
+ * see newInventoryAssetKey). Legacy digital/collection artwork is
+ * untouched, same "new types get new capabilities, legacy stays frozen"
+ * pattern as everywhere else in this reshape. Stored as `${r2Key}.webp`,
+ * a sibling object -- never touches the original, and the product
+ * download package always reads r2Key directly, never this.
+ */
+async function maybeGenerateWebpDerivative(
+  r2: { cfg: { bucket: string }; client: ReturnType<typeof getR2S3Client> },
+  obj: { role: string; r2Key: string },
+  sessionInventoryKind: string,
+  buf: Buffer,
+): Promise<string | null> {
+  if (sessionInventoryKind !== "product" || obj.role !== "artwork") return null;
+  const derivative = await generateWebpDerivative(buf);
+  if (!derivative) return null;
+  const webpKey = `${obj.r2Key}.webp`;
+  try {
+    await r2.client.send(
+      new PutObjectCommand({
+        Bucket: r2.cfg.bucket,
+        Key: webpKey,
+        Body: derivative,
+        ContentType: "image/webp",
+      }),
+    );
+    return webpKey;
+  } catch (e) {
+    console.warn("webp derivative upload failed:", e);
+    return null;
+  }
 }
 
 export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
@@ -364,6 +400,13 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       );
     }
 
+    const webpR2Key = await maybeGenerateWebpDerivative(
+      { cfg, client },
+      { role: obj.role, r2Key: obj.r2Key },
+      session.inventoryKind,
+      buf,
+    );
+
     await db
       .update(inventoryUploadObject)
       .set({
@@ -371,6 +414,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         fileChecksum,
         fileCid,
         contentType: fileFormat,
+        webpR2Key,
         error: null,
         updatedAt: new Date(),
       })
@@ -637,12 +681,20 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         });
       }
 
+      const webpR2Key = await maybeGenerateWebpDerivative(
+        { cfg, client },
+        { role: obj.role, r2Key: obj.r2Key },
+        session.inventoryKind,
+        Buffer.from(bytes),
+      );
+
       await db
         .update(inventoryUploadObject)
         .set({
           status: "completed",
           fileChecksum,
           fileCid,
+          webpR2Key,
           error: null,
           updatedAt: new Date(),
         })
