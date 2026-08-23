@@ -954,12 +954,12 @@ export function ItemDetailPage() {
           className="flex w-auto max-w-[95vw] items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-[95vw]"
           showCloseButton={false}
         >
-          <div className="bg-muted p-2">
+          <div className="bg-muted leading-none">
             {productCoverUrl ? (
               <img
                 src={productCoverUrl}
                 alt=""
-                className="max-h-[85vh] max-w-[85vw] object-contain"
+                className="block max-h-[85vh] max-w-[85vw] object-contain"
               />
             ) : (
               <ArtworkImage
@@ -968,7 +968,7 @@ export function ItemDetailPage() {
                 cid={artworkCid}
                 itemUri={itemUri}
                 alt=""
-                className="max-h-[85vh] max-w-[85vw]"
+                className="block max-h-[85vh] max-w-[85vw]"
               />
             )}
           </div>
