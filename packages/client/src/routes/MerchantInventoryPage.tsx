@@ -18,6 +18,7 @@ import {
   type MerchantItemRow as MerchantItemRowData,
 } from "@/hooks/useMerchantCatalog";
 import { putListing, type ListingRow } from "@/lib/atproto/records";
+import { collectionFromAtUri } from "@/lib/atUri";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { cn } from "@/lib/utils";
@@ -90,7 +91,8 @@ export function MerchantInventoryPage() {
         listingRow.listing.status === "active" ? "paused" : "active";
       const next: Listing = { ...listingRow.listing, status: nextStatus };
       const isCollectionListing =
-        listingRow.listing.item.itemType === BAZAAR_COLLECTION.collection;
+        collectionFromAtUri(listingRow.listing.item.uri) ===
+        BAZAAR_COLLECTION.collection;
       const activeChildren = listingRows.filter(
         (x) =>
           x.listing.parentListing === listingRow.uri && x.listing.status === "active",

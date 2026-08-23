@@ -38,6 +38,7 @@ import {
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
+import { collectionFromAtUri } from "@/lib/atUri";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { CatalogItem, Listing } from "@/types/lexicons";
@@ -262,7 +263,7 @@ export function ListingsPage() {
   const collectionListingOptions = useMemo(
     () =>
       rows.filter(
-        (r) => r.listing.item.itemType === BAZAAR_COLLECTION.collection,
+        (r) => collectionFromAtUri(r.listing.item.uri) === BAZAAR_COLLECTION.collection,
       ),
     [rows],
   );
@@ -418,7 +419,7 @@ export function ListingsPage() {
       row.listing.status === "active" ? "paused" : "active";
     const next: Listing = { ...row.listing, status: nextStatus };
     const isCollectionListing =
-      row.listing.item.itemType === BAZAAR_COLLECTION.collection;
+      collectionFromAtUri(row.listing.item.uri) === BAZAAR_COLLECTION.collection;
     const activeChildren = rows.filter(
       (x) =>
         x.listing.parentListing === row.uri && x.listing.status === "active",
@@ -734,7 +735,9 @@ export function ListingsPage() {
                     ) : null}
                   </td>
                   <td className="p-3">
-                    <Badge variant="outline">{row.listing.item.itemType}</Badge>
+                    <Badge variant="outline">
+                      {collectionFromAtUri(row.listing.item.uri) ?? "unknown"}
+                    </Badge>
                   </td>
                   <td className="p-3">
                     {formatMoney(row.listing.price)}

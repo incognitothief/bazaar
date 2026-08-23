@@ -1269,7 +1269,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       $type: productType,
       title: draft.product.title.trim(),
       sellerDid: sess.did,
-      items: createdItems.map((it) => ({ uri: it.uri, cid: it.cid, itemType })),
+      items: createdItems.map((it) => ({ uri: it.uri, cid: it.cid })),
       createdAt: new Date().toISOString(),
     };
     if (draft.product.description?.trim()) {

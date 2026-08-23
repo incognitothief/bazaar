@@ -27,7 +27,6 @@ const MAX_COLLECTION_ZIP_SINGLE_BYTES = 120 * 1024 * 1024;
 type ItemRef = {
   uri: string;
   cid?: string;
-  itemType: string;
 };
 
 type PurchaseReceipt = {
@@ -40,7 +39,7 @@ type PurchaseReceipt = {
   appSig: string;
 };
 
-/** AT-URI collection NSID is authoritative; `itemType` can disagree with server LEXICON_NAMESPACE. */
+/** itemRef no longer carries a stored type field (removed as redundant with the URI itself); the AT-URI's own collection segment is the only source of truth. */
 function receiptItemIsCollection(itemUri: string): boolean {
   try {
     const u = new AtUri(itemUri);

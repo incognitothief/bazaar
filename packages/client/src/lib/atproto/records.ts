@@ -11,7 +11,6 @@ import type { ATPRepoClient } from "./session";
 import type {
   ActorMerchant,
   BazaarItem,
-  BazaarItemType,
   CatalogItem,
   Collection,
   Composition,
@@ -643,7 +642,7 @@ export type CatalogProductRow = {
   sellerDid: string;
   title: string;
   description: string | null;
-  items: Array<{ uri: string; cid?: string; itemType: string; variantSku?: string }>;
+  items: Array<{ uri: string; cid?: string; variantSku?: string }>;
   /** UI-only classification (e.g. "music", "generic") -- never on the PDS record. */
   productType: string | null;
   /** Whether cover art is bundled into the buyer's download package -- also UI-only. */
@@ -834,7 +833,7 @@ export async function getRecordValueWithCid<T>(
   }
 }
 
-/** Resolve `item` + `cid` for a new listing from a catalog AT-URI. */
+/** Resolve `item` + `cid` (for listing-time CID pinning) for a catalog AT-URI. */
 export async function buildItemRefFromUri(
   itemUri: string,
 ): Promise<ItemRef | null> {
@@ -849,11 +848,7 @@ export async function buildItemRefFromUri(
     })) as GetRecordResponse;
     const v = res.data.value as CatalogItem;
     if (!v || typeof v !== "object" || !("$type" in v)) return null;
-    return {
-      uri: itemUri,
-      cid: res.data.cid,
-      itemType: (v as { $type: BazaarItemType }).$type,
-    };
+    return { uri: itemUri, cid: res.data.cid };
   } catch {
     return null;
   }

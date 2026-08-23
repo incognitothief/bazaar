@@ -63,10 +63,7 @@ export function buildDummyListing(itemUri: string): Listing {
   const now = new Date().toISOString();
   return {
     $type: "diamonds.whereditgo.bazaar.catalog.listing",
-    item: {
-      uri: itemUri,
-      itemType: "diamonds.whereditgo.bazaar.catalog.item.digital",
-    },
+    item: { uri: itemUri },
     price: { amount: 999, currency: "USD" },
     status: "active",
     licenseUri:

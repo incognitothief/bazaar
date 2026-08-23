@@ -98,9 +98,9 @@
     },
     "itemRef": {
       "type": "object",
+      "description": "The AT-URI's own collection segment already identifies what kind of record this points to (at://did/{collection}/rkey) -- no separate type field is stored here to avoid duplicating that. Older records written before this change may still carry an itemType field; it's not read.",
       "required": [
-        "uri",
-        "itemType"
+        "uri"
       ],
       "properties": {
         "uri": {
@@ -114,16 +114,6 @@
         "variantSku": {
           "type": "string",
           "description": "For physical items: which variant was purchased."
-        },
-        "itemType": {
-          "type": "string",
-          "knownValues": [
-            "diamonds.whereditgo.bazaar.catalog.item",
-            "diamonds.whereditgo.bazaar.catalog.product",
-            "diamonds.whereditgo.bazaar.catalog.item.digital",
-            "diamonds.whereditgo.bazaar.catalog.item.physical",
-            "diamonds.whereditgo.bazaar.catalog.collection"
-          ]
         }
       }
     },

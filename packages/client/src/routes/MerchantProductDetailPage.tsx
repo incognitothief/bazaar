@@ -37,7 +37,6 @@ import {
   type CatalogProductRow,
   type ListingRow,
 } from "@/lib/atproto/records";
-import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { PRODUCT_TYPE_OPTIONS } from "@/lib/productTypes";
 import { cn, moveArrayItem } from "@/lib/utils";
 import type { ItemRef } from "@/types/lexicons";
@@ -153,7 +152,6 @@ export function MerchantProductDetailPage() {
         const newRefs: ItemRef[] = created.map((it) => ({
           uri: it.uri,
           cid: it.cid,
-          itemType: BAZAAR_COLLECTION.item,
         }));
         setItems((prev) => [...prev, ...newRefs]);
         const fresh = await listCatalogItemRows();

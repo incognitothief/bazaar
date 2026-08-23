@@ -31,7 +31,6 @@ export type ItemRef = {
   uri: string;
   cid?: string;
   variantSku?: string;
-  itemType: BazaarItemType;
 };
 
 export type Address = {

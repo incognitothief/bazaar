@@ -1,3 +1,16 @@
+/**
+ * Collection NSID from an AT-URI (`at://did:plc:…/collection/rkey`) --
+ * this is what a record's "type" actually is, since it's the same
+ * information every itemRef.itemType used to duplicate. Use this instead
+ * of a stored itemType field, which no longer exists on itemRef.
+ */
+export function collectionFromAtUri(uri: string): string | null {
+  if (!uri.startsWith("at://")) return null;
+  const rest = uri.slice("at://".length);
+  const parts = rest.split("/");
+  return parts[1] || null;
+}
+
 /** Repo DID from an AT-URI (`at://did:plc:…/collection/rkey`). */
 export function repoDidFromAtUri(uri: string): string | null {
   if (!uri.startsWith("at://")) return null;

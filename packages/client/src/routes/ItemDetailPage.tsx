@@ -198,7 +198,8 @@ export function ItemDetailPage() {
               receipts.some(
                 (r) =>
                   r.receipt.item.uri === itemUri &&
-                  r.receipt.item.itemType === BAZAAR_COLLECTION.collection,
+                  new AtUri(r.receipt.item.uri).collection ===
+                    BAZAAR_COLLECTION.collection,
               ),
             );
           }
@@ -332,7 +333,7 @@ export function ItemDetailPage() {
       const L = row.listing;
       if (L.status !== "active") continue;
       if (L.parentListing !== listingUri) continue;
-      if (L.item.itemType !== BAZAAR_COLLECTION.digitalItem) continue;
+      if (new AtUri(L.item.uri).collection !== BAZAAR_COLLECTION.digitalItem) continue;
       m.set(L.item.uri, { listingUri: row.uri, listing: L });
     }
     return m;

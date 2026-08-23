@@ -37,7 +37,7 @@ type ReceiptValidationResult = {
   receiptListingUri?: string;
   listingStatus?: Listing["status"];
   listingPrice?: Listing["price"];
-  listingItemType?: string;
+  listingItemCollection?: string;
   listingItemUri?: string;
   error?: string;
 };
@@ -162,7 +162,7 @@ export function CustomerDashboardPage() {
         receiptListingUri,
         listingStatus: listing.status,
         listingPrice: listing.price,
-        listingItemType: listing.item.itemType,
+        listingItemCollection: new AtUri(listing.item.uri).collection,
         listingItemUri: listing.item.uri,
       });
     } catch (e) {
@@ -302,10 +302,10 @@ export function CustomerDashboardPage() {
                   </span>
                 </p>
               ) : null}
-              {result.listingItemType ? (
+              {result.listingItemCollection ? (
                 <p className="text-muted-foreground">
                   Item type:{" "}
-                  <span className="font-medium">{result.listingItemType}</span>
+                  <span className="font-medium">{result.listingItemCollection}</span>
                 </p>
               ) : null}
               {result.listingItemUri ? (

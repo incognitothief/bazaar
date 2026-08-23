@@ -517,8 +517,7 @@ export async function fulfillCheckoutSession(opts: {
 
   const itemRefRaw = listing.item as Record<string, unknown> | undefined;
   const itemRefUri = itemRefRaw?.uri as string | undefined;
-  const itemRefType = itemRefRaw?.itemType as string | undefined;
-  if (!itemRefRaw || !itemRefUri || !itemRefType) {
+  if (!itemRefRaw || !itemRefUri) {
     console.warn("Listing item ref invalid");
     await markDeadLetter(db, paymentRef, "listing_item_ref_invalid");
     return;
@@ -547,10 +546,7 @@ export async function fulfillCheckoutSession(opts: {
   const privateKeyRaw = process.env.APP_SERVICE_PRIVATE_KEY;
 
   const ref = itemRefRaw;
-  const receiptItem: Record<string, unknown> = {
-    uri: itemRefUri,
-    itemType: itemRefType,
-  };
+  const receiptItem: Record<string, unknown> = { uri: itemRefUri };
   const itemCid = ref.cid as string | undefined;
   if (typeof itemCid === "string" && itemCid.length > 0) {
     receiptItem.cid = itemCid;
