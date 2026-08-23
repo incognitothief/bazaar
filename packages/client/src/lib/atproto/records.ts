@@ -631,6 +631,8 @@ export type CatalogItemRow = {
   fileChecksum: string | null;
   fileCid: string | null;
   supersedes: string | null;
+  /** The owning product's cover images (an item has none of its own) -- see merchant.ts's GET /catalog/items. */
+  coverImages: Array<{ objectId: string; url: string }>;
   recordCreatedAt: string | null;
   capturedAt: string;
   updatedAt: string;

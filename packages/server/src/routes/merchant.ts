@@ -355,8 +355,14 @@ export function createMerchantRouter(db: Db) {
     return c.json({ ok: true, ...src });
   });
 
-  /** Store-owner: ERP-first catalog.item list (the primary read path for merchant item views). */
-  r.get("/catalog/items", (c) => {
+  /**
+   * Store-owner: ERP-first catalog.item list (the primary read path for
+   * merchant item views). An item has no cover art of its own -- it lives
+   * on the parent catalog.product (catalogProductAssets) -- so this resolves
+   * each item's owning product by scanning products' items[] for a matching
+   * itemRef.uri, then reuses that product's already-resolved cover images.
+   */
+  r.get("/catalog/items", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
     const owner = process.env.ARTIST_DID!.trim();
@@ -366,7 +372,37 @@ export function createMerchantRouter(db: Db) {
       .where(eq(catalogItems.sellerDid, owner))
       .orderBy(desc(catalogItems.capturedAt))
       .all();
-    return c.json({ items: rows });
+
+    const productRows = db
+      .select()
+      .from(catalogProducts)
+      .where(eq(catalogProducts.sellerDid, owner))
+      .all();
+    const productUriByItemUri = new Map<string, string>();
+    for (const p of productRows) {
+      const refs = JSON.parse(p.items) as Array<{ uri: string }>;
+      for (const ref of refs) productUriByItemUri.set(ref.uri, p.uri);
+    }
+    const coverImagesByProductUri = new Map<
+      string,
+      Awaited<ReturnType<typeof resolveCoverImages>>
+    >();
+    const items = await Promise.all(
+      rows.map(async (row) => {
+        const productUri = productUriByItemUri.get(row.uri);
+        let coverImages: Awaited<ReturnType<typeof resolveCoverImages>> = [];
+        if (productUri) {
+          let resolved = coverImagesByProductUri.get(productUri);
+          if (!resolved) {
+            resolved = await resolveCoverImages(db, productUri);
+            coverImagesByProductUri.set(productUri, resolved);
+          }
+          coverImages = resolved;
+        }
+        return { ...row, coverImages };
+      }),
+    );
+    return c.json({ items });
   });
 
   /** Store-owner: ERP-first catalog.product list. */

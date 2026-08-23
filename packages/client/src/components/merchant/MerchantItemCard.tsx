@@ -42,7 +42,7 @@ export function MerchantItemCard({
     <Card className="h-full gap-0 overflow-hidden py-0 ring-border transition-shadow hover:shadow-md">
       <Link to={editHref(row)} className="block focus-visible:outline-none">
         <div className="aspect-square w-full overflow-hidden bg-muted">
-          {row.kind === "product" ? (
+          {row.kind === "product" || row.kind === "item" ? (
             rowCoverImageUrl(row) ? (
               <img
                 src={rowCoverImageUrl(row)}

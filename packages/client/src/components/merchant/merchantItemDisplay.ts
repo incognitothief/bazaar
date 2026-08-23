@@ -74,9 +74,15 @@ export function rowArtworkCid(row: MerchantItemRow): string | undefined {
   return row.item.artworkCid;
 }
 
-/** The presigned URL for a product's first cover image, if it has one -- see rowArtworkCid's note on why this is separate from the CID path. */
+/**
+ * The presigned URL for a product's (or a product's item's) first cover
+ * image, if any -- see rowArtworkCid's note on why this is separate from
+ * the CID path. An item's coverImages come from its owning product (see
+ * merchant.ts's GET /catalog/items); an item with no product yet (or whose
+ * product has no cover art) simply has none.
+ */
 export function rowCoverImageUrl(row: MerchantItemRow): string | undefined {
-  if (row.kind !== "product") return undefined;
+  if (row.kind !== "product" && row.kind !== "item") return undefined;
   return row.item.coverImages[0]?.url;
 }
 
