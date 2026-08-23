@@ -823,15 +823,23 @@ export function ItemDetailPage() {
               return (
                 <li
                   key={ref.uri}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
+                  className="flex items-center justify-between gap-2 py-1.5"
                 >
-                  <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
                     {isMusicProduct ? (
                       <span className="tabular-nums text-muted-foreground shrink-0 w-5 text-right">
                         {index + 1}.
                       </span>
                     ) : null}
-                    <span className="truncate text-sm font-medium">
+                    <span
+                      className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-sm font-medium"
+                      style={{
+                        maskImage:
+                          "linear-gradient(to right, black 85%, transparent 100%)",
+                        WebkitMaskImage:
+                          "linear-gradient(to right, black 85%, transparent 100%)",
+                      }}
+                    >
                       {productItemTitles[ref.uri] ?? ref.uri}
                     </span>
                   </span>
@@ -946,12 +954,12 @@ export function ItemDetailPage() {
           className="flex w-auto max-w-[95vw] items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-[95vw]"
           showCloseButton={false}
         >
-          <div className="rounded-lg bg-muted p-2">
+          <div className="bg-muted p-2">
             {productCoverUrl ? (
               <img
                 src={productCoverUrl}
                 alt=""
-                className="max-h-[85vh] max-w-[85vw] rounded object-contain"
+                className="max-h-[85vh] max-w-[85vw] object-contain"
               />
             ) : (
               <ArtworkImage
@@ -960,7 +968,7 @@ export function ItemDetailPage() {
                 cid={artworkCid}
                 itemUri={itemUri}
                 alt=""
-                className="max-h-[85vh] max-w-[85vw] rounded"
+                className="max-h-[85vh] max-w-[85vw]"
               />
             )}
           </div>
