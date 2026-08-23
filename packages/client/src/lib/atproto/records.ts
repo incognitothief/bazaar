@@ -691,6 +691,8 @@ export type CatalogItemRow = {
   supersedes: string | null;
   /** The owning product's cover images (an item has none of its own) -- see merchant.ts's GET /catalog/items. */
   coverImages: Array<{ objectId: string; url: string }>;
+  /** Audio duration from the upload object (ERP-only), null for non-audio files or legacy uploads with no parsed duration. */
+  durationMs: number | null;
   recordCreatedAt: string | null;
   capturedAt: string;
   updatedAt: string;

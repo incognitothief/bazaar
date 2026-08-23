@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
-import { catalogItems, catalogProducts } from "../db/schema";
+import { catalogItems, catalogProducts, inventoryUploadObject } from "../db/schema";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { resolveCoverImages } from "../lib/productAssets";
 
@@ -42,7 +42,17 @@ export function createCatalogRouter(db: Db) {
       .where(eq(catalogItems.uri, uri))
       .get();
     if (!row) return c.json({ error: "not_found" }, 404);
-    return c.json({ item: row });
+    /** Audio duration lives on the upload object (ERP-only, never on the PDS record) -- same "resolve alongside the ERP row" pattern as a product's coverImages. */
+    const durationMs = row.objectId
+      ? ((
+          await db
+            .select({ durationMs: inventoryUploadObject.durationMs })
+            .from(inventoryUploadObject)
+            .where(eq(inventoryUploadObject.id, row.objectId))
+            .get()
+        )?.durationMs ?? null)
+      : null;
+    return c.json({ item: { ...row, durationMs } });
   });
 
   r.get("/products", async (c) => {

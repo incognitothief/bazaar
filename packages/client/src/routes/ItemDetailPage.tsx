@@ -58,8 +58,9 @@ import {
   CollectionMemberDownloads,
   TrackList,
 } from "@/components/public/TrackList";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import {
   catalogItemArtworkCid,
   catalogItemSellerDid,
@@ -75,6 +76,13 @@ function formatMoney(m: { amount: number; currency: string }): string {
     style: "currency",
     currency: m.currency,
   }).format(m.amount / 100);
+}
+
+function formatDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
 export function ItemDetailPage() {
@@ -101,7 +109,9 @@ export function ItemDetailPage() {
   const [productCoverImages, setProductCoverImages] = useState<
     Array<{ objectId: string; url: string }>
   >([]);
-  const [productItemTitles, setProductItemTitles] = useState<Record<string, string>>({});
+  const [productItemMeta, setProductItemMeta] = useState<
+    Record<string, { title: string; durationMs: number | null }>
+  >({});
   const [productType, setProductType] = useState<string | null>(null);
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [licenseCid, setLicenseCid] = useState<string | null>(null);
@@ -234,9 +244,15 @@ export function ItemDetailPage() {
           if (!cancelled) {
             setProductCoverImages(p?.coverImages ?? []);
             setProductType(p?.productType ?? null);
-            setProductItemTitles(
+            setProductItemMeta(
               Object.fromEntries(
-                v.items.map((ref, i) => [ref.uri, resolvedItems[i]?.title ?? ref.uri]),
+                v.items.map((ref, i) => [
+                  ref.uri,
+                  {
+                    title: resolvedItems[i]?.title ?? ref.uri,
+                    durationMs: resolvedItems[i]?.durationMs ?? null,
+                  },
+                ]),
               ),
             );
           }
@@ -244,7 +260,7 @@ export function ItemDetailPage() {
           setOwnsProduct(false);
           setProductCoverImages([]);
           setProductType(null);
-          setProductItemTitles({});
+          setProductItemMeta({});
         }
 
         let licUri = listingRow?.licenseUri;
@@ -820,6 +836,7 @@ export function ItemDetailPage() {
           <ol className="list-none space-y-2 m-0 p-0">
             {item.items.map((ref, index) => {
               const purchase = purchaseByProductItemUri.get(ref.uri);
+              const meta = productItemMeta[ref.uri];
               return (
                 <li
                   key={ref.uri}
@@ -840,8 +857,13 @@ export function ItemDetailPage() {
                           "linear-gradient(to right, black 85%, transparent 100%)",
                       }}
                     >
-                      {productItemTitles[ref.uri] ?? ref.uri}
+                      {meta?.title ?? ref.uri}
                     </span>
+                    {meta?.durationMs != null ? (
+                      <span className="shrink-0 text-muted-foreground tabular-nums">
+                        {formatDuration(meta.durationMs)}
+                      </span>
+                    ) : null}
                   </span>
                   {ownsProduct ? (
                     <Button
@@ -858,9 +880,12 @@ export function ItemDetailPage() {
                     <Link
                       to={itemPathPretty(
                         catalogItemRkey(ref.uri),
-                        productItemTitles[ref.uri],
+                        meta?.title ?? ref.uri,
                       )}
-                      className="shrink-0 text-sm font-medium text-primary underline-offset-2 hover:underline"
+                      className={cn(
+                        buttonVariants({ size: "sm", variant: "outline" }),
+                        "shrink-0",
+                      )}
                     >
                       Buy · {formatMoney(purchase.listing.price)}
                     </Link>
@@ -877,6 +902,7 @@ export function ItemDetailPage() {
             <Button
               type="button"
               variant="outline"
+              size="sm"
               disabled={zipBusy}
               onClick={() => void downloadProductZip()}
             >
