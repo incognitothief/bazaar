@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  getCatalogItem,
   getCatalogProduct,
   listBazaarItemRows,
   listCollectionRows,
@@ -80,6 +81,10 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
       const productCoverImages = await Promise.all(
         productRows.map((r) => getCatalogProduct(r.uri)),
       );
+      /** A catalog.item single has no cover art of its own -- borrowed from its owning product, resolved server-side (see catalog.ts's GET /items). */
+      const bazaarItemCoverImages = await Promise.all(
+        bazaarItemRows.map((r) => getCatalogItem(r.uri)),
+      );
       const merged: CatalogEntry[] = [
         ...digitalRows.map((r) => ({
           uri: r.uri,
@@ -96,10 +101,11 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
           cid: r.cid,
           item: r.item,
         })),
-        ...bazaarItemRows.map((r) => ({
+        ...bazaarItemRows.map((r, i) => ({
           uri: r.uri,
           cid: r.cid,
           item: r.item,
+          coverImages: bazaarItemCoverImages[i]?.coverImages,
         })),
         ...productRows.map((r, i) => ({
           uri: r.uri,

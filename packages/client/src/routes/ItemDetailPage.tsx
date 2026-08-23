@@ -106,7 +106,8 @@ export function ItemDetailPage() {
   const [allArtistListings, setAllArtistListings] = useState<ListingRow[]>([]);
   const [ownsCollection, setOwnsCollection] = useState(false);
   const [ownsProduct, setOwnsProduct] = useState(false);
-  const [productCoverImages, setProductCoverImages] = useState<
+  /** catalog.product's own cover art, or a catalog.item single's borrowed from its owning product -- neither is ever a PDS blob CID. */
+  const [coverImages, setCoverImages] = useState<
     Array<{ objectId: string; url: string }>
   >([]);
   const [productItemMeta, setProductItemMeta] = useState<
@@ -242,7 +243,7 @@ export function ItemDetailPage() {
             Promise.all(v.items.map((ref) => getCatalogItem(ref.uri))),
           ]);
           if (!cancelled) {
-            setProductCoverImages(p?.coverImages ?? []);
+            setCoverImages(p?.coverImages ?? []);
             setProductType(p?.productType ?? null);
             setProductItemMeta(
               Object.fromEntries(
@@ -256,9 +257,17 @@ export function ItemDetailPage() {
               ),
             );
           }
+        } else if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.item) {
+          setOwnsProduct(false);
+          setProductType(null);
+          setProductItemMeta({});
+          // A single has no cover art of its own -- borrowed from its owning
+          // product, resolved server-side (see catalog.ts's GET /items).
+          const r = await getCatalogItem(itemUri);
+          if (!cancelled) setCoverImages(r?.coverImages ?? []);
         } else if (!cancelled) {
           setOwnsProduct(false);
-          setProductCoverImages([]);
+          setCoverImages([]);
           setProductType(null);
           setProductItemMeta({});
         }
@@ -590,10 +599,12 @@ export function ItemDetailPage() {
     : defaultOgImageAbsolute();
   const twSite = import.meta.env.VITE_PUBLIC_TWITTER_SITE?.trim();
 
-  const productCoverUrl =
-    isProduct && productCoverImages[0] ? productCoverImages[0].url : null;
+  const coverUrl =
+    (isProduct || isCatalogItemSingle) && coverImages[0]
+      ? coverImages[0].url
+      : null;
   const artworkCid = catalogItemArtworkCid(item);
-  const hasArtwork = !!productCoverUrl || !!artworkCid;
+  const hasArtwork = !!coverUrl || !!artworkCid;
 
   return (
     <article className="space-y-10">
@@ -642,8 +653,8 @@ export function ItemDetailPage() {
             aria-label="View full-size artwork"
             className="block overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)] cursor-zoom-in transition-opacity hover:opacity-90"
           >
-            {productCoverUrl ? (
-              <img src={productCoverUrl} alt="" className="h-full w-full object-cover" />
+            {coverUrl ? (
+              <img src={coverUrl} alt="" className="h-full w-full object-cover" />
             ) : (
               <ArtworkImage
                 agent={agent}
@@ -981,9 +992,9 @@ export function ItemDetailPage() {
           showCloseButton={false}
         >
           <div className="bg-muted leading-none">
-            {productCoverUrl ? (
+            {coverUrl ? (
               <img
-                src={productCoverUrl}
+                src={coverUrl}
                 alt=""
                 className="block max-h-[85vh] max-w-[85vw] object-contain"
               />
