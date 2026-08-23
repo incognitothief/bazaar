@@ -147,7 +147,7 @@ export function DashboardPage() {
       <div>
         <h2 className="text-lg font-semibold mb-1">Quick actions</h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Jump to the panel you need.
+          Overview of merchant tools
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {quickActions.map(({ to, label, description, icon: Icon }) => (
