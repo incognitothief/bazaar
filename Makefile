@@ -23,6 +23,11 @@ VITE_APP_URL ?=
 VITE_LEXICON_NAMESPACE ?=
 VITE_ARTIST_DID ?=
 VITE_API_ORIGIN ?=
+# Optional cloudflared quick-tunnel origin. When set, `make dev` exports it into
+# the client/server URL vars so you don't rewrite packages/*/.env on each new hostname.
+#   make tunnel
+#   make dev CLOUDFLARED_URL=https://xxxx.trycloudflare.com
+CLOUDFLARED_URL ?=
 
 .PHONY: help
 help: ## Show available targets
@@ -53,8 +58,18 @@ setup-env: ## Copy .env.example files when packages/*/.env are missing
 	@echo "Wrote packages/server/.env and/or packages/client/.env from examples (skipped existing files)."
 
 .PHONY: dev
-dev: ## Run client (Vite :5173) and server (Bun :3000) via Turbo
-	npm run dev
+dev: ## Run client + server (optional: CLOUDFLARED_URL=https://….trycloudflare.com)
+	@url="$(CLOUDFLARED_URL)"; \
+	url="$${url%/}"; \
+	if [ -n "$$url" ]; then \
+	  echo "Injecting tunnel origin $$url (overrides URL vars in packages/*/.env)"; \
+	  export VITE_API_ORIGIN="$$url" \
+	    VITE_APP_URL="$$url" \
+	    APP_URL="$$url" \
+	    PUBLIC_WEB_APP_URL="$$url" \
+	    ATPROTO_OAUTH_REDIRECT_URI="$$url/api/atproto/callback"; \
+	fi; \
+	npm run dev -- --env-mode=loose
 
 .PHONY: build
 build: ## Build all workspaces (Turbo)
@@ -93,7 +108,7 @@ gen-did: ## Generate service keys and DID snippets (scripts/gen-did.sh)
 	./scripts/gen-did.sh
 
 .PHONY: tunnel
-tunnel: ## Expose local Vite dev server via cloudflared (port 5173)
+tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<printed url>
 	./tunnel.sh
 
 .PHONY: docker-build

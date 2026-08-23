@@ -7,7 +7,15 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": [
+        "CLOUDFLARED_URL",
+        "VITE_API_ORIGIN",
+        "VITE_APP_URL",
+        "APP_URL",
+        "PUBLIC_WEB_APP_URL",
+        "ATPROTO_OAUTH_REDIRECT_URI"
+      ]
     },
     "db:generate": {
       "cache": false

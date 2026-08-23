@@ -87,6 +87,7 @@ export async function createOAuthClient(db: Db): Promise<NodeOAuthClient> {
   const appUrl = oauthAppBaseUrl();
   const redirectUri = oauthRedirectUri();
   const isLoopbackDev = isOAuthLoopbackDev();
+  console.log(`OAuth public origin ${appUrl} (redirect_uri ${redirectUri})`);
 
   const dpopKey = await loadOrCreateDpopKey(db);
 
