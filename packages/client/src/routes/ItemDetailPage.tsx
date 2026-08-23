@@ -53,6 +53,7 @@ import { BuyButton } from "@/components/public/BuyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
+import { productTypeConfig } from "@/lib/productTypes";
 import {
   CollectionMemberDownloads,
   TrackList,
@@ -101,6 +102,7 @@ export function ItemDetailPage() {
     Array<{ objectId: string; url: string }>
   >([]);
   const [productItemTitles, setProductItemTitles] = useState<Record<string, string>>({});
+  const [productType, setProductType] = useState<string | null>(null);
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [licenseCid, setLicenseCid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -231,6 +233,7 @@ export function ItemDetailPage() {
           ]);
           if (!cancelled) {
             setProductCoverImages(p?.coverImages ?? []);
+            setProductType(p?.productType ?? null);
             setProductItemTitles(
               Object.fromEntries(
                 v.items.map((ref, i) => [ref.uri, resolvedItems[i]?.title ?? ref.uri]),
@@ -240,6 +243,7 @@ export function ItemDetailPage() {
         } else if (!cancelled) {
           setOwnsProduct(false);
           setProductCoverImages([]);
+          setProductType(null);
           setProductItemTitles({});
         }
 
@@ -363,6 +367,7 @@ export function ItemDetailPage() {
     item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
   const isProduct = item?.$type === BAZAAR_COLLECTION.product;
   const isCatalogItemSingle = item?.$type === BAZAAR_COLLECTION.item;
+  const isMusicProduct = isProduct && productTypeConfig(productType).value === "music";
 
   const purchaseByTrackUri = useMemo(() => {
     const m = new Map<string, { listingUri: string; listing: Listing }>();
@@ -376,6 +381,20 @@ export function ItemDetailPage() {
     }
     return m;
   }, [isCollection, listingUri, allArtistListings]);
+
+  /** Active per-item listings sold as singles under this product's own listing -- same parentListing convention as purchaseByTrackUri above. */
+  const purchaseByProductItemUri = useMemo(() => {
+    const m = new Map<string, { listingUri: string; listing: Listing }>();
+    if (!isProduct || !listingUri) return m;
+    for (const row of allArtistListings) {
+      const L = row.listing;
+      if (L.status !== "active") continue;
+      if (L.parentListing !== listingUri) continue;
+      if (new AtUri(L.item.uri).collection !== BAZAAR_COLLECTION.item) continue;
+      m.set(L.item.uri, { listingUri: row.uri, listing: L });
+    }
+    return m;
+  }, [isProduct, listingUri, allArtistListings]);
 
   if (legacySegment && rkeyParam) {
     try {
@@ -694,7 +713,13 @@ export function ItemDetailPage() {
                     href="/dashboard"
                     className="text-primary underline underline-offset-2"
                   >
-                    download this {isCollection || isProduct ? "release" : "item"}.
+                    download this{" "}
+                    {isCollection || isMusicProduct
+                      ? "release"
+                      : isProduct
+                        ? "product"
+                        : "item"}
+                    .
                   </a>
                 </p>
               ) : null}
@@ -748,7 +773,14 @@ export function ItemDetailPage() {
         ) : null}
         {isProduct && "items" in item ? (
           <MetadataChip>
-            {item.items.length} {item.items.length === 1 ? "item" : "items"}
+            {item.items.length}{" "}
+            {isMusicProduct
+              ? item.items.length === 1
+                ? "track"
+                : "tracks"
+              : item.items.length === 1
+                ? "item"
+                : "items"}
           </MetadataChip>
         ) : null}
         {"genre" in item && item.genre
@@ -783,31 +815,56 @@ export function ItemDetailPage() {
       {isProduct && "items" in item ? (
         <section className="space-y-4">
           <h2 className="text-lg font-medium">
-            {ownsProduct ? "Your downloads" : "Items"}
+            {ownsProduct ? "Your downloads" : isMusicProduct ? "Tracks" : "Items"}
           </h2>
-          <div className="space-y-2">
-            {item.items.map((ref) => (
-              <div
-                key={ref.uri}
-                className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
-              >
-                <span className="truncate text-sm">
-                  {productItemTitles[ref.uri] ?? ref.uri}
-                </span>
-                {ownsProduct ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={downloadBusyUri === ref.uri}
-                    onClick={() => void downloadDigitalItemUri(ref.uri)}
-                  >
-                    {downloadBusyUri === ref.uri ? "Preparing…" : "Download"}
-                  </Button>
-                ) : null}
-              </div>
-            ))}
-          </div>
+          <ol className="list-none space-y-2 m-0 p-0">
+            {item.items.map((ref, index) => {
+              const purchase = purchaseByProductItemUri.get(ref.uri);
+              return (
+                <li
+                  key={ref.uri}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
+                >
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    {isMusicProduct ? (
+                      <span className="tabular-nums text-muted-foreground shrink-0 w-5 text-right">
+                        {index + 1}.
+                      </span>
+                    ) : null}
+                    <span className="truncate text-sm font-medium">
+                      {productItemTitles[ref.uri] ?? ref.uri}
+                    </span>
+                  </span>
+                  {ownsProduct ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={downloadBusyUri === ref.uri}
+                      onClick={() => void downloadDigitalItemUri(ref.uri)}
+                    >
+                      {downloadBusyUri === ref.uri ? "Preparing…" : "Download"}
+                    </Button>
+                  ) : purchase ? (
+                    <Link
+                      to={itemPathPretty(
+                        catalogItemRkey(ref.uri),
+                        productItemTitles[ref.uri],
+                      )}
+                      className="shrink-0 text-sm font-medium text-primary underline-offset-2 hover:underline"
+                    >
+                      Buy · {formatMoney(purchase.listing.price)}
+                    </Link>
+                  ) : (
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      Not sold separately
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
           {ownsProduct ? (
             <Button
               type="button"
