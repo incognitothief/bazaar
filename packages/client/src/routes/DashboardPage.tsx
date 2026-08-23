@@ -12,6 +12,7 @@ import {
   listLicenseTerms,
   listListingRows,
 } from "@/lib/atproto/records";
+import type { PaymentFulfillmentRow } from "@/routes/MerchantTransactionsPage";
 import type { DigitalItem } from "@/types/lexicons";
 
 export function DashboardPage() {
@@ -21,6 +22,7 @@ export function DashboardPage() {
     { uri: string; item: DigitalItem }[]
   >([]);
   const [listingCount, setListingCount] = useState(0);
+  const [totalSales, setTotalSales] = useState(0);
   const [stripeConnected, setStripeConnected] = useState(false);
   const [hasLicense, setHasLicense] = useState(false);
 
@@ -38,6 +40,23 @@ export function DashboardPage() {
         }
       } catch {
         setStripeConnected(false);
+      }
+    })();
+  }, []);
+
+  // "Sale" = a completed payment fulfillment -- same definition as the Sales page's Total sales card.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch(browserApiUrl("/api/merchant/payment-fulfillments"), {
+          credentials: "include",
+        });
+        if (!r.ok) return;
+        const j = (await r.json()) as { rows?: PaymentFulfillmentRow[] };
+        const rows = Array.isArray(j.rows) ? j.rows : [];
+        setTotalSales(rows.filter((row) => row.status === "completed").length);
+      } catch {
+        setTotalSales(0);
       }
     })();
   }, []);
@@ -78,7 +97,7 @@ export function DashboardPage() {
         </div>
         <div className="rounded-lg border border-border p-4">
           <p className="text-sm text-muted-foreground">Total sales</p>
-          <p className="text-2xl font-semibold">0</p>
+          <p className="text-2xl font-semibold">{totalSales}</p>
         </div>
       </div>
       {items.length === 0 ? (
