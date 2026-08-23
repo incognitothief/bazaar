@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil } from "lucide-react";
+import { ArrowLeft, Download, Pencil, Tag } from "lucide-react";
 import { AtUri } from "@atproto/syntax";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
 import {
   Dialog,
   DialogContent,
@@ -1302,48 +1303,59 @@ function CatalogItemEditForm({
       onSubmit={(e) => void onSubmit(e)}
       className="w-full min-w-0 max-w-2xl space-y-6"
     >
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">
-          {editing ? "Edit item" : "Item"}
-        </h1>
-        {!editing ? (
+      <h1 className="text-2xl font-semibold">
+        {editing ? "Edit item" : "Item"}
+      </h1>
+
+      <div className="flex flex-wrap items-start gap-4">
+        {row.coverImages.length > 0 ? (
+          <div className="max-w-xs">
+            <CoverImageSlideshow images={row.coverImages} alt={row.title} />
+          </div>
+        ) : null}
+        <div className="ml-auto grid grid-cols-2 gap-1">
+          {!editing ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Edit item"
+              title="Edit item"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="size-4" />
+            </Button>
+          ) : null}
           <Button
             type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Edit item"
-            onClick={() => setEditing(true)}
+            variant="outline"
+            size="icon-sm"
+            disabled={downloading}
+            onClick={() => void onDownload()}
+            aria-label={downloading ? "Preparing download" : "Download"}
+            title="Get this file directly -- for support/incident handoff, not the buyer-facing download"
           >
-            <Pencil className="size-4" />
+            <Download className="size-4" />
           </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={downloading}
-          onClick={() => void onDownload()}
-          title="Get this file directly -- for support/incident handoff, not the buyer-facing download"
-        >
-          {downloading ? "Preparing…" : "Download"}
-        </Button>
-        {!editing ? (
+          {!editing ? (
+            <Link
+              to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
+              className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
+              aria-label="Create listing"
+              title="Create listing"
+            >
+              <Tag className="size-4" />
+            </Link>
+          ) : null}
           <Link
-            to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            to="/merchant/inventory"
+            className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
+            aria-label="Back to inventory"
+            title="Back to inventory"
           >
-            Create listing
+            <ArrowLeft className="size-4" />
           </Link>
-        ) : null}
-        <Link
-          to="/merchant/inventory"
-          className={cn(
-            buttonVariants({ variant: "ghost", size: "sm" }),
-            "ml-auto",
-          )}
-        >
-          Back to inventory
-        </Link>
+        </div>
       </div>
 
       {editing ? (
@@ -1352,6 +1364,9 @@ function CatalogItemEditForm({
             <p className="text-muted-foreground text-xs">
               File identity (format, checksum, CID) is immutable — upload a new
               file via a replace flow to change the asset.
+            </p>
+            <p className="text-xs">
+              Format: <span className="font-medium">{row.format || "—"}</span>
             </p>
           </div>
 
@@ -1413,6 +1428,10 @@ function CatalogItemEditForm({
           <p className="text-sm">
             <span className="text-muted-foreground">Category: </span>
             {row.category || "—"}
+          </p>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Format: </span>
+            {row.format || "—"}
           </p>
         </div>
       )}

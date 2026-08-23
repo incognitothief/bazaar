@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, Download, Pencil, Tag } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
@@ -271,52 +271,57 @@ export function MerchantProductDetailPage() {
 
   return (
     <div className="w-full min-w-0 max-w-2xl space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">
-          {editing ? "Edit product" : "Product"}
-        </h1>
-        {!editing ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Edit product"
-            onClick={() => setEditing(true)}
-          >
-            <Pencil className="size-4" />
-          </Button>
-        ) : null}
-        <a
-          href={catalogProductDownloadUrl(uri)}
-          className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-          title="The same package a buyer would receive -- for handing off during support/incident triage"
-        >
-          Download package
-        </a>
-        {!editing ? (
-          <Link
-            to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-          >
-            Create listing
-          </Link>
-        ) : null}
-        <Link
-          to="/merchant/inventory"
-          className={cn(
-            buttonVariants({ variant: "ghost", size: "sm" }),
-            "ml-auto",
-          )}
-        >
-          Back to inventory
-        </Link>
-      </div>
+      <h1 className="text-2xl font-semibold">
+        {editing ? "Edit product" : "Product"}
+      </h1>
 
-      {product.coverImages.length > 0 ? (
-        <div className="max-w-xs">
-          <CoverImageSlideshow images={product.coverImages} alt={product.title} />
+      <div className="flex flex-wrap items-start gap-4">
+        {product.coverImages.length > 0 ? (
+          <div className="max-w-xs">
+            <CoverImageSlideshow images={product.coverImages} alt={product.title} />
+          </div>
+        ) : null}
+        <div className="ml-auto grid grid-cols-2 gap-1">
+          {!editing ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Edit product"
+              title="Edit product"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="size-4" />
+            </Button>
+          ) : null}
+          <a
+            href={catalogProductDownloadUrl(uri)}
+            className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
+            aria-label="Download package"
+            title="Download package -- the same package a buyer would receive, for handing off during support/incident triage"
+          >
+            <Download className="size-4" />
+          </a>
+          {!editing ? (
+            <Link
+              to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
+              className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
+              aria-label="Create listing"
+              title="Create listing"
+            >
+              <Tag className="size-4" />
+            </Link>
+          ) : null}
+          <Link
+            to="/merchant/inventory"
+            className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
+            aria-label="Back to inventory"
+            title="Back to inventory"
+          >
+            <ArrowLeft className="size-4" />
+          </Link>
         </div>
-      ) : null}
+      </div>
 
       {editing ? (
         <>

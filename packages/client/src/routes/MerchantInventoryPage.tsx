@@ -78,6 +78,7 @@ export function MerchantInventoryPage() {
   } = useMerchantCatalog(session?.did);
   const [view, setView] = useState<InventoryViewMode>(() => loadInventoryViewMode());
   const [pendingUris, setPendingUris] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<"products" | "items">("products");
 
   const handleViewChange = useCallback((mode: InventoryViewMode) => {
     setView(mode);
@@ -205,23 +206,28 @@ export function MerchantInventoryPage() {
         </div>
       ) : null}
 
-      <Tabs defaultValue="products">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as "products" | "items")}
+      >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <TabsList>
             <TabsTrigger value="products">Products</TabsTrigger>
             <TabsTrigger value="items">All items</TabsTrigger>
           </TabsList>
-          {!loading && itemRows.length > 0 ? (
-            <InventoryViewToggle value={view} onChange={handleViewChange} />
-          ) : null}
+          <div className="flex items-center gap-2">
+            {!loading && itemRows.length > 0 ? (
+              <InventoryViewToggle value={view} onChange={handleViewChange} />
+            ) : null}
+            {activeTab === "products" ? (
+              <Link to="/merchant/inventory/new" className={cn(buttonVariants())}>
+                + Add a product
+              </Link>
+            ) : null}
+          </div>
         </div>
 
         <TabsContent value="products" className="space-y-4">
-          <div className="flex justify-end">
-            <Link to="/merchant/inventory/new" className={cn(buttonVariants())}>
-              + Add a product
-            </Link>
-          </div>
           {loading ? (
             view === "grid" ? (
               <GridSkeleton />
