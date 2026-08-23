@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import {
-  Link,
-  NavLink,
-  Outlet,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
+import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -15,29 +9,19 @@ import { getAuthRole } from "@/lib/auth";
 
 const SIDEBAR_COLLAPSED_KEY = "bazaar_merchant_sidebar_collapsed";
 
-function isMerchantInventorySection(path: string): boolean {
-  return (
-    path.startsWith("/merchant/upload") ||
-    path.startsWith("/merchant/inventory") ||
-    path.startsWith("/merchant/listings")
-  );
-}
-
 const mainNav: { to: string; label: string }[] = [
+  { to: "/merchant/inventory", label: "Inventory" },
+  { to: "/merchant/listings", label: "Listings" },
   { to: "/merchant/license", label: "Licenses" },
   { to: "/merchant/settings", label: "Settings" },
 ];
 
 function MerchantNavPanel({
-  inventoryOpen,
-  setInventoryOpen,
   onNavigate,
   signOut,
   sheetVariant,
   onCollapse,
 }: {
-  inventoryOpen: boolean;
-  setInventoryOpen: (v: boolean | ((b: boolean) => boolean)) => void;
   onNavigate?: () => void;
   signOut: () => void | Promise<void>;
   /** Extra top padding so nav clears the sheet close control. */
@@ -45,7 +29,6 @@ function MerchantNavPanel({
   /** Desktop only — omit to hide the collapse control (e.g. inside the mobile sheet). */
   onCollapse?: () => void;
 }) {
-  const location = useLocation();
   const navCls = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-md px-2 py-1.5 text-sm hover:bg-muted",
@@ -92,54 +75,6 @@ function MerchantNavPanel({
           Sales
         </NavLink>
 
-        <div className="shrink-0 rounded-md">
-          <div className="flex items-center">
-            <Link
-              to="/merchant/inventory"
-              className={cn(
-                "flex-1 rounded-md px-2 py-1.5 text-sm font-medium hover:bg-muted",
-                location.pathname.startsWith("/merchant/inventory") &&
-                  "bg-muted",
-              )}
-              onClick={() => {
-                setInventoryOpen(true);
-                onNavigate?.();
-              }}
-            >
-              Inventory
-            </Link>
-            <button
-              type="button"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
-              onClick={() => setInventoryOpen((o) => !o)}
-              aria-expanded={inventoryOpen}
-              aria-label="Toggle inventory submenu"
-            >
-              <ChevronDown
-                className={cn(
-                  "size-4 shrink-0 transition-transform",
-                  inventoryOpen && "rotate-180",
-                )}
-              />
-            </button>
-          </div>
-          {inventoryOpen ? (
-            <div className="mt-1 flex flex-col gap-0.5 border-l border-border ml-2 pl-2">
-              <Link
-                to="/merchant/listings"
-                className={cn(
-                  "rounded-md px-2 py-1.5 text-sm hover:bg-muted block",
-                  location.pathname.startsWith("/merchant/listings") &&
-                    "bg-muted font-medium",
-                )}
-                onClick={onNavigate}
-              >
-                Listings
-              </Link>
-            </div>
-          ) : null}
-        </div>
-
         {mainNav.map((n) => (
           <NavLink key={n.to} to={n.to} className={navCls} onClick={onNavigate}>
             {n.label}
@@ -172,10 +107,6 @@ function MerchantNavPanel({
 export function MerchantLayout() {
   const { session, loading, signOut } = useAtpSession();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [inventoryOpen, setInventoryOpen] = useState(() =>
-    isMerchantInventorySection(location.pathname),
-  );
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true",
@@ -203,12 +134,6 @@ export function MerchantLayout() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  useEffect(() => {
-    if (isMerchantInventorySection(location.pathname)) {
-      setInventoryOpen(true);
-    }
-  }, [location.pathname]);
 
   useEffect(() => {
     if (!loading && !session) {
@@ -272,8 +197,6 @@ export function MerchantLayout() {
       ) : (
         <aside className="hidden min-h-0 w-56 shrink-0 flex-col border-r border-border bg-card md:flex">
           <MerchantNavPanel
-            inventoryOpen={inventoryOpen}
-            setInventoryOpen={setInventoryOpen}
             signOut={signOut}
             onCollapse={() => setSidebarCollapsed(true)}
           />
@@ -288,8 +211,6 @@ export function MerchantLayout() {
         >
           <MerchantNavPanel
             sheetVariant
-            inventoryOpen={inventoryOpen}
-            setInventoryOpen={setInventoryOpen}
             onNavigate={() => setMobileNavOpen(false)}
             signOut={signOut}
           />
