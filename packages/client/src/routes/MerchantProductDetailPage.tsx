@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
 import {
   createInventorySession,
   inventoryUserFacingError,
@@ -284,6 +285,12 @@ export function MerchantProductDetailPage() {
           Cancel
         </Link>
       </div>
+
+      {product.coverImages.length > 0 ? (
+        <div className="max-w-xs">
+          <CoverImageSlideshow images={product.coverImages} alt={product.title} />
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <Label htmlFor="prod-title">Title</Label>

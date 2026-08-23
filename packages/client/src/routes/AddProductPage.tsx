@@ -38,6 +38,20 @@ type ItemDraftRow = {
 };
 
 /**
+ * Cover art -- productTypeConfig().allowMultipleCoverImages gates whether
+ * dropping a new image replaces this array or appends to it; the array
+ * itself always supports any length, the data model doesn't distinguish
+ * single vs. slideshow (see CoverImageSlideshow.tsx).
+ */
+type CoverImageDraft = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  objectId: string | null;
+  uploading: boolean;
+};
+
+/**
  * The generic included-assets bin (catalogProductAssets) -- companion
  * files (liner notes, a poster, etc.) that are always bundled into the
  * buyer's download but aren't part of the product's public composition.
@@ -73,10 +87,8 @@ export function AddProductPage() {
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(
     () => productTypeConfig(GENERIC_PRODUCT_TYPE).defaultArtIncludedInDownload,
   );
-  const [artworkFile, setArtworkFile] = useState<File | null>(null);
-  const [artworkPreview, setArtworkPreview] = useState<string | null>(null);
-  const [artworkObjectId, setArtworkObjectId] = useState<string | null>(null);
-  const [artworkUploading, setArtworkUploading] = useState(false);
+  const allowMultipleCoverImages = productTypeConfig(productType).allowMultipleCoverImages;
+  const [coverImages, setCoverImages] = useState<CoverImageDraft[]>([]);
 
   const [items, setItems] = useState<ItemDraftRow[]>([]);
   const [assets, setAssets] = useState<AssetDraftRow[]>([]);
@@ -89,16 +101,22 @@ export function AddProductPage() {
     return id;
   }, [sessionId]);
 
-  const handleArtworkFile = useCallback(
+  const handleCoverImageFile = useCallback(
     async (file: File, previewUrl: string) => {
-      setArtworkFile(file);
-      setArtworkPreview(previewUrl);
-      setArtworkUploading(true);
+      const draftId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const draft: CoverImageDraft = {
+        id: draftId,
+        file,
+        previewUrl,
+        objectId: null,
+        uploading: true,
+      };
+      setCoverImages((prev) => (allowMultipleCoverImages ? [...prev, draft] : [draft]));
       try {
         const id = await ensureSession();
         const { objects } = await registerInventoryObjects(id, [
           {
-            slotId: "cover-art",
+            slotId: `cover-art-${draftId}`,
             fileName: file.name,
             contentType: file.type,
             byteSize: file.size,
@@ -107,19 +125,26 @@ export function AddProductPage() {
         ]);
         const obj = objects[0];
         await uploadFileToInventoryObject(obj.objectId, file, obj.uploadKind);
-        setArtworkObjectId(obj.objectId);
+        setCoverImages((prev) =>
+          prev.map((img) =>
+            img.id === draftId ? { ...img, objectId: obj.objectId, uploading: false } : img,
+          ),
+        );
       } catch (e) {
         toast.error("Could not upload cover art", {
           description: inventoryUserFacingError(e),
         });
-        setArtworkFile(null);
-        setArtworkPreview(null);
-      } finally {
-        setArtworkUploading(false);
+        setCoverImages((prev) => prev.filter((img) => img.id !== draftId));
       }
     },
-    [ensureSession],
+    [ensureSession, allowMultipleCoverImages],
   );
+
+  const removeCoverImage = useCallback((id: string) => {
+    setCoverImages((prev) => prev.filter((img) => img.id !== id));
+  }, []);
+
+  const allCoverImagesReady = coverImages.every((img) => !img.uploading);
 
   const handleItemBatch = useCallback(
     async (entries: BatchFileEntry[]) => {
@@ -298,13 +323,16 @@ export function AddProductPage() {
     if (!sessionId) return;
     setPublishing(true);
     try {
+      const artworkObjectIds = coverImages
+        .map((img) => img.objectId)
+        .filter((id): id is string => !!id);
       await saveInventoryDraft(sessionId, {
         product: {
           title: title.trim(),
           description: description.trim() || undefined,
-          artworkObjectId: artworkObjectId ?? undefined,
+          artworkObjectIds,
           productType,
-          artIncludedInDownload: artworkObjectId ? artIncludedInDownload : false,
+          artIncludedInDownload: artworkObjectIds.length > 0 ? artIncludedInDownload : false,
           includedAssets: assets.map((a) => ({
             objectId: a.objectId,
             role: a.label.trim() || a.file.name,
@@ -331,7 +359,7 @@ export function AddProductPage() {
     sessionId,
     title,
     description,
-    artworkObjectId,
+    coverImages,
     productType,
     artIncludedInDownload,
     items,
@@ -375,6 +403,9 @@ export function AddProductPage() {
                   onClick={() => {
                     setProductType(opt.value);
                     setArtIncludedInDownload(opt.defaultArtIncludedInDownload);
+                    if (!opt.allowMultipleCoverImages) {
+                      setCoverImages((prev) => prev.slice(0, 1));
+                    }
                   }}
                   className={cn(
                     "rounded-lg border px-3 py-2 text-left text-sm transition-colors",
@@ -415,22 +446,46 @@ export function AddProductPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Cover art (optional)</Label>
-            <ImageDropzone onFile={handleArtworkFile} onError={(m) => toast.error(m)} />
-            {artworkFile && artworkPreview ? (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  {artworkUploading ? "Uploading…" : `${artworkFile.name} uploaded`}
-                </p>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={artIncludedInDownload}
-                    onChange={(e) => setArtIncludedInDownload(e.target.checked)}
-                  />
-                  Include cover art in the buyer's download package
-                </label>
-              </>
+            <Label>{allowMultipleCoverImages ? "Cover images (optional)" : "Cover art (optional)"}</Label>
+            {allowMultipleCoverImages || coverImages.length === 0 ? (
+              <ImageDropzone onFile={handleCoverImageFile} onError={(m) => toast.error(m)} />
+            ) : null}
+            {coverImages.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {coverImages.map((img) => (
+                  <div key={img.id} className="relative">
+                    <img
+                      src={img.previewUrl}
+                      alt=""
+                      className="h-20 w-20 rounded-md border border-border object-cover"
+                    />
+                    {img.uploading ? (
+                      <span className="absolute inset-0 flex items-center justify-center rounded-md bg-background/70 text-[10px] text-muted-foreground">
+                        Uploading…
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => removeCoverImage(img.id)}
+                        className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground"
+                        aria-label="Remove image"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {coverImages.length > 0 ? (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={artIncludedInDownload}
+                  onChange={(e) => setArtIncludedInDownload(e.target.checked)}
+                />
+                Include cover art in the buyer's download package
+              </label>
             ) : null}
           </div>
           <div className="space-y-1.5">
@@ -485,7 +540,7 @@ export function AddProductPage() {
           </div>
           <div className="flex justify-end">
             <Button
-              disabled={!title.trim() || !allAssetsReady}
+              disabled={!title.trim() || !allAssetsReady || !allCoverImagesReady}
               onClick={() => setStep(2)}
             >
               Next: Add items
@@ -582,10 +637,10 @@ export function AddProductPage() {
             <p className="font-medium">{title}</p>
             <p className="text-xs text-muted-foreground">
               {productTypeConfig(productType).label}
-              {artworkFile
-                ? artIncludedInDownload
-                  ? " · cover art included in download"
-                  : " · cover art not included in download"
+              {coverImages.length > 0
+                ? `${coverImages.length > 1 ? ` · ${coverImages.length} cover images` : " · cover art"}${
+                    artIncludedInDownload ? " (included in download)" : " (not included in download)"
+                  }`
                 : ""}
             </p>
             {description ? (
@@ -618,7 +673,7 @@ export function AddProductPage() {
             </Button>
             <Button
               onClick={() => void publish()}
-              disabled={publishing || !allAssetsReady}
+              disabled={publishing || !allAssetsReady || !allCoverImagesReady}
             >
               {publishing ? "Publishing…" : "Publish"}
             </Button>

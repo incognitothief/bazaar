@@ -15,6 +15,13 @@ type ProductTypeConfig = {
   description: string;
   /** Default for the "include cover art in the download" toggle at creation time -- merchant can still override. */
   defaultArtIncludedInDownload: boolean;
+  /**
+   * Single-image picker vs. multi-image slideshow uploader. The data model
+   * doesn't care either way -- catalogProductAssets already allows any
+   * number of "coverArt" rows -- this only changes which upload UI renders,
+   * so flipping a type to slideshow later is just this one flag.
+   */
+  allowMultipleCoverImages: boolean;
 };
 
 const PRODUCT_TYPE_CONFIGS: Record<ProductType, ProductTypeConfig> = {
@@ -23,12 +30,14 @@ const PRODUCT_TYPE_CONFIGS: Record<ProductType, ProductTypeConfig> = {
     label: "Music release",
     description: "An album, EP, or single.",
     defaultArtIncludedInDownload: true,
+    allowMultipleCoverImages: false,
   },
   generic: {
     value: "generic",
     label: "Generic",
     description: "Anything else -- software, art, documents, bundles.",
     defaultArtIncludedInDownload: false,
+    allowMultipleCoverImages: true,
   },
 };
 

@@ -21,6 +21,7 @@ import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import { sanitizeInventoryFilename } from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
+import { resolveCoverImages } from "../lib/productAssets";
 import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import {
   businessEmailFromEnv,
@@ -369,7 +370,7 @@ export function createMerchantRouter(db: Db) {
   });
 
   /** Store-owner: ERP-first catalog.product list. */
-  r.get("/catalog/products", (c) => {
+  r.get("/catalog/products", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
     const owner = process.env.ARTIST_DID!.trim();
@@ -379,12 +380,14 @@ export function createMerchantRouter(db: Db) {
       .where(eq(catalogProducts.sellerDid, owner))
       .orderBy(desc(catalogProducts.capturedAt))
       .all();
-    return c.json({
-      products: rows.map((row) => ({
+    const products = await Promise.all(
+      rows.map(async (row) => ({
         ...row,
         items: JSON.parse(row.items) as unknown,
+        coverImages: await resolveCoverImages(db, row.uri),
       })),
-    });
+    );
+    return c.json({ products });
   });
 
   /**

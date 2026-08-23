@@ -647,6 +647,8 @@ export type CatalogProductRow = {
   productType: string | null;
   /** Whether cover art is bundled into the buyer's download package -- also UI-only. */
   artIncludedInDownload: boolean;
+  /** Presigned URLs, in slideshow order. Any number -- single-image types just have one. */
+  coverImages: Array<{ objectId: string; url: string }>;
   recordCreatedAt: string | null;
   capturedAt: string;
   updatedAt: string;

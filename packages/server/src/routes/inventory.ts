@@ -1216,17 +1216,13 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ error: "items_required" }, 400);
     }
 
-    let artObj: (typeof objects)[number] | undefined;
-    if (draft.product.artworkObjectId) {
-      artObj = objects.find(
-        (o) => o.id === draft.product.artworkObjectId && o.role === "artwork",
-      );
+    const artObjs: Array<(typeof objects)[number]> = [];
+    for (const artworkObjectId of draft.product.artworkObjectIds ?? []) {
+      const artObj = objects.find((o) => o.id === artworkObjectId && o.role === "artwork");
       if (!artObj || artObj.status !== "completed") {
-        return c.json(
-          { error: "invalid_product_artwork", objectId: draft.product.artworkObjectId },
-          400,
-        );
+        return c.json({ error: "invalid_product_artwork", objectId: artworkObjectId }, 400);
       }
+      artObjs.push(artObj);
     }
 
     const includedAssetObjs: Array<{ obj: (typeof objects)[number]; role: string }> = [];
@@ -1301,12 +1297,13 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       },
     );
 
-    if (artObj) {
+    for (let i = 0; i < artObjs.length; i++) {
       await db.insert(catalogProductAssets).values({
         id: randomUUID(),
         productUri: productRes.data.uri,
-        objectId: artObj.id,
+        objectId: artObjs[i].id,
         role: "coverArt",
+        position: i,
       });
     }
     for (const { obj, role } of includedAssetObjs) {
@@ -1577,7 +1574,8 @@ type PublishProductDraftV1 = {
   product: {
     title: string;
     description?: string;
-    artworkObjectId?: string;
+    /** One or more cover images, in slideshow order -- single-image types just send one. */
+    artworkObjectIds?: string[];
     /** UI-only classification (e.g. "music", "generic") -- see captureCatalogProduct. */
     productType?: string;
     /** Whether the cover art asset is bundled into the buyer's download package. */

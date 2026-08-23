@@ -230,6 +230,8 @@ export const catalogProductAssets = sqliteTable(
       .notNull()
       .references(() => inventoryUploadObject.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
+    /** Display order among assets sharing a role -- e.g. slideshow order for multiple "coverArt" rows. Meaningless for a single asset. */
+    position: integer("position").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),

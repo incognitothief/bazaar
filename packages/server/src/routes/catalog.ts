@@ -4,6 +4,7 @@ import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
 import { catalogItems, catalogProducts } from "../db/schema";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
+import { resolveCoverImages } from "../lib/productAssets";
 
 /** Optional public resolver for storefront / API consumers */
 export function createCatalogRouter(db: Db) {
@@ -53,8 +54,9 @@ export function createCatalogRouter(db: Db) {
       .where(eq(catalogProducts.uri, uri))
       .get();
     if (!row) return c.json({ error: "not_found" }, 404);
+    const coverImages = await resolveCoverImages(db, uri);
     return c.json({
-      product: { ...row, items: JSON.parse(row.items) as unknown },
+      product: { ...row, items: JSON.parse(row.items) as unknown, coverImages },
     });
   });
 
