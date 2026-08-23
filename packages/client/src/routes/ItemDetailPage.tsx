@@ -58,6 +58,7 @@ import {
   TrackList,
 } from "@/components/public/TrackList";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   catalogItemArtworkCid,
   catalogItemSellerDid,
@@ -106,6 +107,7 @@ export function ItemDetailPage() {
   const [downloadBusyUri, setDownloadBusyUri] = useState<string | null>(null);
   const [zipBusy, setZipBusy] = useState(false);
   const [legalOpen, setLegalOpen] = useState(false);
+  const [artworkPreviewOpen, setArtworkPreviewOpen] = useState(false);
   const [relayAvatarUrl, setRelayAvatarUrl] = useState<string | null>(null);
   const [relayAvatarBroken, setRelayAvatarBroken] = useState(false);
   const [bazaarAvatarObjectUrl, setBazaarAvatarObjectUrl] = useState<
@@ -553,6 +555,11 @@ export function ItemDetailPage() {
     : defaultOgImageAbsolute();
   const twSite = import.meta.env.VITE_PUBLIC_TWITTER_SITE?.trim();
 
+  const productCoverUrl =
+    isProduct && productCoverImages[0] ? productCoverImages[0].url : null;
+  const artworkCid = catalogItemArtworkCid(item);
+  const hasArtwork = !!productCoverUrl || !!artworkCid;
+
   return (
     <article className="space-y-10">
       <Helmet>
@@ -593,24 +600,38 @@ export function ItemDetailPage() {
         </p>
       ) : null}
       <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
-        <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)]">
-          {isProduct && productCoverImages[0] ? (
-            <img
-              src={productCoverImages[0].url}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
+        {hasArtwork ? (
+          <button
+            type="button"
+            onClick={() => setArtworkPreviewOpen(true)}
+            aria-label="View full-size artwork"
+            className="block overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)] cursor-zoom-in transition-opacity hover:opacity-90"
+          >
+            {productCoverUrl ? (
+              <img src={productCoverUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <ArtworkImage
+                agent={agent}
+                did={blobDid}
+                cid={artworkCid}
+                itemUri={itemUri}
+                alt=""
+                className="h-full w-full"
+              />
+            )}
+          </button>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)]">
             <ArtworkImage
               agent={agent}
               did={blobDid}
-              cid={catalogItemArtworkCid(item)}
+              cid={artworkCid}
               itemUri={itemUri}
               alt=""
               className="h-full w-full"
             />
-          )}
-        </div>
+          </div>
+        )}
         <div className="space-y-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
@@ -861,6 +882,32 @@ export function ItemDetailPage() {
           />
         </section>
       ) : null}
+
+      <Dialog open={artworkPreviewOpen} onOpenChange={setArtworkPreviewOpen}>
+        <DialogContent
+          overlayClassName="bg-black/90 backdrop-blur-sm"
+          className="flex max-w-[95vw] items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-[95vw]"
+        >
+          <div className="rounded-lg bg-muted p-2">
+            {productCoverUrl ? (
+              <img
+                src={productCoverUrl}
+                alt=""
+                className="max-h-[85vh] max-w-[85vw] rounded object-contain"
+              />
+            ) : (
+              <ArtworkImage
+                agent={agent}
+                did={blobDid}
+                cid={artworkCid}
+                itemUri={itemUri}
+                alt=""
+                className="max-h-[85vh] max-w-[85vw] rounded"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </article>
   );
 }
