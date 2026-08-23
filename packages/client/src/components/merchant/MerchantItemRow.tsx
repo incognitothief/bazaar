@@ -15,6 +15,7 @@ import {
   kindLabel,
   listingStatusBadgeVariant,
   rowArtworkCid,
+  rowCoverImageUrl,
   storefrontHref,
 } from "./merchantItemDisplay";
 
@@ -42,14 +43,20 @@ export function MerchantItemRow({
         to={editHref(row)}
         className="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <ArtworkImage
-          agent={agent}
-          did={merchantDid}
-          cid={rowArtworkCid(row)}
-          itemUri={row.uri}
-          alt=""
-          className="h-full w-full"
-        />
+        {row.kind === "product" ? (
+          rowCoverImageUrl(row) ? (
+            <img src={rowCoverImageUrl(row)} alt="" className="h-full w-full object-cover" />
+          ) : null
+        ) : (
+          <ArtworkImage
+            agent={agent}
+            did={merchantDid}
+            cid={rowArtworkCid(row)}
+            itemUri={row.uri}
+            alt=""
+            className="h-full w-full"
+          />
+        )}
       </Link>
 
       <div className="min-w-0 flex-1">

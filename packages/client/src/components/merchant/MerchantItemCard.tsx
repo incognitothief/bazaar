@@ -16,6 +16,7 @@ import {
   kindLabel,
   listingStatusBadgeVariant,
   rowArtworkCid,
+  rowCoverImageUrl,
   storefrontHref,
 } from "./merchantItemDisplay";
 
@@ -41,14 +42,24 @@ export function MerchantItemCard({
     <Card className="h-full gap-0 overflow-hidden py-0 ring-border transition-shadow hover:shadow-md">
       <Link to={editHref(row)} className="block focus-visible:outline-none">
         <div className="aspect-square w-full overflow-hidden bg-muted">
-          <ArtworkImage
-            agent={agent}
-            did={merchantDid}
-            cid={rowArtworkCid(row)}
-            itemUri={row.uri}
-            alt=""
-            className="h-full w-full"
-          />
+          {row.kind === "product" ? (
+            rowCoverImageUrl(row) ? (
+              <img
+                src={rowCoverImageUrl(row)}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : null
+          ) : (
+            <ArtworkImage
+              agent={agent}
+              did={merchantDid}
+              cid={rowArtworkCid(row)}
+              itemUri={row.uri}
+              alt=""
+              className="h-full w-full"
+            />
+          )}
         </div>
       </Link>
       <CardContent className="space-y-1.5 p-3">

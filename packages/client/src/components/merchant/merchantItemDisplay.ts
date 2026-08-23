@@ -63,10 +63,21 @@ export function hasStorefrontPage(kind: MerchantItemRow["kind"]): boolean {
   return kind !== "item" && kind !== "product";
 }
 
-/** catalog.item has no artworkCid of its own; catalog.product's cover art lives in catalogProductAssets, not this list row. */
+/**
+ * catalog.item has no artworkCid of its own. catalog.product's cover art
+ * is also never a PDS blob CID -- it lives in catalogProductAssets, R2, not
+ * the repo -- so it can't go through ArtworkImage's CID-resolution path at
+ * all; use rowCoverImageUrl() for products instead (a plain <img src>).
+ */
 export function rowArtworkCid(row: MerchantItemRow): string | undefined {
   if (row.kind === "item" || row.kind === "product") return undefined;
   return row.item.artworkCid;
+}
+
+/** The presigned URL for a product's first cover image, if it has one -- see rowArtworkCid's note on why this is separate from the CID path. */
+export function rowCoverImageUrl(row: MerchantItemRow): string | undefined {
+  if (row.kind !== "product") return undefined;
+  return row.item.coverImages[0]?.url;
 }
 
 export type ListingStatusBadgeVariant =
