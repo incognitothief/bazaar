@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { Link } from "react-router-dom";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,7 +23,10 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
+  buildItemRefFromUri,
+  deleteListing,
   getRecordValue,
+  isTerminalListingStatus,
   listListingRows,
   putListing,
   type ListingRow,
@@ -123,6 +134,8 @@ export function ListingsPage() {
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [editRow, setEditRow] = useState<ListingRow | null>(null);
   const [editDollars, setEditDollars] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ListingRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -154,8 +167,14 @@ export function ListingsPage() {
       return;
     }
     const cents = Math.round(dollars * 100);
+    // Saving a listing is a natural checkpoint to re-pin the item's CID to
+    // its current value -- fixes listings stuck failing checkout with
+    // "item_changed" after an old item/product edit, without silently
+    // changing what's referenced on someone else's schedule.
+    const freshRef = await buildItemRefFromUri(editRow.listing.item.uri);
     const next: Listing = {
       ...editRow.listing,
+      item: freshRef ?? editRow.listing.item,
       price: { ...editRow.listing.price, amount: cents },
     };
     try {
@@ -174,15 +193,27 @@ export function ListingsPage() {
     }
   }
 
-  /** archived/superseded are permanent retirements (e.g. the item/product changed since this listing pinned its CID) -- never reactivate, only create a fresh listing. */
-  function isTerminalStatus(status: Listing["status"]): boolean {
-    return status === "archived" || status === "superseded";
+  async function confirmDelete() {
+    if (!agent || !deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteListing(agent, deleteTarget.uri);
+      setRows((prev) => prev.filter((x) => x.uri !== deleteTarget.uri));
+      toast.success("Listing deleted");
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.error("Failed to delete listing", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function toggleStatus(row: ListingRow) {
     if (!agent) return;
     if (isDummyListingRow(row)) return;
-    if (isTerminalStatus(row.listing.status)) return;
+    if (isTerminalListingStatus(row.listing.status)) return;
     const nextStatus =
       row.listing.status === "active" ? "paused" : "active";
     const next: Listing = { ...row.listing, status: nextStatus };
@@ -320,7 +351,7 @@ export function ListingsPage() {
                     </Badge>
                   </td>
                   <td className="p-3 text-right space-x-2">
-                    {isDummyListingRow(row) ? null : isTerminalStatus(
+                    {isDummyListingRow(row) ? null : isTerminalListingStatus(
                         row.listing.status,
                       ) ? (
                       <Link
@@ -361,6 +392,18 @@ export function ListingsPage() {
                     >
                       Storefront
                     </Link>
+                    {isDummyListingRow(row) ? null : (
+                      <button
+                        type="button"
+                        className={cn(
+                          buttonVariants({ size: "sm", variant: "ghost" }),
+                          "text-destructive hover:text-destructive",
+                        )}
+                        onClick={() => setDeleteTarget(row)}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -369,30 +412,78 @@ export function ListingsPage() {
         </div>
       )}
       <Sheet open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
-        <SheetContent>
+        <SheetContent className="sm:max-w-sm">
           <SheetHeader>
             <SheetTitle>Edit price</SheetTitle>
           </SheetHeader>
-          <div className="mt-6 space-y-4">
-            <div>
+          <form
+            className="flex flex-col gap-4 px-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void savePrice();
+            }}
+          >
+            <div className="space-y-1.5">
               <Label htmlFor="edit-price">Price (USD)</Label>
               <Input
                 id="edit-price"
                 value={editDollars}
                 onChange={(e) => setEditDollars(e.target.value)}
-                className="mt-1"
+                autoFocus
               />
             </div>
-            <button
-              type="button"
-              className={cn(buttonVariants())}
-              onClick={() => void savePrice()}
-            >
-              Save
-            </button>
-          </div>
+            <div className="flex gap-2">
+              <button type="submit" className={cn(buttonVariants())}>
+                Save
+              </button>
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: "outline" }))}
+                onClick={() => setEditRow(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         </SheetContent>
       </Sheet>
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Delete "{deleteTarget ? (titles[deleteTarget.uri] ?? deleteTarget.uri) : ""}"?
+            </DialogTitle>
+            <DialogDescription>
+              This permanently deletes the listing record. It stops appearing
+              here and on your storefront immediately. Buyers who already
+              purchased through it keep their receipts and downloads --
+              deleting a listing never affects a completed sale.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmDelete()}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting…" : "Delete listing"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -147,6 +147,25 @@ export async function createListing(
   return { uri: res.data.uri, cid: res.data.cid };
 }
 
+/** archived/superseded are permanent retirements -- a listing in either state never becomes sellable again, only a fresh listing (pointed at the same item) can replace it. */
+export function isTerminalListingStatus(status: Listing["status"]): boolean {
+  return status === "archived" || status === "superseded";
+}
+
+export async function deleteListing(
+  agent: ATPRepoClient,
+  uri: string,
+): Promise<void> {
+  const did = agent.session?.did;
+  if (!did) throw new Error("Not authenticated");
+  const at = new AtUri(uri);
+  await agent.com.atproto.repo.deleteRecord({
+    repo: did,
+    collection: BAZAAR_COLLECTION.listing,
+    rkey: at.rkey,
+  });
+}
+
 export async function createLicenseTerms(
   agent: ATPRepoClient,
   record: Omit<LicenseTerms, "$type" | "createdAt">,

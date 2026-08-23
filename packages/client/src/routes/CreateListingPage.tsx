@@ -15,6 +15,7 @@ import {
   buildItemRefFromUri,
   createListing,
   getRecordValue,
+  isTerminalListingStatus,
   listCatalogItemRows,
   listCatalogProductRows,
   listCollectionRows,
@@ -316,6 +317,17 @@ export function CreateListingPage() {
       toast.error("Choose a license");
       return;
     }
+    const existingListing = rows.find(
+      (r) =>
+        r.listing.item.uri === newItemUri &&
+        !isTerminalListingStatus(r.listing.status),
+    );
+    if (existingListing) {
+      toast.error("This item already has a listing", {
+        description: `It's currently "${existingListing.listing.status}". Delete it from the Listings page first, or edit its price directly instead of creating a duplicate.`,
+      });
+      return;
+    }
     const dollars = parseFloat(newPrice);
     if (!Number.isFinite(dollars) || dollars < 0) {
       toast.error("Invalid price");
@@ -357,7 +369,11 @@ export function CreateListingPage() {
 
       let createdTrackCount = 0;
       if (doBulkTracks && createdListingUri) {
-        const listedUris = new Set(rows.map((r) => r.listing.item.uri));
+        const listedUris = new Set(
+          rows
+            .filter((r) => !isTerminalListingStatus(r.listing.status))
+            .map((r) => r.listing.item.uri),
+        );
         listedUris.add(newItemUri);
         for (const trackUri of prefillIndividualTrackUris) {
           if (listedUris.has(trackUri)) continue;
