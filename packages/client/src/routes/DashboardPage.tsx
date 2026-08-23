@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { buttonVariants } from "@/components/ui/button";
-import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
-import { cn } from "@/lib/utils";
+import {
+  Boxes,
+  FileText,
+  Receipt,
+  Settings as SettingsIcon,
+  Tag,
+} from "lucide-react";
 import { OnboardingChecklist } from "@/components/merchant/OnboardingChecklist";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
@@ -14,6 +18,46 @@ import {
 } from "@/lib/atproto/records";
 import type { PaymentFulfillmentRow } from "@/routes/MerchantTransactionsPage";
 import type { DigitalItem } from "@/types/lexicons";
+
+const quickActions: {
+  to: string;
+  label: string;
+  description: string;
+  icon: typeof Boxes;
+}[] = [
+  {
+    to: "/merchant/transactions",
+    label: "Sales",
+    description: "Track completed orders and payouts from buyers.",
+    icon: Receipt,
+  },
+  {
+    to: "/merchant/inventory",
+    label: "Inventory",
+    description:
+      "Add and manage the products and items you sell — this is where you publish new work.",
+    icon: Boxes,
+  },
+  {
+    to: "/merchant/listings",
+    label: "Listings",
+    description:
+      "Set prices and licenses, then put items and products up for sale on your storefront.",
+    icon: Tag,
+  },
+  {
+    to: "/merchant/license",
+    label: "Licenses",
+    description: "Define the terms buyers agree to when they check out.",
+    icon: FileText,
+  },
+  {
+    to: "/merchant/settings",
+    label: "Settings",
+    description: "Connect Stripe and manage your merchant account.",
+    icon: SettingsIcon,
+  },
+];
 
 export function DashboardPage() {
   const { session } = useAtpSession();
@@ -100,51 +144,29 @@ export function DashboardPage() {
           <p className="text-2xl font-semibold">{totalSales}</p>
         </div>
       </div>
-      {items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-12 text-center">
-          <p className="text-lg font-medium mb-4">Upload your first release</p>
-          <Link
-            to="/merchant/upload/tracks"
-            className={cn(buttonVariants())}
-          >
-            Start upload
-          </Link>
+      <div>
+        <h2 className="text-lg font-semibold mb-1">Quick actions</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Jump to the panel you need.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {quickActions.map(({ to, label, description, icon: Icon }) => (
+            <Link
+              key={to}
+              to={to}
+              className="group rounded-lg border border-border p-4 transition-colors hover:border-foreground/20 hover:bg-muted/40"
+            >
+              <div className="mb-3 flex size-9 items-center justify-center rounded-md bg-muted text-foreground">
+                <Icon className="size-4.5" />
+              </div>
+              <p className="font-medium">{label}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {description}
+              </p>
+            </Link>
+          ))}
         </div>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className="text-left p-3 font-medium">Title</th>
-                <th className="text-left p-3 font-medium">Type</th>
-                <th className="text-right p-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(({ uri, item }) => (
-                <tr key={uri} className="border-b border-border last:border-0">
-                  <td className="p-3 font-medium">{item.title}</td>
-                  <td className="p-3 capitalize">{item.itemClass}</td>
-                  <td className="p-3 text-right space-x-2">
-                    <Link
-                      to={itemPathPretty(catalogItemRkey(uri), item.title)}
-                      className={cn(buttonVariants({ size: "sm", variant: "outline" }), "inline-flex")}
-                    >
-                      View
-                    </Link>
-                    <Link
-                      to="/merchant/listings"
-                      className={cn(buttonVariants({ size: "sm", variant: "secondary" }), "inline-flex")}
-                    >
-                      Listings
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
