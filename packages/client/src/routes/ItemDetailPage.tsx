@@ -979,7 +979,6 @@ export function ItemDetailPage() {
           <BuyButton
             listingUri={listingUri}
             listing={listing}
-            item={item}
             licenseTerms={license}
           />
         </section>

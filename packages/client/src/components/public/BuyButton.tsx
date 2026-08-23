@@ -5,19 +5,17 @@ import { Label } from "@/components/ui/label";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { stripeCheckoutPostUrl } from "@/lib/checkoutApi";
 import { merchantSignInUrl } from "@/lib/signInReturn";
-import type { CatalogItem, LicenseTerms, Listing } from "@/types/lexicons";
+import type { LicenseTerms, Listing } from "@/types/lexicons";
 import { cn } from "@/lib/utils";
 
 export function BuyButton({
   listingUri,
   listing,
-  item,
   licenseTerms,
   className,
 }: {
   listingUri: string;
   listing: Listing;
-  item: CatalogItem;
   licenseTerms?: LicenseTerms | null;
   className?: string;
 }) {
@@ -96,39 +94,17 @@ export function BuyButton({
       ) : (
         <>
           {needsConsent ? (
-            <div className="flex items-start gap-2">
+            <div className="flex items-center gap-2">
               <input
                 id="license-consent"
                 type="checkbox"
                 checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-input"
-                aria-describedby="license-consent-desc"
+                className="h-4 w-4 rounded border-input"
               />
-              <div className="space-y-1">
-                <Label
-                  htmlFor="license-consent"
-                  className="font-normal leading-snug"
-                >
-                  I agree to the license terms for this purchase.
-                </Label>
-                <p
-                  id="license-consent-desc"
-                  className="text-xs text-muted-foreground"
-                >
-                  {item.title}
-                </p>
-                {licenseTerms?.licenseText ? (
-                  <details className="text-xs text-muted-foreground">
-                    <summary className="cursor-pointer text-primary underline underline-offset-2">
-                      Read license terms
-                    </summary>
-                    <p className="mt-1 whitespace-pre-wrap">
-                      {licenseTerms.licenseText}
-                    </p>
-                  </details>
-                ) : null}
-              </div>
+              <Label htmlFor="license-consent" className="font-normal">
+                I agree to the license terms for this purchase.
+              </Label>
             </div>
           ) : null}
           <Button
