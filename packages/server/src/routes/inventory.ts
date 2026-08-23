@@ -1223,6 +1223,15 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       }
     }
 
+    const includedAssetObjs: Array<{ obj: (typeof objects)[number]; role: string }> = [];
+    for (const asset of draft.product.includedAssets ?? []) {
+      const obj = objects.find((o) => o.id === asset.objectId && o.role === "artwork");
+      if (!obj || obj.status !== "completed") {
+        return c.json({ error: "invalid_included_asset", objectId: asset.objectId }, 400);
+      }
+      includedAssetObjs.push({ obj, role: asset.role?.trim() || obj.fileName });
+    }
+
     const masterByObjectId = new Map(masters.map((m) => [m.id, m]));
     const itemType = col("catalog.item");
     const productType = col("catalog.product");
@@ -1290,6 +1299,14 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         productUri: productRes.data.uri,
         objectId: artObj.id,
         role: "coverArt",
+      });
+    }
+    for (const { obj, role } of includedAssetObjs) {
+      await db.insert(catalogProductAssets).values({
+        id: randomUUID(),
+        productUri: productRes.data.uri,
+        objectId: obj.id,
+        role,
       });
     }
 
@@ -1555,6 +1572,12 @@ type PublishProductDraftV1 = {
     productType?: string;
     /** Whether the cover art asset is bundled into the buyer's download package. */
     artIncludedInDownload?: boolean;
+    /**
+     * The generic included-assets bin (catalogProductAssets) -- companion
+     * files always bundled into the download, distinct from cover art
+     * (which has its own toggle) and from `items` (the public composition).
+     */
+    includedAssets?: Array<{ objectId: string; role: string }>;
   };
   items: Array<{
     objectId: string;

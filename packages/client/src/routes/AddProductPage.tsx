@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -22,7 +23,7 @@ import {
   productTypeConfig,
   type ProductType,
 } from "@/lib/productTypes";
-import { cn } from "@/lib/utils";
+import { cn, moveArrayItem } from "@/lib/utils";
 
 type ItemDraftRow = {
   id: string;
@@ -33,6 +34,22 @@ type ItemDraftRow = {
   objectId: string | null;
   status: "pending" | "uploading" | "completed" | "error";
   progress: number;
+  error: string | null;
+};
+
+/**
+ * The generic included-assets bin (catalogProductAssets) -- companion
+ * files (liner notes, a poster, etc.) that are always bundled into the
+ * buyer's download but aren't part of the product's public composition.
+ * `label` becomes the ERP row's freeform `role` field; it's just a
+ * merchant-facing description, not a fixed taxonomy.
+ */
+type AssetDraftRow = {
+  id: string;
+  file: File;
+  label: string;
+  objectId: string | null;
+  status: "uploading" | "completed" | "error";
   error: string | null;
 };
 
@@ -62,6 +79,7 @@ export function AddProductPage() {
   const [artworkUploading, setArtworkUploading] = useState(false);
 
   const [items, setItems] = useState<ItemDraftRow[]>([]);
+  const [assets, setAssets] = useState<AssetDraftRow[]>([]);
   const [publishing, setPublishing] = useState(false);
 
   const ensureSession = useCallback(async (): Promise<string> => {
@@ -190,6 +208,10 @@ export function AddProductPage() {
     setItems((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
+  const moveItem = useCallback((index: number, direction: -1 | 1) => {
+    setItems((prev) => moveArrayItem(prev, index, direction));
+  }, []);
+
   const updateItem = useCallback(
     (id: string, patch: Partial<Pick<ItemDraftRow, "title" | "category" | "format">>) => {
       setItems((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -199,6 +221,78 @@ export function AddProductPage() {
 
   const allItemsReady =
     items.length > 0 && items.every((r) => r.status === "completed");
+
+  const handleAssetBatch = useCallback(
+    async (entries: BatchFileEntry[]) => {
+      const id = await ensureSession().catch((e) => {
+        toast.error("Could not start upload session", {
+          description: inventoryUserFacingError(e),
+        });
+        return null;
+      });
+      if (!id) return;
+
+      const rows: AssetDraftRow[] = entries.map((entry) => ({
+        id: entry.id,
+        file: entry.file,
+        label: titleFromFileName(entry.file.name),
+        objectId: null,
+        status: "uploading",
+        error: null,
+      }));
+      setAssets((prev) => [...prev, ...rows]);
+
+      try {
+        const { objects } = await registerInventoryObjects(
+          id,
+          entries.map((entry) => ({
+            slotId: entry.id,
+            fileName: entry.file.name,
+            contentType: entry.file.type,
+            byteSize: entry.file.size,
+            role: "artwork" as const,
+          })),
+        );
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          const obj = objects[i];
+          setAssets((prev) =>
+            prev.map((r) => (r.id === entry.id ? { ...r, objectId: obj.objectId } : r)),
+          );
+          try {
+            await uploadFileToInventoryObject(obj.objectId, entry.file, obj.uploadKind);
+            setAssets((prev) =>
+              prev.map((r) => (r.id === entry.id ? { ...r, status: "completed" } : r)),
+            );
+          } catch (e) {
+            setAssets((prev) =>
+              prev.map((r) =>
+                r.id === entry.id
+                  ? { ...r, status: "error", error: inventoryUserFacingError(e) }
+                  : r,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        toast.error("Could not register files", {
+          description: inventoryUserFacingError(e),
+        });
+        setAssets((prev) => prev.filter((r) => !entries.some((entry) => entry.id === r.id)));
+      }
+    },
+    [ensureSession],
+  );
+
+  const removeAsset = useCallback((id: string) => {
+    setAssets((prev) => prev.filter((r) => r.id !== id));
+  }, []);
+
+  const updateAssetLabel = useCallback((id: string, label: string) => {
+    setAssets((prev) => prev.map((r) => (r.id === id ? { ...r, label } : r)));
+  }, []);
+
+  const allAssetsReady = assets.every((r) => r.status === "completed");
 
   const publish = useCallback(async () => {
     if (!sessionId) return;
@@ -211,6 +305,10 @@ export function AddProductPage() {
           artworkObjectId: artworkObjectId ?? undefined,
           productType,
           artIncludedInDownload: artworkObjectId ? artIncludedInDownload : false,
+          includedAssets: assets.map((a) => ({
+            objectId: a.objectId,
+            role: a.label.trim() || a.file.name,
+          })),
         },
         items: items.map((r) => ({
           objectId: r.objectId,
@@ -237,6 +335,7 @@ export function AddProductPage() {
     productType,
     artIncludedInDownload,
     items,
+    assets,
     navigate,
   ]);
 
@@ -334,8 +433,61 @@ export function AddProductPage() {
               </>
             ) : null}
           </div>
+          <div className="space-y-1.5">
+            <Label>Included assets (optional)</Label>
+            <p className="text-xs text-muted-foreground">
+              Liner notes, a poster, anything else bundled with the
+              purchase but not part of the product's core items. Always
+              included in the buyer's download — cover art is the only
+              asset with its own toggle.
+            </p>
+            <BatchFileDropzone
+              onBatch={(entries) => void handleAssetBatch(entries)}
+              onError={(m) => toast.error(m)}
+              hint="Each file is included in the download as-is."
+            />
+            {assets.length > 0 ? (
+              <div className="space-y-2">
+                {assets.map((row) => (
+                  <div
+                    key={row.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
+                  >
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="truncate text-xs text-muted-foreground">
+                        {row.file.name}
+                      </p>
+                      <Input
+                        value={row.label}
+                        onChange={(e) => updateAssetLabel(row.id, e.target.value)}
+                        placeholder="Label (e.g. Liner notes)"
+                      />
+                      {row.status === "error" ? (
+                        <p className="text-xs text-destructive">{row.error}</p>
+                      ) : row.status === "completed" ? (
+                        <p className="text-xs text-muted-foreground">Uploaded</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Uploading…</p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeAsset(row.id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <div className="flex justify-end">
-            <Button disabled={!title.trim()} onClick={() => setStep(2)}>
+            <Button
+              disabled={!title.trim() || !allAssetsReady}
+              onClick={() => setStep(2)}
+            >
               Next: Add items
             </Button>
           </div>
@@ -347,10 +499,35 @@ export function AddProductPage() {
           <BatchFileDropzone onBatch={(entries) => void handleItemBatch(entries)} onError={(m) => toast.error(m)} />
           {items.length > 0 ? (
             <div className="space-y-3">
-              {items.map((row) => (
+              <p className="text-xs text-muted-foreground">
+                Order here is display order on the storefront.
+              </p>
+              {items.map((row, index) => (
                 <div key={row.id} className="rounded-lg border border-border p-3 space-y-2">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="truncate text-xs text-muted-foreground">{row.file.name}</p>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label="Move up"
+                        disabled={index === 0}
+                        onClick={() => moveItem(index, -1)}
+                      >
+                        <ChevronUp />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label="Move down"
+                        disabled={index === items.length - 1}
+                        onClick={() => moveItem(index, 1)}
+                      >
+                        <ChevronDown />
+                      </Button>
+                      <p className="truncate text-xs text-muted-foreground">{row.file.name}</p>
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -422,12 +599,27 @@ export function AddProductPage() {
                 <li key={r.id}>{r.title}</li>
               ))}
             </ul>
+            {assets.length > 0 ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  {assets.length} included asset{assets.length === 1 ? "" : "s"}
+                </p>
+                <ul className="text-sm text-muted-foreground list-disc pl-4">
+                  {assets.map((a) => (
+                    <li key={a.id}>{a.label || a.file.name}</li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
           </div>
           <div className="flex justify-between">
             <Button variant="outline" onClick={() => setStep(2)} disabled={publishing}>
               Back
             </Button>
-            <Button onClick={() => void publish()} disabled={publishing}>
+            <Button
+              onClick={() => void publish()}
+              disabled={publishing || !allAssetsReady}
+            >
               {publishing ? "Publishing…" : "Publish"}
             </Button>
           </div>

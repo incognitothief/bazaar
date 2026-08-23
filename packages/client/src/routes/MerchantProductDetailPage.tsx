@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -38,7 +39,7 @@ import {
 } from "@/lib/atproto/records";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { PRODUCT_TYPE_OPTIONS } from "@/lib/productTypes";
-import { cn } from "@/lib/utils";
+import { cn, moveArrayItem } from "@/lib/utils";
 import type { ItemRef } from "@/types/lexicons";
 
 export function MerchantProductDetailPage() {
@@ -118,6 +119,10 @@ export function MerchantProductDetailPage() {
 
   const removeItem = useCallback((itemUri: string) => {
     setItems((prev) => prev.filter((r) => r.uri !== itemUri));
+  }, []);
+
+  const moveItem = useCallback((index: number, direction: -1 | 1) => {
+    setItems((prev) => moveArrayItem(prev, index, direction));
   }, []);
 
   const addItemFromFile = useCallback(
@@ -330,15 +335,40 @@ export function MerchantProductDetailPage() {
 
       <div className="space-y-2">
         <Label>Items ({items.length})</Label>
+        <p className="text-xs text-muted-foreground">
+          Order here is display order on the storefront.
+        </p>
         <div className="space-y-2">
-          {items.map((ref) => {
+          {items.map((ref, index) => {
             const info = itemsByUri[ref.uri];
             return (
               <div
                 key={ref.uri}
                 className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
               >
-                <div className="min-w-0">
+                <div className="flex flex-col">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Move up"
+                    disabled={index === 0}
+                    onClick={() => moveItem(index, -1)}
+                  >
+                    <ChevronUp />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Move down"
+                    disabled={index === items.length - 1}
+                    onClick={() => moveItem(index, 1)}
+                  >
+                    <ChevronDown />
+                  </Button>
+                </div>
+                <div className="min-w-0 flex-1">
                   <Link
                     to={`/merchant/inventory/edit?uri=${encodeURIComponent(ref.uri)}`}
                     className="truncate text-sm font-medium hover:underline"
