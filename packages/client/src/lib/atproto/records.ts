@@ -229,6 +229,22 @@ function isCollection(v: unknown): v is Collection {
   );
 }
 
+function isBazaarItem(v: unknown): v is BazaarItem {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as BazaarItem).$type === BAZAAR_COLLECTION.item
+  );
+}
+
+function isProduct(v: unknown): v is Product {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as Product).$type === BAZAAR_COLLECTION.product
+  );
+}
+
 function isListing(v: unknown): v is Listing {
   return (
     typeof v === "object" &&
@@ -444,6 +460,48 @@ export async function listCollectionRows(
       uri: r.uri,
       cid: r.cid,
       item: r.value as Collection,
+    }));
+}
+
+export type BazaarItemRow = { uri: string; cid: string; item: BazaarItem };
+export type ProductRow = { uri: string; cid: string; item: Product };
+
+/**
+ * PDS-direct (not the ERP-first /api/merchant/catalog/items list), same
+ * pattern as listDigitalItemRows/listCollectionRows above -- public storefront
+ * pages read straight from the repo, no merchant auth. Cover art (ERP-only,
+ * never on the PDS record) isn't included here; callers needing it fetch it
+ * separately per product via getCatalogProduct (see useCatalog.ts).
+ */
+export async function listBazaarItemRows(did: string): Promise<BazaarItemRow[]> {
+  const agent = await agentForRepo(did);
+  const res = (await agent.com.atproto.repo.listRecords({
+    repo: did,
+    collection: BAZAAR_COLLECTION.item,
+    limit: 100,
+  })) as ListRecordsResponse;
+  return res.data.records
+    .filter((r) => isBazaarItem(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      item: r.value as BazaarItem,
+    }));
+}
+
+export async function listProductRows(did: string): Promise<ProductRow[]> {
+  const agent = await agentForRepo(did);
+  const res = (await agent.com.atproto.repo.listRecords({
+    repo: did,
+    collection: BAZAAR_COLLECTION.product,
+    limit: 100,
+  })) as ListRecordsResponse;
+  return res.data.records
+    .filter((r) => isProduct(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      item: r.value as Product,
     }));
 }
 
