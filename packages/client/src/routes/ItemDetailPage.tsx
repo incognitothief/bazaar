@@ -968,7 +968,7 @@ export function ItemDetailPage() {
                 cid={artworkCid}
                 itemUri={itemUri}
                 alt=""
-                className="block max-h-[85vh] max-w-[85vw]"
+                className="max-h-[85vh] max-w-[85vw]"
               />
             )}
           </div>

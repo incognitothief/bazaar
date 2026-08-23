@@ -193,7 +193,11 @@ export function ArtworkImage({
 
   if (phase === "ready" && src) {
     return (
-      <img src={src} alt={alt} className={cn("object-cover", className)} />
+      <img
+        src={src}
+        alt={alt}
+        className={cn("block object-cover", className)}
+      />
     );
   }
 
