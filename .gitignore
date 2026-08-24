@@ -3,6 +3,7 @@ dist
 .turbo
 .alignment
 .cursor
+.claude
 .env
 .env.*
 !.env.example
