@@ -106,6 +106,8 @@ export function ItemDetailPage() {
   const [allArtistListings, setAllArtistListings] = useState<ListingRow[]>([]);
   const [ownsCollection, setOwnsCollection] = useState(false);
   const [ownsProduct, setOwnsProduct] = useState(false);
+  /** Ownership of a standalone purchase (legacy digital item or a catalog.item single) -- collection/product have their own owns* flags above since a bundle purchase is entitlement-checked differently. */
+  const [ownsItem, setOwnsItem] = useState(false);
   /** catalog.product's own cover art, or a catalog.item single's borrowed from its owning product -- neither is ever a PDS blob CID. */
   const [coverImages, setCoverImages] = useState<
     Array<{ objectId: string; url: string }>
@@ -227,6 +229,22 @@ export function ItemDetailPage() {
           }
         } else if (!cancelled) {
           setOwnsCollection(false);
+        }
+
+        if (
+          v &&
+          "$type" in v &&
+          (v.$type === BAZAAR_COLLECTION.digitalItem ||
+            v.$type === BAZAAR_COLLECTION.item) &&
+          buyerAgent &&
+          session?.did
+        ) {
+          const receipts = await listPurchaseReceiptRows(session.did);
+          if (!cancelled) {
+            setOwnsItem(receipts.some((r) => r.receipt.item.uri === itemUri));
+          }
+        } else if (!cancelled) {
+          setOwnsItem(false);
         }
 
         if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.product) {
@@ -733,7 +751,14 @@ export function ItemDetailPage() {
               <p className="text-2xl font-medium">
                 {formatMoney(listing.price)}
               </p>
-              {isDigital || isCollection || isProduct || isCatalogItemSingle ? (
+              {(isCollection && ownsCollection) ||
+              (isProduct && ownsProduct) ||
+              ((isDigital || isCatalogItemSingle) && ownsItem) ? (
+                <p className="text-sm text-muted-foreground">
+                  You have purchased this item. Your downloads are available
+                  below
+                </p>
+              ) : isDigital || isCollection || isProduct || isCatalogItemSingle ? (
                 <p className="text-sm text-muted-foreground">
                   After purchase, you can{" "}
                   <a
@@ -923,6 +948,21 @@ export function ItemDetailPage() {
         </section>
       ) : null}
 
+      {(isDigital || isCatalogItemSingle) && ownsItem ? (
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium">Your download</h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={downloadBusyUri === itemUri}
+            onClick={() => void downloadDigitalItemUri(itemUri)}
+          >
+            {downloadBusyUri === itemUri ? "Preparing…" : "Download"}
+          </Button>
+        </section>
+      ) : null}
+
       {"description" in item && item.description ? (
         <section className="max-w-none text-sm text-foreground">
           <h2 className="mb-2 text-lg font-medium">Description</h2>
@@ -974,7 +1014,8 @@ export function ItemDetailPage() {
       {listing &&
       listingUri &&
       !(isCollection && ownsCollection) &&
-      !(isProduct && ownsProduct) ? (
+      !(isProduct && ownsProduct) &&
+      !((isDigital || isCatalogItemSingle) && ownsItem) ? (
         <section>
           <BuyButton
             listingUri={listingUri}
