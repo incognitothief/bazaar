@@ -49,7 +49,10 @@ export function PurchaseSuccessPage() {
           `${browserApiUrl("/api/stripe/session-status")}?session_id=${encodeURIComponent(sessionId)}`,
         );
         if (!res.ok) return;
-        const j = (await res.json()) as { paymentStatus?: string; mock?: boolean };
+        const j = (await res.json()) as {
+          paymentStatus?: string;
+          mock?: boolean;
+        };
         setStatus(j.paymentStatus ?? null);
 
         if (j.mock || sessionId.startsWith("mock_")) return;
@@ -140,21 +143,14 @@ export function PurchaseSuccessPage() {
         </p>
       ) : null}
       <p className="text-sm text-muted-foreground">
-        Bazaar records this purchase in{" "}
-        <span className="text-foreground/90">your PDS</span>—your ATProto
-        personal data repository. You get a{" "}
-        <span className="text-foreground/90">receipt</span> (proof of what you
-        paid for) and a matching{" "}
-        <span className="text-foreground/90">license consent</span>, both stored
-        in <span className="text-foreground/90">your repo</span> under your DID,
-        not siloed on our servers. We write them using the same app session you
-        used to buy—standard ATProto pattern—so your purchase history stays
-        yours to inspect, export, or build on.
+        Bazaar records your purchase receipt and licensing agreement in{" "}
+        <span className="text-foreground/90">your PDS</span>. You can view your
+        records below.
       </p>
       {pds?.receiptUri || pds?.consentUri ? (
         <div className="rounded-lg border bg-card px-4 py-3 text-left space-y-3">
           <p className="text-sm font-medium text-foreground">
-            Your records in your PDS
+            Your purchase records
           </p>
           {pds.receiptUri ? (
             <div className="space-y-1">
@@ -182,8 +178,8 @@ export function PurchaseSuccessPage() {
         </p>
       ) : null}
       <p className="text-sm text-muted-foreground">
-        Downloads will show here when delivery is wired up. Your purchases (and
-        the underlying records in your PDS) are always listed on the dashboard.
+        You can download your purchase now, or return to this storefront at a
+        later time to access your purchase again.
       </p>
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-center sm:flex-wrap">
         <Link

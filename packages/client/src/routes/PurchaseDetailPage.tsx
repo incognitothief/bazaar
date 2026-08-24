@@ -139,9 +139,7 @@ export function PurchaseDetailPage() {
         }
 
         if (rec.licenseGrantUri) {
-          const lt = await getRecordValue<LicenseTerms>(
-            rec.licenseGrantUri,
-          );
+          const lt = await getRecordValue<LicenseTerms>(rec.licenseGrantUri);
           if (!cancelled) setLicense(lt);
         }
       } catch {
@@ -303,20 +301,6 @@ export function PurchaseDetailPage() {
               label="Receipt record CID:"
             />
           ) : null}
-          {receipt.listingCid && receipt.listingUri ? (
-            <PdslsCidLink
-              cid={receipt.listingCid}
-              recordUri={receipt.listingUri}
-              label="Listing (at purchase) CID:"
-            />
-          ) : null}
-          {receipt.item.cid ? (
-            <PdslsCidLink
-              cid={receipt.item.cid}
-              recordUri={receipt.item.uri}
-              label="Item (at purchase) CID:"
-            />
-          ) : null}
           {receipt.licenseGrantCid && receipt.licenseGrantUri ? (
             <PdslsCidLink
               cid={receipt.licenseGrantCid}
@@ -330,6 +314,21 @@ export function PurchaseDetailPage() {
                 {receipt.licenseGrantCid}
               </code>
             </p>
+          ) : null}
+          <hr className="my-3 border-border" />
+          {receipt.listingCid && receipt.listingUri ? (
+            <PdslsCidLink
+              cid={receipt.listingCid}
+              recordUri={receipt.listingUri}
+              label="Listing (at purchase) CID:"
+            />
+          ) : null}
+          {receipt.item.cid ? (
+            <PdslsCidLink
+              cid={receipt.item.cid}
+              recordUri={receipt.item.uri}
+              label="Item (at purchase) CID:"
+            />
           ) : null}
         </div>
       </section>
@@ -355,9 +354,7 @@ export function PurchaseDetailPage() {
           <MetadataChip>{Math.round(item.durationMs / 60000)} min</MetadataChip>
         ) : null}
         {"genre" in item
-          ? item.genre?.map((g) => (
-              <MetadataChip key={g}>{g}</MetadataChip>
-            ))
+          ? item.genre?.map((g) => <MetadataChip key={g}>{g}</MetadataChip>)
           : null}
       </section>
 

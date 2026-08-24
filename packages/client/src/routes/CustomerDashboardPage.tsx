@@ -210,8 +210,7 @@ export function CustomerDashboardPage() {
       <div className="space-y-2 min-w-0">
         <h1 className="text-2xl font-semibold">Your purchases</h1>
         <p className="text-sm text-muted-foreground">
-          Downloads and terms for receipts in your repo. Validate a specific
-          receipt URI below if needed.
+          Below is a list of items you have purchased from this Bazaar.
         </p>
       </div>
 
@@ -305,7 +304,9 @@ export function CustomerDashboardPage() {
               {result.listingItemCollection ? (
                 <p className="text-muted-foreground">
                   Item type:{" "}
-                  <span className="font-medium">{result.listingItemCollection}</span>
+                  <span className="font-medium">
+                    {result.listingItemCollection}
+                  </span>
                 </p>
               ) : null}
               {result.listingItemUri ? (
