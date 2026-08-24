@@ -210,7 +210,7 @@ export function CustomerDashboardPage() {
       <div className="space-y-2 min-w-0">
         <h1 className="text-2xl font-semibold">Your purchases</h1>
         <p className="text-sm text-muted-foreground">
-          Below is a list of items you have purchased from this Bazaar.
+          Below is a list of items you have purchased from this bazaar.
         </p>
       </div>
 

@@ -178,8 +178,8 @@ export function PurchaseSuccessPage() {
         </p>
       ) : null}
       <p className="text-sm text-muted-foreground">
-        You can download your purchase now, or return to this storefront at a
-        later time to access your purchase again.
+        Download your purchase now, or return to this storefront at a later time
+        to access your purchase again.
       </p>
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-center sm:flex-wrap">
         <Link
