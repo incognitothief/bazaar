@@ -78,8 +78,16 @@ export function BuyButton({
       ) : !session ? (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Sign in with your ATProto account so your receipt and license
-            consent can be saved to your PDS after payment.
+            Sign in with your{" "}
+            <a
+              href="https://atmosphereaccount.com/hosts"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              atmosphere account
+            </a>{" "}
+            to purchase this item.
           </p>
           <Link
             to={merchantSignInUrl(location.pathname, location.search)}
