@@ -885,7 +885,7 @@ export function ItemDetailPage() {
                       </span>
                     ) : null}
                     <span
-                      className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-sm font-medium"
+                      className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-sm"
                       style={{
                         maskImage:
                           "linear-gradient(to right, black 85%, transparent 100%)",
@@ -893,13 +893,13 @@ export function ItemDetailPage() {
                           "linear-gradient(to right, black 85%, transparent 100%)",
                       }}
                     >
-                      {meta?.title ?? ref.uri}
+                      <span className="font-medium">{meta?.title ?? ref.uri}</span>
+                      {meta?.durationMs != null ? (
+                        <span className="ml-2 text-muted-foreground tabular-nums">
+                          {formatDuration(meta.durationMs)}
+                        </span>
+                      ) : null}
                     </span>
-                    {meta?.durationMs != null ? (
-                      <span className="shrink-0 text-muted-foreground tabular-nums">
-                        {formatDuration(meta.durationMs)}
-                      </span>
-                    ) : null}
                   </span>
                   {ownsProduct ? (
                     <Button

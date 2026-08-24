@@ -439,14 +439,14 @@ export function PurchaseDetailPage() {
                         {index + 1}.
                       </span>
                     ) : null}
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                      {meta?.title ?? ref.uri}
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      <span className="font-medium">{meta?.title ?? ref.uri}</span>
+                      {meta?.durationMs != null ? (
+                        <span className="ml-2 text-muted-foreground tabular-nums">
+                          {formatDuration(meta.durationMs)}
+                        </span>
+                      ) : null}
                     </span>
-                    {meta?.durationMs != null ? (
-                      <span className="shrink-0 text-muted-foreground tabular-nums">
-                        {formatDuration(meta.durationMs)}
-                      </span>
-                    ) : null}
                   </span>
                   <Button
                     type="button"
