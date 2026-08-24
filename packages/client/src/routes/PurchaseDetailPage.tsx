@@ -21,6 +21,7 @@ import {
 } from "@/lib/atproto/records";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { agentForRepo } from "@/lib/atproto/pdsResolve";
+import { productTypeConfig } from "@/lib/productTypes";
 import {
   catalogItemArtworkCid,
   catalogItemSellerDid,
@@ -30,6 +31,13 @@ import {
   type PurchaseConsent,
   type PurchaseReceipt,
 } from "@/types/lexicons";
+
+function formatDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
 
 function formatMoney(m: { amount: number; currency: string }): string {
   return new Intl.NumberFormat(undefined, {
@@ -84,6 +92,10 @@ export function PurchaseDetailPage() {
   const [coverImages, setCoverImages] = useState<
     Array<{ objectId: string; url: string }>
   >([]);
+  const [productType, setProductType] = useState<string | null>(null);
+  const [productItemMeta, setProductItemMeta] = useState<
+    Record<string, { title: string; durationMs: number | null }>
+  >({});
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [zipBusy, setZipBusy] = useState(false);
   const [itemDownloadingUri, setItemDownloadingUri] = useState<string | null>(
@@ -130,9 +142,26 @@ export function PurchaseDetailPage() {
         const itemVal = await getRecordValue<CatalogItem>(itemUri);
         if (!cancelled) setItem(itemVal ?? null);
 
-        if (itemVal?.$type === BAZAAR_COLLECTION.product) {
-          const p = await getCatalogProduct(itemUri);
-          if (!cancelled) setCoverImages(p?.coverImages ?? []);
+        if (itemVal?.$type === BAZAAR_COLLECTION.product && "items" in itemVal) {
+          const [p, resolvedItems] = await Promise.all([
+            getCatalogProduct(itemUri),
+            Promise.all(itemVal.items.map((ref) => getCatalogItem(ref.uri))),
+          ]);
+          if (!cancelled) {
+            setCoverImages(p?.coverImages ?? []);
+            setProductType(p?.productType ?? null);
+            setProductItemMeta(
+              Object.fromEntries(
+                itemVal.items.map((ref, i) => [
+                  ref.uri,
+                  {
+                    title: resolvedItems[i]?.title ?? ref.uri,
+                    durationMs: resolvedItems[i]?.durationMs ?? null,
+                  },
+                ]),
+              ),
+            );
+          }
         } else if (itemVal?.$type === BAZAAR_COLLECTION.item) {
           const it = await getCatalogItem(itemUri);
           if (!cancelled) setCoverImages(it?.coverImages ?? []);
@@ -255,6 +284,7 @@ export function PurchaseDetailPage() {
   const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
   const isCollection = item.$type === BAZAAR_COLLECTION.collection;
   const isProduct = item.$type === BAZAAR_COLLECTION.product;
+  const isMusicProduct = isProduct && productTypeConfig(productType).value === "music";
   const isCatalogItemSingle = item.$type === BAZAAR_COLLECTION.item;
   const blobDid = catalogItemSellerDid(item);
 
@@ -392,14 +422,54 @@ export function PurchaseDetailPage() {
         </section>
       ) : null}
 
-      {isProduct ? (
-        <section>
+      {isProduct && "items" in item ? (
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium">Your downloads</h2>
+          <ol className="list-none space-y-2 m-0 p-0">
+            {item.items.map((ref, index) => {
+              const meta = productItemMeta[ref.uri];
+              return (
+                <li
+                  key={ref.uri}
+                  className="flex items-center justify-between gap-2 py-1.5"
+                >
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    {isMusicProduct ? (
+                      <span className="tabular-nums text-muted-foreground shrink-0 w-5 text-right">
+                        {index + 1}.
+                      </span>
+                    ) : null}
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {meta?.title ?? ref.uri}
+                    </span>
+                    {meta?.durationMs != null ? (
+                      <span className="shrink-0 text-muted-foreground tabular-nums">
+                        {formatDuration(meta.durationMs)}
+                      </span>
+                    ) : null}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    disabled={itemDownloadingUri === ref.uri}
+                    onClick={() => void downloadDigitalItemUri(ref.uri)}
+                  >
+                    {itemDownloadingUri === ref.uri ? "Preparing…" : "Download"}
+                  </Button>
+                </li>
+              );
+            })}
+          </ol>
           <Button
             type="button"
+            variant="outline"
+            size="sm"
             disabled={zipBusy}
             onClick={() => void downloadProductZip(receipt.item.uri)}
           >
-            {zipBusy ? "Preparing…" : "Download everything"}
+            {zipBusy ? "Preparing…" : "Download all (.zip)"}
           </Button>
         </section>
       ) : null}
