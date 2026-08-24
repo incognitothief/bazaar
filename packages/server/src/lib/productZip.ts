@@ -3,11 +3,46 @@ import { zipSync } from "fflate";
 import { eq, inArray } from "drizzle-orm";
 import type { Db } from "../db";
 import { catalogItems, catalogProductAssets, inventoryUploadObject } from "../db/schema";
-import { sanitizeInventoryFilename } from "./r2/inventoryKey";
 import { getR2S3Client } from "./r2/s3Client";
 import type { r2ConfigFromEnv } from "./r2/env";
 
 const MAX_PRODUCT_ZIP_TOTAL_BYTES = 250 * 1024 * 1024;
+
+/**
+ * Only fixes characters that would actually break a zip entry / filesystem
+ * path ("/" and "\" would create unintended subfolders, control characters
+ * aren't valid in most filesystems) -- everything else in the original
+ * upload filename (spaces, punctuation, accents, emoji, ...) passes through
+ * unchanged. Deliberately NOT sanitizeInventoryFilename: that function's
+ * whole-name-to-"file" fallback on any disallowed character is correct for
+ * R2 storage keys (recomputed deterministically forever, never shown to a
+ * buyer) but wrong here -- it would silently discard real filenames instead
+ * of just neutralizing the handful of characters that are actually unsafe.
+ */
+function safeZipEntryName(name: string): string {
+  // eslint-disable-next-line no-control-regex -- stripping literal control chars is the point
+  const cleaned = name.replaceAll(/[/\\]/g, "_").replace(/[\x00-\x1f\x7f]/g, "").trim();
+  return cleaned || "file";
+}
+
+/** Appends " (2)", " (3)", ... only when two entries would otherwise collide -- never renames the common case. */
+function uniqueZipEntryName(used: Set<string>, desired: string): string {
+  if (!used.has(desired)) {
+    used.add(desired);
+    return desired;
+  }
+  const dot = desired.lastIndexOf(".");
+  const base = dot > 0 ? desired.slice(0, dot) : desired;
+  const ext = dot > 0 ? desired.slice(dot) : "";
+  let n = 2;
+  let candidate = `${base} (${n})${ext}`;
+  while (used.has(candidate)) {
+    n += 1;
+    candidate = `${base} (${n})${ext}`;
+  }
+  used.add(candidate);
+  return candidate;
+}
 
 type CatalogProductRow = typeof import("../db/schema").catalogProducts.$inferSelect;
 
@@ -42,17 +77,17 @@ export async function buildProductZip(
     (a) => a.role !== "coverArt" || product.artIncludedInDownload,
   );
 
-  const toFetch: Array<{ objectId: string; label: string }> = [
+  const toFetch: Array<{ objectId: string }> = [
     ...itemRows
       .filter((row): row is typeof row & { objectId: string } => !!row.objectId)
-      .map((row) => ({ objectId: row.objectId, label: row.title })),
-    ...includedAssetRows.map((a) => ({ objectId: a.objectId, label: a.role })),
+      .map((row) => ({ objectId: row.objectId })),
+    ...includedAssetRows.map((a) => ({ objectId: a.objectId })),
   ];
 
   const zipEntries: Record<string, Uint8Array> = {};
+  const usedNames = new Set<string>();
   let total = 0;
-  let index = 0;
-  for (const { objectId, label } of toFetch) {
+  for (const { objectId } of toFetch) {
     const obj = db
       .select()
       .from(inventoryUploadObject)
@@ -72,11 +107,8 @@ export async function buildProductZip(
     if (total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
       return { error: "package_too_large", status: 413 };
     }
-    const ext = obj.fileName.match(/\.[a-z0-9]+$/i)?.[0] ?? "";
-    const safeBase = sanitizeInventoryFilename(
-      label.replace(/\.[^./\\]+$/, "") || `file_${index}`,
-    );
-    zipEntries[`${String(++index).padStart(2, "0")}_${safeBase}${ext}`] = new Uint8Array(buf);
+    const nameInZip = uniqueZipEntryName(usedNames, safeZipEntryName(obj.fileName));
+    zipEntries[nameInZip] = new Uint8Array(buf);
   }
 
   if (Object.keys(zipEntries).length === 0) {
@@ -84,12 +116,12 @@ export async function buildProductZip(
   }
 
   const zipped = zipSync(zipEntries, { level: 6 });
-  const titleSafe = sanitizeInventoryFilename(product.title || "product");
+  const zipFilename = safeZipEntryName(product.title || "product").replaceAll('"', "");
   return new Response(new Uint8Array(zipped), {
     status: 200,
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="${titleSafe}.zip"`,
+      "Content-Disposition": `attachment; filename="${zipFilename}.zip"`,
       "Cache-Control": "private, no-store",
     },
   });
