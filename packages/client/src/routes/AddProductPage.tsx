@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { parseAudioFile } from "@/lib/audio/parse";
 import {
   GENERIC_PRODUCT_TYPE,
   PRODUCT_TYPE_OPTIONS,
@@ -30,12 +31,50 @@ type ItemDraftRow = {
   file: File;
   title: string;
   category: string;
+  /** Detected from the file itself (parsed audio metadata, falling back to the extension) -- never merchant-editable, so it always reflects what was actually uploaded. */
   format: string;
+  /** Parsed client-side for audio files only; null/undefined when the file isn't audio or metadata parsing failed. */
+  durationMs?: number;
   objectId: string | null;
   status: "pending" | "uploading" | "completed" | "error";
   progress: number;
   error: string | null;
 };
+
+const AUDIO_EXTENSIONS = new Set([
+  "flac",
+  "wav",
+  "mp3",
+  "aac",
+  "ogg",
+  "m4a",
+  "opus",
+]);
+
+/**
+ * Only attempts audio metadata parsing for files that plausibly are audio --
+ * parsing a .png as audio would just fail noisily for no reason. A file
+ * that looks like audio but fails to parse (corrupted, mislabeled extension,
+ * a format music-metadata doesn't support) fails gracefully: no duration,
+ * no thrown error, the file still uploads normally.
+ */
+async function tryParseAudioMeta(file: File) {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const looksLikeAudio = AUDIO_EXTENSIONS.has(ext) || file.type.startsWith("audio/");
+  if (!looksLikeAudio) return null;
+  try {
+    const meta = await parseAudioFile(file);
+    // music-metadata doesn't throw for non-audio content that happens to
+    // carry an audio extension (e.g. a renamed .txt) -- it just comes back
+    // with an empty/zero duration. That's the graceful-failure case, not a
+    // real parse: fall back to filename-derived title/format like any other
+    // non-audio file instead of claiming a bogus "0:00" duration.
+    if (!meta.durationMs) return null;
+    return meta;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Cover art -- productTypeConfig().allowMultipleCoverImages gates whether
@@ -156,17 +195,24 @@ export function AddProductPage() {
       });
       if (!id) return;
 
-      const rows: ItemDraftRow[] = entries.map((entry) => ({
-        id: entry.id,
-        file: entry.file,
-        title: titleFromFileName(entry.file.name),
-        category: "",
-        format: formatFromFileName(entry.file.name),
-        objectId: null,
-        status: "pending",
-        progress: 0,
-        error: null,
-      }));
+      const metas = await Promise.all(
+        entries.map((entry) => tryParseAudioMeta(entry.file)),
+      );
+      const rows: ItemDraftRow[] = entries.map((entry, i) => {
+        const meta = metas[i];
+        return {
+          id: entry.id,
+          file: entry.file,
+          title: meta?.title?.trim() || titleFromFileName(entry.file.name),
+          category: "",
+          format: meta?.format || formatFromFileName(entry.file.name),
+          durationMs: meta?.durationMs,
+          objectId: null,
+          status: "pending",
+          progress: 0,
+          error: null,
+        };
+      });
       setItems((prev) => [...prev, ...rows]);
 
       try {
@@ -238,7 +284,7 @@ export function AddProductPage() {
   }, []);
 
   const updateItem = useCallback(
-    (id: string, patch: Partial<Pick<ItemDraftRow, "title" | "category" | "format">>) => {
+    (id: string, patch: Partial<Pick<ItemDraftRow, "title" | "category">>) => {
       setItems((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
     },
     [],
@@ -343,6 +389,7 @@ export function AddProductPage() {
           title: r.title.trim(),
           category: r.category.trim() || undefined,
           format: r.format.trim() || undefined,
+          durationMs: r.durationMs,
         })),
       });
       await publishProductSession(sessionId);
@@ -512,10 +559,12 @@ export function AddProductPage() {
                       <p className="truncate text-xs text-muted-foreground">
                         {row.file.name}
                       </p>
+                      <Label htmlFor={`${row.id}-label`}>Label</Label>
                       <Input
+                        id={`${row.id}-label`}
                         value={row.label}
                         onChange={(e) => updateAssetLabel(row.id, e.target.value)}
-                        placeholder="Label (e.g. Liner notes)"
+                        placeholder="e.g. Liner notes"
                       />
                       {row.status === "error" ? (
                         <p className="text-xs text-destructive">{row.error}</p>
@@ -592,23 +641,31 @@ export function AddProductPage() {
                     </Button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      value={row.title}
-                      onChange={(e) => updateItem(row.id, { title: e.target.value })}
-                      placeholder="Item title"
-                    />
-                    <Input
-                      value={row.category}
-                      onChange={(e) => updateItem(row.id, { category: e.target.value })}
-                      placeholder="Category (optional)"
-                    />
+                    <div className="space-y-1">
+                      <Label htmlFor={`${row.id}-title`}>Title</Label>
+                      <Input
+                        id={`${row.id}-title`}
+                        value={row.title}
+                        onChange={(e) => updateItem(row.id, { title: e.target.value })}
+                        placeholder="Item title"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`${row.id}-category`}>Category</Label>
+                      <Input
+                        id={`${row.id}-category`}
+                        value={row.category}
+                        onChange={(e) => updateItem(row.id, { category: e.target.value })}
+                        placeholder="Optional"
+                      />
+                    </div>
                   </div>
-                  <Input
-                    value={row.format}
-                    onChange={(e) => updateItem(row.id, { format: e.target.value })}
-                    placeholder="Format (e.g. flac, pdf, zip)"
-                    className="max-w-40"
-                  />
+                  <div className="space-y-1">
+                    <Label>Format</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {row.format || "—"}
+                    </p>
+                  </div>
                   {row.status === "uploading" ? (
                     <Progress value={row.progress} />
                   ) : row.status === "error" ? (

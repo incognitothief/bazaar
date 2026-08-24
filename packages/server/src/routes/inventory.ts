@@ -1318,6 +1318,12 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
         objectId: mo.id,
       });
+      if (typeof it.durationMs === "number" && it.durationMs > 0) {
+        await db
+          .update(inventoryUploadObject)
+          .set({ durationMs: Math.round(it.durationMs) })
+          .where(eq(inventoryUploadObject.id, mo.id));
+      }
       createdItems.push({ uri: res.data.uri, cid: res.data.cid });
     }
 
@@ -1460,6 +1466,12 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
         objectId: mo.id,
       });
+      if (typeof it.durationMs === "number" && it.durationMs > 0) {
+        await db
+          .update(inventoryUploadObject)
+          .set({ durationMs: Math.round(it.durationMs) })
+          .where(eq(inventoryUploadObject.id, mo.id));
+      }
       createdItems.push({ uri: res.data.uri, cid: res.data.cid });
     }
 
@@ -1644,6 +1656,8 @@ type PublishProductDraftV1 = {
     title: string;
     category?: string;
     format?: string;
+    /** Parsed client-side from the audio file itself; absent for non-audio items or when parsing failed. */
+    durationMs?: number;
   }>;
 };
 
