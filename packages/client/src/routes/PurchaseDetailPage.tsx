@@ -13,14 +13,19 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { createBrowserApiURL } from "@/lib/browserApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { pdslsRecordUrl } from "@/lib/pdsls";
-import { getRecordValue, listPurchaseConsentRows } from "@/lib/atproto/records";
+import {
+  getCatalogItem,
+  getCatalogProduct,
+  getRecordValue,
+  listPurchaseConsentRows,
+} from "@/lib/atproto/records";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import {
   catalogItemArtworkCid,
+  catalogItemSellerDid,
   type CatalogItem,
   type Collection,
-  type DigitalItem,
   type LicenseTerms,
   type PurchaseConsent,
   type PurchaseReceipt,
@@ -76,6 +81,9 @@ export function PurchaseDetailPage() {
   const [receiptCid, setReceiptCid] = useState<string | null>(null);
   const [consent, setConsent] = useState<PurchaseConsent | null>(null);
   const [item, setItem] = useState<CatalogItem | null>(null);
+  const [coverImages, setCoverImages] = useState<
+    Array<{ objectId: string; url: string }>
+  >([]);
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [zipBusy, setZipBusy] = useState(false);
   const [itemDownloadingUri, setItemDownloadingUri] = useState<string | null>(
@@ -122,6 +130,14 @@ export function PurchaseDetailPage() {
         const itemVal = await getRecordValue<CatalogItem>(itemUri);
         if (!cancelled) setItem(itemVal ?? null);
 
+        if (itemVal?.$type === BAZAAR_COLLECTION.product) {
+          const p = await getCatalogProduct(itemUri);
+          if (!cancelled) setCoverImages(p?.coverImages ?? []);
+        } else if (itemVal?.$type === BAZAAR_COLLECTION.item) {
+          const it = await getCatalogItem(itemUri);
+          if (!cancelled) setCoverImages(it?.coverImages ?? []);
+        }
+
         if (rec.licenseGrantUri) {
           const lt = await getRecordValue<LicenseTerms>(
             rec.licenseGrantUri,
@@ -156,6 +172,33 @@ export function PurchaseDetailPage() {
       toast.error(e instanceof Error ? e.message : "Download failed");
     } finally {
       setItemDownloadingUri(null);
+    }
+  }
+
+  async function downloadProductZip(productUri: string) {
+    if (!session) return;
+    setZipBusy(true);
+    try {
+      const url = createBrowserApiURL("/api/download/product-zip");
+      url.searchParams.set("productUri", productUri);
+      const res = await fetch(url.href, { credentials: "include" });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || res.statusText);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get("Content-Disposition");
+      const match = dispo?.match(/filename="([^"]+)"/);
+      const name = match?.[1] ?? "product.zip";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setZipBusy(false);
     }
   }
 
@@ -213,11 +256,9 @@ export function PurchaseDetailPage() {
 
   const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
   const isCollection = item.$type === BAZAAR_COLLECTION.collection;
-  const blobDid = isDigital
-    ? (item as DigitalItem).artistDid
-    : isCollection
-      ? (item as Collection).artistDid
-      : receipt.issuerScope;
+  const isProduct = item.$type === BAZAAR_COLLECTION.product;
+  const isCatalogItemSingle = item.$type === BAZAAR_COLLECTION.item;
+  const blobDid = catalogItemSellerDid(item);
 
   return (
     <article className="mx-auto w-full min-w-0 max-w-2xl space-y-8 px-4 sm:px-6 py-8">
@@ -232,14 +273,22 @@ export function PurchaseDetailPage() {
 
       <section className="grid gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] sm:items-start">
         <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64">
-          <ArtworkImage
-            agent={agent}
-            did={blobDid}
-            cid={catalogItemArtworkCid(item)}
-            itemUri={receipt.item.uri}
-            alt=""
-            className="h-full w-full"
-          />
+          {coverImages[0] ? (
+            <img
+              src={coverImages[0].url}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <ArtworkImage
+              agent={agent}
+              did={blobDid}
+              cid={catalogItemArtworkCid(item)}
+              itemUri={receipt.item.uri}
+              alt=""
+              className="h-full w-full"
+            />
+          )}
         </div>
         <div className="space-y-3">
           <h1 className="text-2xl font-semibold">{item.title}</h1>
@@ -305,9 +354,11 @@ export function PurchaseDetailPage() {
         {"durationMs" in item && item.durationMs ? (
           <MetadataChip>{Math.round(item.durationMs / 60000)} min</MetadataChip>
         ) : null}
-        {item.genre?.map((g) => (
-          <MetadataChip key={g}>{g}</MetadataChip>
-        ))}
+        {"genre" in item
+          ? item.genre?.map((g) => (
+              <MetadataChip key={g}>{g}</MetadataChip>
+            ))
+          : null}
       </section>
 
       {"description" in item && item.description ? (
@@ -344,7 +395,19 @@ export function PurchaseDetailPage() {
         </section>
       ) : null}
 
-      {isDigital ? (
+      {isProduct ? (
+        <section>
+          <Button
+            type="button"
+            disabled={zipBusy}
+            onClick={() => void downloadProductZip(receipt.item.uri)}
+          >
+            {zipBusy ? "Preparing…" : "Download everything"}
+          </Button>
+        </section>
+      ) : null}
+
+      {isDigital || isCatalogItemSingle ? (
         <section>
           <Button
             type="button"
@@ -356,7 +419,7 @@ export function PurchaseDetailPage() {
         </section>
       ) : null}
 
-      {!isDigital && !isCollection ? (
+      {!isDigital && !isCollection && !isProduct && !isCatalogItemSingle ? (
         <p className="text-sm text-muted-foreground">
           Download is not available for this item type.
         </p>
