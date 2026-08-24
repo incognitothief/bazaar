@@ -6,7 +6,7 @@ import { catalogProductAssets, inventoryUploadObject } from "../db/schema";
 import { r2ConfigFromEnv } from "./r2/env";
 import { getR2S3Client } from "./r2/s3Client";
 
-export type CoverImage = { objectId: string; url: string };
+export type CoverImage = { id: string; objectId: string; url: string };
 
 /**
  * Presigned URLs for a product's cover art, in slideshow order (position).
@@ -56,7 +56,11 @@ export async function resolveCoverImages(
         }),
         { expiresIn: 3600 },
       );
-      out.push({ objectId: row.catalog_product_assets.objectId, url });
+      out.push({
+        id: row.catalog_product_assets.id,
+        objectId: row.catalog_product_assets.objectId,
+        url,
+      });
     } catch {
       // Best-effort -- skip a single broken image rather than fail the whole read.
     }

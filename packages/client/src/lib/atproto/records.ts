@@ -821,6 +821,58 @@ export async function updateCatalogProductSettings(
   return data.product;
 }
 
+export type CatalogProductAssets = {
+  coverImages: Array<{ id: string; objectId: string; url: string }>;
+  includedAssets: Array<{
+    id: string;
+    objectId: string;
+    role: string;
+    fileName: string;
+  }>;
+};
+
+/** Store-owner: cover art + included assets for one product, each with its own asset-row id (for removal). */
+export async function getCatalogProductAssets(
+  productUri: string,
+): Promise<CatalogProductAssets | null> {
+  const res = await fetch(
+    browserApiUrl(`/api/merchant/catalog/products/assets?uri=${encodeURIComponent(productUri)}`),
+    { credentials: "include" },
+  );
+  if (!res.ok) return null;
+  return (await res.json()) as CatalogProductAssets;
+}
+
+/** Links an already-uploaded object to a product as cover art (role "coverArt") or an included asset (role is the merchant's freeform label). */
+export async function addCatalogProductAsset(params: {
+  productUri: string;
+  objectId: string;
+  role: string;
+}): Promise<CatalogProductAssets | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/assets"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as CatalogProductAssets;
+}
+
+/** Detaches one cover-art or included-asset row from its product. */
+export async function removeCatalogProductAsset(
+  id: string,
+): Promise<CatalogProductAssets | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/assets/remove"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as CatalogProductAssets;
+}
+
 /**
  * Presigned URL for a single catalog.item's file -- an incident-response
  * tool for the merchant dashboard, not the buyer-facing download path.

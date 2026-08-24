@@ -3,6 +3,8 @@ import { ArrowLeft, ChevronDown, ChevronUp, Download, Pencil, Tag } from "lucide
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
+import { BatchFileDropzone, type BatchFileEntry } from "@/components/shared/BatchFileDropzone";
+import { ImageDropzone } from "@/components/shared/ImageDropzone";
 import {
   createInventorySession,
   inventoryUserFacingError,
@@ -26,22 +28,28 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
+  addCatalogProductAsset,
   findStaleListingsForItem,
   getCatalogProduct,
+  getCatalogProductAssets,
   listCatalogItemRows,
   listListingRows,
   putCatalogProduct,
   putListing,
+  removeCatalogProductAsset,
   syncCatalogProduct,
   catalogProductDownloadUrl,
   updateCatalogProductSettings,
   type CatalogItemRow,
+  type CatalogProductAssets,
   type CatalogProductRow,
   type ListingRow,
 } from "@/lib/atproto/records";
 import { PRODUCT_TYPE_OPTIONS, productTypeConfig } from "@/lib/productTypes";
 import { cn, moveArrayItem } from "@/lib/utils";
 import type { ItemRef } from "@/types/lexicons";
+
+const titleFromFileName = (name: string) => name.replace(/\.[^./\\]+$/, "");
 
 export function MerchantProductDetailPage() {
   const [searchParams] = useSearchParams();
@@ -74,14 +82,22 @@ export function MerchantProductDetailPage() {
   const [addingItem, setAddingItem] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
+  const [assets, setAssets] = useState<CatalogProductAssets>({
+    coverImages: [],
+    includedAssets: [],
+  });
+  const [uploadingCoverArt, setUploadingCoverArt] = useState(false);
+  const [uploadingAssetIds, setUploadingAssetIds] = useState<Set<string>>(new Set());
+  const [removingAssetId, setRemovingAssetId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!uri) return;
     setLoading(true);
     setLoadError(null);
-    const [p, allItems] = await Promise.all([
+    const [p, allItems, productAssets] = await Promise.all([
       getCatalogProduct(uri),
       listCatalogItemRows(),
+      getCatalogProductAssets(uri),
     ]);
     if (!p) {
       setProduct(null);
@@ -96,6 +112,7 @@ export function MerchantProductDetailPage() {
     setProductType(p.productType);
     setArtIncludedInDownload(p.artIncludedInDownload);
     setItemsByUri(Object.fromEntries(allItems.map((r) => [r.uri, r])));
+    setAssets(productAssets ?? { coverImages: [], includedAssets: [] });
     setLoading(false);
   }, [uri]);
 
@@ -172,6 +189,106 @@ export function MerchantProductDetailPage() {
     },
     [],
   );
+
+  /** Cover art and included assets are ERP-only (catalogProductAssets) -- no PDS write, no CID change, so adding/removing one never affects the product's pinned CID or any listing. */
+  const addCoverImage = useCallback(
+    async (file: File) => {
+      setUploadingCoverArt(true);
+      try {
+        const { sessionId } = await createInventorySession("product");
+        const { objects } = await registerInventoryObjects(sessionId, [
+          {
+            slotId: "cover-art",
+            fileName: file.name,
+            contentType: file.type,
+            byteSize: file.size,
+            role: "artwork",
+          },
+        ]);
+        const obj = objects[0];
+        await uploadFileToInventoryObject(obj.objectId, file, obj.uploadKind);
+        const updated = await addCatalogProductAsset({
+          productUri: uri,
+          objectId: obj.objectId,
+          role: "coverArt",
+        });
+        if (updated) setAssets(updated);
+        else toast.error("Could not add cover art");
+      } catch (e) {
+        toast.error("Could not add cover art", {
+          description: inventoryUserFacingError(e),
+        });
+      } finally {
+        setUploadingCoverArt(false);
+      }
+    },
+    [uri],
+  );
+
+  const addIncludedAssetBatch = useCallback(
+    async (entries: BatchFileEntry[]) => {
+      setUploadingAssetIds((prev) => new Set([...prev, ...entries.map((e) => e.id)]));
+      try {
+        const { sessionId } = await createInventorySession("product");
+        const { objects } = await registerInventoryObjects(
+          sessionId,
+          entries.map((entry) => ({
+            slotId: entry.id,
+            fileName: entry.file.name,
+            contentType: entry.file.type,
+            byteSize: entry.file.size,
+            role: "artwork" as const,
+          })),
+        );
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          const obj = objects[i];
+          try {
+            await uploadFileToInventoryObject(obj.objectId, entry.file, obj.uploadKind);
+            const updated = await addCatalogProductAsset({
+              productUri: uri,
+              objectId: obj.objectId,
+              role: titleFromFileName(entry.file.name),
+            });
+            if (updated) setAssets(updated);
+          } catch (e) {
+            toast.error(`Could not add ${entry.file.name}`, {
+              description: inventoryUserFacingError(e),
+            });
+          } finally {
+            setUploadingAssetIds((prev) => {
+              const next = new Set(prev);
+              next.delete(entry.id);
+              return next;
+            });
+          }
+        }
+      } catch (e) {
+        toast.error("Could not register files", {
+          description: inventoryUserFacingError(e),
+        });
+        setUploadingAssetIds((prev) => {
+          const next = new Set(prev);
+          for (const entry of entries) next.delete(entry.id);
+          return next;
+        });
+      }
+    },
+    [uri],
+  );
+
+  const removeAsset = useCallback(async (id: string) => {
+    setRemovingAssetId(id);
+    try {
+      const updated = await removeCatalogProductAsset(id);
+      if (updated) setAssets(updated);
+      else toast.error("Could not remove");
+    } catch (e) {
+      toast.error("Could not remove", { description: inventoryUserFacingError(e) });
+    } finally {
+      setRemovingAssetId(null);
+    }
+  }, []);
 
   async function doSave(archiveTargets: ListingRow[]) {
     if (!agent || !product) return;
@@ -380,6 +497,89 @@ export function MerchantProductDetailPage() {
           </div>
 
           <div className="space-y-2">
+            <Label>
+              {productTypeConfig(productType).allowMultipleCoverImages
+                ? "Cover images"
+                : "Cover art"}
+            </Label>
+            {assets.coverImages.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {assets.coverImages.map((img) => (
+                  <div key={img.id} className="relative">
+                    <img
+                      src={img.url}
+                      alt=""
+                      className="h-20 w-20 rounded-md border border-border object-cover"
+                    />
+                    <button
+                      type="button"
+                      disabled={removingAssetId === img.id}
+                      onClick={() => void removeAsset(img.id)}
+                      className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground disabled:opacity-60"
+                      aria-label="Remove image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {productTypeConfig(productType).allowMultipleCoverImages ||
+            assets.coverImages.length === 0 ? (
+              <ImageDropzone
+                onFile={(file) => void addCoverImage(file)}
+                onError={(m) => toast.error(m)}
+              />
+            ) : null}
+            {uploadingCoverArt ? (
+              <p className="text-xs text-muted-foreground">Uploading…</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Included assets ({assets.includedAssets.length})</Label>
+            <p className="text-xs text-muted-foreground">
+              Liner notes, a poster, anything else bundled with the purchase
+              but not part of the product's core items. Always included in
+              the buyer's download.
+            </p>
+            {assets.includedAssets.length > 0 ? (
+              <div className="space-y-2">
+                {assets.includedAssets.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{a.role}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {a.fileName}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={removingAssetId === a.id}
+                      onClick={() => void removeAsset(a.id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <BatchFileDropzone
+              onBatch={(entries) => void addIncludedAssetBatch(entries)}
+              onError={(m) => toast.error(m)}
+              hint="Each file is included in the download as-is."
+            />
+            {uploadingAssetIds.size > 0 ? (
+              <p className="text-xs text-muted-foreground">Uploading…</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
             <Label>Items ({items.length})</Label>
             <p className="text-xs text-muted-foreground">
               Order here is display order on the storefront.
@@ -492,6 +692,12 @@ export function MerchantProductDetailPage() {
               <span className="text-muted-foreground">Cover art in download: </span>
               {product.artIncludedInDownload ? "Yes" : "No"}
             </p>
+            {assets.includedAssets.length > 0 ? (
+              <p>
+                <span className="text-muted-foreground">Included assets: </span>
+                {assets.includedAssets.map((a) => a.role).join(", ")}
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-2">

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getCookie } from "hono/cookie";
 import { AtUri } from "@atproto/syntax";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
@@ -8,8 +9,10 @@ import type { Context } from "hono";
 import type { Db } from "../db";
 import {
   catalogItems,
+  catalogProductAssets,
   catalogProducts,
   inventoryUploadObject,
+  inventoryUploadSession,
   licenses,
   merchantBusinessProfile,
   merchantStripeConfig,
@@ -555,6 +558,122 @@ export function createMerchantRouter(db: Db) {
     return c.json({
       product: row ? { ...row, items: JSON.parse(row.items) as unknown } : null,
     });
+  });
+
+  /** Cover art + the generic included-assets bin for one product, for the merchant edit page -- includes each row's own id (unlike the public /api/catalog/products read) since managing an asset means being able to remove that exact row. */
+  async function loadProductAssets(productUri: string) {
+    const coverImages = await resolveCoverImages(db, productUri);
+    const includedRows = db
+      .select()
+      .from(catalogProductAssets)
+      .innerJoin(
+        inventoryUploadObject,
+        eq(catalogProductAssets.objectId, inventoryUploadObject.id),
+      )
+      .where(eq(catalogProductAssets.productUri, productUri))
+      .all()
+      .filter((r) => r.catalog_product_assets.role !== "coverArt");
+    const includedAssets = includedRows.map((r) => ({
+      id: r.catalog_product_assets.id,
+      objectId: r.catalog_product_assets.objectId,
+      role: r.catalog_product_assets.role,
+      fileName: r.inventory_upload_object.fileName,
+    }));
+    return { coverImages, includedAssets };
+  }
+
+  /** Store-owner: cover art + included assets for one product (see loadProductAssets). */
+  r.get("/catalog/products/assets", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const uri = c.req.query("uri");
+    if (!uri) return c.json({ error: "uri required" }, 400);
+    const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
+    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    return c.json(await loadProductAssets(uri));
+  });
+
+  /**
+   * Store-owner: attach an already-uploaded object to a product as either
+   * cover art (role "coverArt") or an included asset (role is the
+   * merchant's freeform label, same convention as publish-product's
+   * includedAssets). The object must already exist and belong to this
+   * merchant -- this endpoint only links it, uploading happens through the
+   * ordinary inventory session endpoints first.
+   */
+  r.post("/catalog/products/assets", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const body = (await c.req.json().catch(() => null)) as {
+      productUri?: string;
+      objectId?: string;
+      role?: string;
+    } | null;
+    const productUri = body?.productUri;
+    const objectId = body?.objectId;
+    const role = body?.role?.trim();
+    if (!productUri || !objectId || !role) {
+      return c.json({ error: "productUri_objectId_role_required" }, 400);
+    }
+    const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, productUri)).get();
+    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    const obj = db
+      .select({
+        id: inventoryUploadObject.id,
+        status: inventoryUploadObject.status,
+        merchantDid: inventoryUploadSession.merchantDid,
+      })
+      .from(inventoryUploadObject)
+      .innerJoin(
+        inventoryUploadSession,
+        eq(inventoryUploadObject.sessionId, inventoryUploadSession.id),
+      )
+      .where(eq(inventoryUploadObject.id, objectId))
+      .get();
+    if (!obj || obj.merchantDid !== owner || obj.status !== "completed") {
+      return c.json({ error: "invalid_object" }, 400);
+    }
+    const existing = db
+      .select()
+      .from(catalogProductAssets)
+      .where(eq(catalogProductAssets.productUri, productUri))
+      .all();
+    const position =
+      role === "coverArt"
+        ? existing.filter((r) => r.role === "coverArt").length
+        : 0;
+    db.insert(catalogProductAssets)
+      .values({
+        id: randomUUID(),
+        productUri,
+        objectId,
+        role,
+        position,
+      })
+      .run();
+    return c.json(await loadProductAssets(productUri));
+  });
+
+  /** Store-owner: detach one asset (cover art or included asset) from a product. */
+  r.post("/catalog/products/assets/remove", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.ARTIST_DID!.trim();
+    const body = (await c.req.json().catch(() => null)) as { id?: string } | null;
+    const id = body?.id;
+    if (!id) return c.json({ error: "id_required" }, 400);
+    const row = db.select().from(catalogProductAssets).where(eq(catalogProductAssets.id, id)).get();
+    if (!row) return c.json({ error: "not_found" }, 404);
+    const product = db
+      .select()
+      .from(catalogProducts)
+      .where(eq(catalogProducts.uri, row.productUri))
+      .get();
+    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    db.delete(catalogProductAssets).where(eq(catalogProductAssets.id, id)).run();
+    return c.json(await loadProductAssets(row.productUri));
   });
 
   /**
