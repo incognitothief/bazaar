@@ -425,7 +425,16 @@ export function PurchaseDetailPage() {
       {isProduct && "items" in item ? (
         <section className="space-y-4">
           <h2 className="text-lg font-medium">Your downloads</h2>
-          <ol className="list-none space-y-2 m-0 p-0">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={zipBusy}
+            onClick={() => void downloadProductZip(receipt.item.uri)}
+          >
+            {zipBusy ? "Preparing…" : "Download all (.zip)"}
+          </Button>
+          <ol className="list-none space-y-2 text-sm m-0 p-0">
             {item.items.map((ref, index) => {
               const meta = productItemMeta[ref.uri];
               return (
@@ -462,15 +471,6 @@ export function PurchaseDetailPage() {
               );
             })}
           </ol>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={zipBusy}
-            onClick={() => void downloadProductZip(receipt.item.uri)}
-          >
-            {zipBusy ? "Preparing…" : "Download all (.zip)"}
-          </Button>
         </section>
       ) : null}
 

@@ -869,7 +869,18 @@ export function ItemDetailPage() {
           <h2 className="text-lg font-medium">
             {ownsProduct ? "Your downloads" : isMusicProduct ? "Tracks" : "Items"}
           </h2>
-          <ol className="list-none space-y-2 m-0 p-0">
+          {ownsProduct ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={zipBusy}
+              onClick={() => void downloadProductZip()}
+            >
+              {zipBusy ? "Preparing…" : "Download all (.zip)"}
+            </Button>
+          ) : null}
+          <ol className="list-none space-y-2 text-sm m-0 p-0">
             {item.items.map((ref, index) => {
               const purchase = purchaseByProductItemUri.get(ref.uri);
               const meta = productItemMeta[ref.uri];
@@ -934,17 +945,6 @@ export function ItemDetailPage() {
               );
             })}
           </ol>
-          {ownsProduct ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={zipBusy}
-              onClick={() => void downloadProductZip()}
-            >
-              {zipBusy ? "Preparing…" : "Download all (.zip)"}
-            </Button>
-          ) : null}
         </section>
       ) : null}
 
