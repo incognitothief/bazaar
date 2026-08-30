@@ -2,11 +2,10 @@
 
 ## Status
 
-**Draft** — not yet accepted. Not listed in `docs/adr/README.md` until accepted.
+Accepted (2026-08-30). Depends on
+[ADR 0013](0013-key-rotation-and-did-document-v2.md) (the storefront `keyHistory`).
 
-Depends on [ADR 0013](0013-key-rotation-and-did-document-v2.md) (the storefront `keyHistory`).
-
-Implemented on branch `feature/rework-did-document`: `packages/shared/src/lexicons/actor.merchantKeys.json`,
+Implemented in `packages/shared/src/lexicons/actor.merchantKeys.json`,
 `packages/server/src/lib/merchantKeys.ts` (`checkMerchantKeySync`, `diffMerchantKeyMirror`,
 `expectedMerchantKeyRecords`, `readMerchantKeySyncStatus`),
 `packages/server/src/routes/merchant.ts` (`/api/merchant/key-sync-status[/recheck]`),

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — partially amended by [ADR 0013](0013-key-rotation-and-did-document-v2.md) (Draft).
+Accepted — §1 / §5 / §6 superseded by [ADR 0013](0013-key-rotation-and-did-document-v2.md).
 
 > **2026-08-29 remediation note.** Terminology and mechanics have moved on since this ADR:
 > - Env vars renamed `APP_SERVICE_*` → `APP_MERCHANT_*`; `kid` fragment format
@@ -12,8 +12,8 @@ Accepted — partially amended by [ADR 0013](0013-key-rotation-and-did-document-
 >   compact low-S IEEE-P1363 signature (a DER fallback remains for pre-migration records).
 > - The DID document no longer carries an empty `authentication`.
 > - The multi-key DID-document shape, the `keyHistory` structure, the `app_keys` registry, the
->   verification-path redesign, and the full rotation runbook are specified in **ADR 0013**.
->   Treat §5 and §6 below as superseded by ADR 0013 once it lands.
+>   verification-path redesign, and the full rotation runbook are specified in **ADR 0013**
+>   (Accepted) — §5 and §6 below are superseded by it.
 
 ## Date
 
