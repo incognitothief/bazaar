@@ -268,7 +268,10 @@ export function keyHistoryContext(): Record<string, unknown> {
   return {
     keyHistory: { "@id": `${CTX_NS}keyHistory`, "@container": "@list" },
     supersededBy: { "@id": `${CTX_NS}supersededBy`, "@type": "@id" },
-    revoked: `${CTX_NS}revoked`,
+    revoked: {
+      "@id": `${CTX_NS}revoked`,
+      "@type": "http://www.w3.org/2001/XMLSchema#boolean",
+    },
   };
 }
 
@@ -316,9 +319,10 @@ export async function reconcileMerchantKeys(db: Db): Promise<void> {
  * verificationMethod = the current key + every non-revoked key (a standard resolver can verify
  *                      records signed by any of them, including retired keys).
  * assertionMethod    = the current key, only.
- * keyHistory         = every non-current key (oldest → newest), each a Multikey entry plus a
- *                      full-URL `supersededBy` and an optional `revoked: true`. Revoked keys are
- *                      present here (as tombstones) but absent from verificationMethod.
+ * keyHistory         = every non-current key (oldest → newest), each a full Multikey entry
+ *                      (id, type, controller, publicKeyMultibase) plus a full-URL `supersededBy`
+ *                      and an optional `revoked: true`. Revoked keys are present here (as
+ *                      tombstones) but absent from verificationMethod.
  * authentication     = omitted.
  */
 export function buildServiceDidDocument(
@@ -347,6 +351,7 @@ export function buildServiceDidDocument(
   const keyHistory = keys.history.map((k) => ({
     id: k.id,
     type: "Multikey" as const,
+    controller: id,
     publicKeyMultibase: k.publicKeyMultibase,
     supersededBy: k.supersededBy,
     ...(k.revoked ? { revoked: true } : {}),

@@ -237,6 +237,7 @@ describe("buildServiceDidDocument", () => {
       `${DID}#merchant-key-2026-01-01`,
     ]);
     expect(doc.keyHistory[0]!.type).toBe("Multikey");
+    expect(doc.keyHistory.every((h: any) => h.controller === DID)).toBe(true);
     expect(doc.keyHistory[0]!.supersededBy).toBe(`${DID}#merchant-key-2026-08-29`);
     expect("revoked" in doc.keyHistory[0]!).toBe(false);
     expect(doc.keyHistory[1]!.revoked).toBe(true);
@@ -248,7 +249,10 @@ describe("buildServiceDidDocument", () => {
       "@id": "https://bazaar.whereditgo.diamonds/ns#supersededBy",
       "@type": "@id",
     });
-    expect(String(ctx.revoked)).toContain("/ns#revoked");
+    expect(ctx.revoked).toEqual({
+      "@id": "https://bazaar.whereditgo.diamonds/ns#revoked",
+      "@type": "http://www.w3.org/2001/XMLSchema#boolean",
+    });
   });
 
   test("no current key → empty verificationMethod / assertionMethod", () => {

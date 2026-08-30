@@ -93,15 +93,20 @@ State is **derived from where a key appears** — there is no `status` field in 
 {
   "id": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17",   // required — full DID URL
   "type": "Multikey",                                                   // required
+  "controller": "did:web:bazaar.whereditgo.diamonds",                   // required — the document id
   "publicKeyMultibase": "z…",                                           // required
   "supersededBy": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-08-29",  // required — full DID URL
   "revoked": true                                                        // optional — hard revoke
 }
 ```
 
+Each entry is a complete Multikey verification method (`id`, `type`, `controller`,
+`publicKeyMultibase`) plus `supersededBy` and the optional `revoked` — so a consumer can hand a
+`keyHistory` entry straight to a Multikey verifier.
+
 #### 1b. `@context` (inline)
 
-Only `keyHistory` and the two Bazaar-specific terms need declaring — `id`, `type`,
+Only `keyHistory` and the two Bazaar-specific terms need declaring — `id`, `type`, `controller`,
 `publicKeyMultibase` come from the DID-core + Multikey contexts. An **inline context object** is
 appended to the `@context` array (no second document to serve, offline-safe):
 
@@ -112,13 +117,15 @@ appended to the `@context` array (no second document to serve, offline-safe):
   {
     "keyHistory":   { "@id": "https://bazaar.whereditgo.diamonds/ns#keyHistory", "@container": "@list" },
     "supersededBy": { "@id": "https://bazaar.whereditgo.diamonds/ns#supersededBy", "@type": "@id" },
-    "revoked":      "https://bazaar.whereditgo.diamonds/ns#revoked"
+    "revoked":      { "@id": "https://bazaar.whereditgo.diamonds/ns#revoked",
+                      "@type": "http://www.w3.org/2001/XMLSchema#boolean" }
   }
 ]
 ```
 
 `@container: "@list"` preserves chain order; `"@type": "@id"` makes `supersededBy` a proper node
-link (hence the full-DID-URL values). The IRI namespace
+link (hence the full-DID-URL values); `revoked` is explicitly typed `xsd:boolean`. The IRI
+namespace
 `https://bazaar.whereditgo.diamonds/ns#` is a **fixed Bazaar-project vocabulary URI**, identical
 for every deployment regardless of the operator's own `did:web` host; nothing needs to resolve
 there today.
@@ -138,10 +145,10 @@ there today.
   "assertionMethod": ["did:web:bazaar.whereditgo.diamonds#merchant-key-2026-08-29"],
   "keyHistory": [
     { "id": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-01-10", "type": "Multikey",
-      "publicKeyMultibase": "z…", "revoked": true,
+      "controller": "did:web:bazaar.whereditgo.diamonds", "publicKeyMultibase": "z…", "revoked": true,
       "supersededBy": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17" },
     { "id": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17", "type": "Multikey",
-      "publicKeyMultibase": "z…retired…",
+      "controller": "did:web:bazaar.whereditgo.diamonds", "publicKeyMultibase": "z…retired…",
       "supersededBy": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-08-29" }
   ]
 }
@@ -293,7 +300,7 @@ Full write-up:
 | `verificationMethod` | the current key + every non-revoked key |
 | `assertionMethod` | the current key, only |
 | `authentication` | omitted |
-| `keyHistory` | every non-current key; ordered oldest→newest; `{ id, type, publicKeyMultibase, supersededBy }` with `id` / `supersededBy` full DID URLs; optional `revoked: true` |
+| `keyHistory` | every non-current key; ordered oldest→newest; `{ id, type, controller, publicKeyMultibase, supersededBy }` with `id` / `supersededBy` full DID URLs; optional `revoked: true` (`@context`-typed `xsd:boolean`) |
 | state | derived from field membership — no `status` in the document |
 | `keyHistory` vocab | inline `@context` object; IRI ns `https://bazaar.whereditgo.diamonds/ns#` (fixed, project-wide) |
 | Revocation | optional boolean `revoked: true` on the `keyHistory` entry; no timestamp is a verification input |
