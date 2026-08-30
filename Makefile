@@ -66,8 +66,10 @@ ifeq ($(strip $(TUNNEL_URL)),)
 else
 	@case "$(TUNNEL_URL)" in http://*|https://*) ;; *) \
 		echo "TUNNEL_URL must start with http:// or https:// (got: $(TUNNEL_URL))"; exit 1;; esac
-	@echo "dev: APP_URL / VITE_APP_URL / VITE_API_ORIGIN -> $(TUNNEL_URL)"
+	@echo "dev: routing all OAuth / SPA origins through $(TUNNEL_URL)"
 	APP_URL="$(TUNNEL_URL)" \
+		ATPROTO_OAUTH_REDIRECT_URI="$(TUNNEL_URL)/api/atproto/callback" \
+		PUBLIC_WEB_APP_URL="$(TUNNEL_URL)" \
 		VITE_APP_URL="$(TUNNEL_URL)" \
 		VITE_API_ORIGIN="$(TUNNEL_URL)" \
 		npm run dev
