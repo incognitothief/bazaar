@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, RefreshCw, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { KeyRound } from "lucide-react";
 import { useMerchantKeySync } from "@/hooks/useMerchantKeySync";
 
 /**
  * Shown across the merchant panel when the storefront's signing-key history has
  * changed and the merchant's PDS `actor.merchantKeys` mirror is out of step.
- * One click writes the mirror using the merchant's live session. See ADR 0014.
+ * "Publish" writes the mirror using the merchant's live session. See ADR 0014.
  *
  * Dismissible for the current session; reappears on reload or on a fresh drift.
- *
- * Layout: one row on >=sm (icon · text · Sync · dismiss). On mobile it stacks —
- * text with the icon on its right, then a 50/50 Sync / Dismiss row.
  */
 export function MerchantKeySyncBanner() {
   const { status, syncing, error, sync } = useMerchantKeySync();
@@ -32,71 +28,51 @@ export function MerchantKeySyncBanner() {
   if (!status || status.inSync !== false || dismissed) return null;
 
   const counts =
-    `(${status.missing.length} to add` +
-    (status.extra.length > 0 ? `, ${status.extra.length} to remove` : "") +
-    ")";
+    `${status.missing.length} to add` +
+    (status.extra.length > 0 ? `, ${status.extra.length} to remove` : "");
+
+  const link =
+    "underline underline-offset-2 hover:no-underline disabled:no-underline disabled:opacity-60";
 
   return (
-    <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-        {/* text + icon (icon right on mobile, left on >=sm) */}
-        <div className="flex items-center gap-2 sm:contents">
-          <p className="w-5/6 min-w-0 leading-5 sm:order-2 sm:w-auto sm:flex-1">
-            <span className="font-medium">
-              Your storefront signing keys have changed.
-            </span>{" "}
-            <span className="text-amber-800 dark:text-amber-200/90">
-              Sync your latest key history with your PDS?
-            </span>{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5 align-middle text-xs text-amber-800 dark:bg-amber-500/15 dark:text-amber-200/90">
-              {counts}
-            </code>
-          </p>
-          <AlertTriangle className="ml-auto size-5 shrink-0 sm:order-1 sm:ml-0 sm:size-4" />
-        </div>
-
-        {/* actions: own 50/50 row on mobile, inline on >=sm */}
-        <div className="flex gap-2 sm:contents">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => void sync()}
-            disabled={syncing}
-            className="h-7 flex-1 px-2 sm:order-3 sm:flex-none sm:shrink-0"
-          >
-            {syncing ? (
-              <>
-                <RefreshCw className="mr-1 size-3.5 animate-spin" />
-                Synchronizing…
-              </>
-            ) : (
-              <>
-                <Check className="mr-1 size-3.5" />
-                Sync
-              </>
-            )}
-          </Button>
+    <div className="mb-3 flex items-start gap-2.5 rounded-md border border-amber-200/70 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
+      <KeyRound
+        className="mt-0.5 size-[18px] shrink-0 text-amber-700 dark:text-amber-300"
+        aria-hidden="true"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="leading-5">
+          Your storefront signing keys changed.{" "}
+          <span className="text-amber-700/70 dark:text-amber-200/60">
+            ({counts})
+          </span>
+        </p>
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
           <button
             type="button"
-            aria-label="Dismiss"
-            onClick={() => setDismissed(true)}
-            className="flex h-7 flex-1 items-center justify-center gap-1 rounded px-2 text-amber-700 hover:bg-amber-100 hover:text-amber-900 sm:order-4 sm:h-auto sm:flex-none sm:shrink-0 sm:p-1 dark:text-amber-200/70 dark:hover:bg-amber-500/15"
+            onClick={() => void sync()}
+            disabled={syncing}
+            className={`font-medium text-amber-800 hover:text-amber-900 dark:text-amber-200 ${link}`}
           >
-            <X className="size-3.5" />
-            <span className="sm:hidden">Dismiss</span>
+            {syncing ? "Publishing…" : "Publish to PDS"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            className={`text-amber-700/80 hover:text-amber-900 dark:text-amber-200/70 ${link}`}
+          >
+            Dismiss
           </button>
         </div>
+        {error ? (
+          <p className="mt-1 text-xs text-destructive">
+            {error}
+            {/\b(scope|auth|unauthorized|forbidden|token)\b/i.test(error)
+              ? " — sign out and back in, then retry."
+              : ""}
+          </p>
+        ) : null}
       </div>
-
-      {error ? (
-        <p className="mt-1 text-destructive sm:pl-6">
-          {error}
-          {/\b(scope|auth|unauthorized|forbidden|token)\b/i.test(error)
-            ? " — sign out and back in, then retry."
-            : ""}
-        </p>
-      ) : null}
     </div>
   );
 }
