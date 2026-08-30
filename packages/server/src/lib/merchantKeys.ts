@@ -1,7 +1,9 @@
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { parseMultikey } from "@atproto/crypto";
+import { eq } from "drizzle-orm";
 import type { Db } from "../db";
-import { appKeys } from "../db/schema";
+import { appKeys, meta } from "../db/schema";
+import { getAgentForDid } from "./atproto/resolvePds";
 import { normalizeAppMerchantPrivateKey } from "./atproto/sign";
 import { publicSpkiPemToMultibase } from "./publicKeyMultibase";
 
@@ -364,4 +366,163 @@ export function buildServiceDidDocument(
     assertionMethod,
     keyHistory,
   };
+}
+
+// --- Merchant-side mirror (diamonds.whereditgo.bazaar.actor.merchantKeys) — ADR 0014 ---
+
+const MERCHANT_KEYS_COLLECTION = "diamonds.whereditgo.bazaar.actor.merchantKeys";
+const SYNC_META_KEY = "merchant_keys_sync";
+
+/** One `actor.merchantKeys` record value, mirroring a `keyHistory` entry. `syncedAt` is added by the client. */
+export type MerchantKeyMirrorRecord = {
+  $type: "diamonds.whereditgo.bazaar.actor.merchantKeys";
+  appDid: string;
+  id: string;
+  type: "Multikey";
+  controller: string;
+  publicKeyMultibase: string;
+  supersededBy: string;
+  revoked?: boolean;
+};
+
+export type MerchantKeySyncStatus = {
+  /** true = PDS matches; false = drift; null = not checkable (unconfigured / PDS unreachable). */
+  inSync: boolean | null;
+  /** rkeys (= kids) whose mirror record is absent or stale and must be (re)written. */
+  missing: string[];
+  /** rkeys present on the PDS that are not in the current key history and should be deleted. */
+  extra: string[];
+  expectedCount: number;
+  pdsCount: number;
+  artistDid: string | null;
+  checkedAt: string;
+  error?: string;
+  status?: "unconfigured";
+};
+
+/** The `actor.merchantKeys` records the merchant repo should contain: one per non-current key. */
+export function expectedMerchantKeyRecords(): {
+  rkey: string;
+  record: MerchantKeyMirrorRecord;
+}[] {
+  const did = merchantDid();
+  return getMerchantKeys().history.map((k) => ({
+    rkey: k.kid,
+    record: {
+      $type: "diamonds.whereditgo.bazaar.actor.merchantKeys",
+      appDid: did,
+      id: k.id,
+      type: "Multikey",
+      controller: did,
+      publicKeyMultibase: k.publicKeyMultibase,
+      supersededBy: k.supersededBy as string,
+      ...(k.revoked ? { revoked: true } : {}),
+    },
+  }));
+}
+
+function mirrorMatches(
+  pds: Record<string, unknown>,
+  want: MerchantKeyMirrorRecord,
+): boolean {
+  return (
+    pds.id === want.id &&
+    pds.publicKeyMultibase === want.publicKeyMultibase &&
+    pds.supersededBy === want.supersededBy &&
+    Boolean(pds.revoked) === Boolean(want.revoked)
+  );
+}
+
+/** Compare the current key history against the merchant PDS's `actor.merchantKeys` collection. */
+export function diffMerchantKeyMirror(
+  pdsRecords: { uri: string; value: unknown }[],
+): { missing: string[]; extra: string[]; pdsCount: number } {
+  const byRkey = new Map<string, Record<string, unknown>>();
+  for (const rec of pdsRecords) {
+    const rkey = rec.uri.split("/").pop() ?? "";
+    if (rkey) byRkey.set(rkey, (rec.value ?? {}) as Record<string, unknown>);
+  }
+  const expected = expectedMerchantKeyRecords();
+  const expectedRkeys = new Set(expected.map((e) => e.rkey));
+  const missing = expected
+    .filter((e) => {
+      const cur = byRkey.get(e.rkey);
+      return !cur || !mirrorMatches(cur, e.record);
+    })
+    .map((e) => e.rkey);
+  const extra = [...byRkey.keys()].filter((k) => !expectedRkeys.has(k));
+  return { missing, extra, pdsCount: byRkey.size };
+}
+
+/**
+ * Runs on every boot (from `index.ts`, after `reconcileMerchantKeys`). Best-effort: resolves the
+ * merchant PDS, lists `actor.merchantKeys`, diffs it against the current key history, and stores
+ * the result in `meta` for the merchant panel to read. Never throws.
+ */
+export async function checkMerchantKeySync(db: Db): Promise<MerchantKeySyncStatus> {
+  const checkedAt = new Date().toISOString();
+  const artistDid = process.env.ARTIST_DID?.trim() ?? null;
+  const expectedCount = expectedMerchantKeyRecords().length;
+
+  let status: MerchantKeySyncStatus;
+  if (!artistDid?.startsWith("did:")) {
+    status = {
+      inSync: null,
+      missing: [],
+      extra: [],
+      expectedCount,
+      pdsCount: 0,
+      artistDid: null,
+      checkedAt,
+      status: "unconfigured",
+    };
+  } else {
+    try {
+      const agent = await getAgentForDid(artistDid);
+      const res = await agent.com.atproto.repo.listRecords({
+        repo: artistDid,
+        collection: MERCHANT_KEYS_COLLECTION,
+        limit: 100,
+      });
+      const { missing, extra, pdsCount } = diffMerchantKeyMirror(res.data.records);
+      status = {
+        inSync: missing.length === 0 && extra.length === 0,
+        missing,
+        extra,
+        expectedCount,
+        pdsCount,
+        artistDid,
+        checkedAt,
+      };
+    } catch (e) {
+      status = {
+        inSync: null,
+        missing: [],
+        extra: [],
+        expectedCount,
+        pdsCount: 0,
+        artistDid,
+        checkedAt,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }
+
+  const value = JSON.stringify(status);
+  await db
+    .insert(meta)
+    .values({ key: SYNC_META_KEY, value })
+    .onConflictDoUpdate({
+      target: meta.key,
+      set: { value, updatedAt: new Date() },
+    });
+  return status;
+}
+
+/** The last stored `checkMerchantKeySync` result. */
+export async function readMerchantKeySyncStatus(
+  db: Db,
+): Promise<MerchantKeySyncStatus | null> {
+  const row = await db.select().from(meta).where(eq(meta.key, SYNC_META_KEY)).get();
+  return row ? (JSON.parse(row.value) as MerchantKeySyncStatus) : null;
 }

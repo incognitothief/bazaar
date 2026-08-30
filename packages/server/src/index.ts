@@ -8,7 +8,7 @@ import { serveStatic } from "hono/bun";
 import { createApiRouter } from "./api";
 import { createDb } from "./db";
 import { createOAuthClient } from "./lib/atproto/oauth";
-import { reconcileMerchantKeys } from "./lib/merchantKeys";
+import { checkMerchantKeySync, reconcileMerchantKeys } from "./lib/merchantKeys";
 import { injectSpaHead } from "./lib/spaHtmlMeta";
 import {
   backfillPaymentFulfillmentFromMeta,
@@ -46,6 +46,12 @@ try {
   );
   process.exit(1);
 }
+
+// Best-effort: compare the merchant PDS's actor.merchantKeys mirror against the current
+// key history and stash the result for the merchant panel. Never blocks boot.
+void checkMerchantKeySync(db).catch((e) =>
+  console.warn("merchant key sync check:", e),
+);
 
 const oauthClient = await createOAuthClient(db);
 

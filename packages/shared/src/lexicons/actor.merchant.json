@@ -31,65 +31,10 @@
             "type": "string",
             "format": "cid"
           },
-          "appDid": {
-            "type": "string",
-            "format": "did",
-            "description": "The Bazaar storefront DID (a did:web) that signs purchase.receipt / purchase.consent / bazaarIdentifier records on this merchant's behalf. A verifier can resolve appDid to /.well-known/did.json for the storefront's verification keys, or use the embedded keyHistory below. Lets the storefront trust chain be checked from the merchant's own repo, not only from a receipt's appDid field."
-          },
-          "keyHistory": {
-            "type": "array",
-            "description": "Mirror of the appDid DID document's keyHistory array: every non-current storefront signing key, ordered oldest to newest, so a verifier can check this merchant's historical records without a separate DID-document fetch. NOT YET automatically synchronized on storefront key rotation — this field may be absent or stale until that write path exists (see diamonds.whereditgo.bazaar / ADR 0013).",
-            "items": {
-              "type": "ref",
-              "ref": "#keyHistoryEntry"
-            }
-          },
           "createdAt": {
             "type": "string",
             "format": "datetime"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "datetime",
-            "description": "Set on every write to this record."
           }
-        }
-      }
-    },
-    "keyHistoryEntry": {
-      "type": "object",
-      "description": "One non-current storefront signing key, mirroring an entry of the appDid DID document's keyHistory. A complete Multikey verification method plus the forward supersededBy link and an optional revoked flag.",
-      "required": [
-        "id",
-        "type",
-        "publicKeyMultibase",
-        "supersededBy"
-      ],
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Full DID URL of the key, e.g. did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17."
-        },
-        "type": {
-          "type": "string",
-          "const": "Multikey"
-        },
-        "controller": {
-          "type": "string",
-          "format": "did",
-          "description": "The storefront DID that controls this key (equals appDid)."
-        },
-        "publicKeyMultibase": {
-          "type": "string",
-          "description": "Multibase (z...) encoding of the P-256 public key, per the Multikey / did:key convention."
-        },
-        "supersededBy": {
-          "type": "string",
-          "description": "Full DID URL of the key that became current after this one. The newest entry points at the storefront's current signing key."
-        },
-        "revoked": {
-          "type": "boolean",
-          "description": "True = hard-revoked: signatures made by this key are rejected outright. Absent = retired but still trusted for records it signed before rotation."
         }
       }
     }

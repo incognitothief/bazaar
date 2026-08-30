@@ -10,4 +10,5 @@ export const BAZAAR_COLLECTION = {
   recording: "diamonds.whereditgo.bazaar.catalog.recording",
   composition: "diamonds.whereditgo.bazaar.catalog.composition",
   actorMerchant: "diamonds.whereditgo.bazaar.actor.merchant",
+  actorMerchantKeys: "diamonds.whereditgo.bazaar.actor.merchantKeys",
 } as const;

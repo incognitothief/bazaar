@@ -7,6 +7,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import { MerchantKeySyncBanner } from "@/components/merchant/MerchantKeySyncBanner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -293,6 +294,7 @@ export function MerchantLayout() {
 
       <main className="flex min-w-0 w-full flex-col px-4 pb-4 pt-[calc(4.25rem+env(safe-area-inset-top))] sm:px-6 sm:pb-6 sm:pt-[calc(4.25rem+env(safe-area-inset-top))] md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-y-none md:p-8 md:pt-8">
         <div className="mx-auto w-full min-w-0 max-w-6xl md:flex-1">
+          <MerchantKeySyncBanner />
           <Outlet />
         </div>
       </main>

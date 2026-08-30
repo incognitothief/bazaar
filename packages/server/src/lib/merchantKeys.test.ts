@@ -3,6 +3,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildServiceDidDocument,
   candidatePemsForKid,
+  diffMerchantKeyMirror,
+  expectedMerchantKeyRecords,
   getMerchantKeys,
   parseKeyHistoryEnv,
   resetMerchantKeysCache,
@@ -263,5 +265,76 @@ describe("buildServiceDidDocument", () => {
     expect(doc.verificationMethod).toEqual([]);
     expect(doc.assertionMethod).toEqual([]);
     expect(doc.keyHistory).toEqual([]);
+  });
+});
+
+describe("expectedMerchantKeyRecords / diffMerchantKeyMirror", () => {
+  function fixture() {
+    const cur = p256();
+    const retired = p256();
+    const revoked = p256();
+    setEnv({
+      APP_MERCHANT_PRIVATE_KEY: cur.privateKeyPem,
+      APP_MERCHANT_KID: "cur",
+      APP_MERCHANT_KEY_HISTORY: b64([
+        histEntry("retired", retired.multibase, "cur"),
+        histEntry("revoked", revoked.multibase, "retired", true),
+      ]),
+    });
+    return { retired, revoked };
+  }
+
+  const pdsRec = (rkey: string, value: Record<string, unknown>) => ({
+    uri: `at://${DID}/diamonds.whereditgo.bazaar.actor.merchantKeys/${rkey}`,
+    value,
+  });
+
+  test("expected = one record per history entry (not the current key), rkey = kid", () => {
+    fixture();
+    const exp = expectedMerchantKeyRecords();
+    expect(exp.map((e) => e.rkey)).toEqual(["retired", "revoked"]);
+    expect(exp[0]!.record).toMatchObject({
+      $type: "diamonds.whereditgo.bazaar.actor.merchantKeys",
+      id: `${DID}#retired`,
+      type: "Multikey",
+      controller: DID,
+      supersededBy: `${DID}#cur`,
+    });
+    expect("revoked" in exp[0]!.record).toBe(false);
+    expect(exp[1]!.record.revoked).toBe(true);
+  });
+
+  test("empty PDS → every history kid missing, nothing extra", () => {
+    fixture();
+    expect(diffMerchantKeyMirror([])).toEqual({
+      missing: ["retired", "revoked"],
+      extra: [],
+      pdsCount: 0,
+    });
+  });
+
+  test("PDS matches → in sync", () => {
+    fixture();
+    const recs = expectedMerchantKeyRecords().map((e) =>
+      pdsRec(e.rkey, { ...e.record, syncedAt: "2026-08-30T00:00:00Z" }),
+    );
+    const d = diffMerchantKeyMirror(recs);
+    expect(d.missing).toEqual([]);
+    expect(d.extra).toEqual([]);
+    expect(d.pdsCount).toBe(2);
+  });
+
+  test("stale field (revoked flipped) → that kid missing; orphan rkey → extra", () => {
+    fixture();
+    const exp = expectedMerchantKeyRecords();
+    const recs = [
+      pdsRec(exp[0]!.rkey, exp[0]!.record),
+      // 'revoked' entry written before it was revoked
+      pdsRec(exp[1]!.rkey, { ...exp[1]!.record, revoked: false }),
+      pdsRec("merchant-key-ancient", { id: `${DID}#merchant-key-ancient` }),
+    ];
+    const d = diffMerchantKeyMirror(recs);
+    expect(d.missing).toEqual(["revoked"]);
+    expect(d.extra).toEqual(["merchant-key-ancient"]);
   });
 });

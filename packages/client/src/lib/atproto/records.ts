@@ -497,7 +497,7 @@ export async function putActorMerchant(
     collection: BAZAAR_COLLECTION.actorMerchant,
     rkey,
     ...(swapCid ? { swapRecord: swapCid } : {}),
-    record: { ...record, updatedAt: nowIso() } as unknown as Record<string, unknown>,
+    record: record as unknown as Record<string, unknown>,
   });
 }
 
@@ -511,7 +511,6 @@ export async function createActorMerchant(
     $type: "diamonds.whereditgo.bazaar.actor.merchant",
     ...record,
     createdAt: nowIso(),
-    updatedAt: nowIso(),
   };
   const res = await agent.com.atproto.repo.createRecord({
     repo: did,

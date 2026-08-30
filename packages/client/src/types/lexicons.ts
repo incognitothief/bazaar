@@ -291,16 +291,6 @@ export type Fulfillment = {
   updatedAt?: string;
 };
 
-/** Mirror of an entry of the appDid DID document's `keyHistory` (see ADR 0013). */
-export type MerchantKeyHistoryEntry = {
-  id: string;
-  type: "Multikey";
-  controller?: string;
-  publicKeyMultibase: string;
-  supersededBy: string;
-  revoked?: boolean;
-};
-
 export type ActorMerchant = {
   $type: "diamonds.whereditgo.bazaar.actor.merchant";
   displayName: string;
@@ -308,12 +298,23 @@ export type ActorMerchant = {
   storefrontUrl?: string;
   avatarCid?: string;
   bannerCid?: string;
-  /** did:web that signs on this merchant's behalf. */
-  appDid?: string;
-  /** Storefront key history mirror. Not yet auto-synced on rotation — may be absent/stale. */
-  keyHistory?: MerchantKeyHistoryEntry[];
   createdAt: string;
-  updatedAt?: string;
+};
+
+/**
+ * Merchant-side mirror of one non-current storefront key (a keyHistory entry of the
+ * appDid DID document). rkey = the bare kid fragment. See ADR 0013 / ADR 0014.
+ */
+export type ActorMerchantKeys = {
+  $type: "diamonds.whereditgo.bazaar.actor.merchantKeys";
+  appDid: string;
+  id: string;
+  type: "Multikey";
+  controller?: string;
+  publicKeyMultibase: string;
+  supersededBy: string;
+  revoked?: boolean;
+  syncedAt?: string;
 };
 
 export type CatalogItem = DigitalItem | Collection | PhysicalItem;
