@@ -135,11 +135,11 @@ app.notFound(async (c) => {
   return c.text("Not found", 404);
 });
 
-if (!process.env.APP_SERVICE_KID?.trim() && process.env.NODE_ENV === "production") {
+if (!process.env.APP_MERCHANT_KID?.trim() && process.env.NODE_ENV === "production") {
   console.warn(
-    "[WARN] APP_SERVICE_KID is not set. Signed records will not carry a kid field. " +
+    "[WARN] APP_MERCHANT_KID is not set. Signed records will not carry a kid field. " +
       "Key rotation verification will require exhaustive key search. " +
-      "Set APP_SERVICE_KID to the fragment of the active key in did-document.json.",
+      "Set APP_MERCHANT_KID to the fragment of the active key in did-document.template.json.",
   );
 }
 

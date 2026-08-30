@@ -6,12 +6,11 @@
   "id": "did:web:bazaar.whereditgo.diamonds",
   "verificationMethod": [
     {
-      "id": "did:web:bazaar.whereditgo.diamonds#__APP_SERVICE_KID__",
+      "id": "did:web:bazaar.whereditgo.diamonds#__APP_MERCHANT_KID__",
       "type": "Multikey",
       "controller": "did:web:bazaar.whereditgo.diamonds",
       "publicKeyMultibase": "__PUBLIC_KEY_MULTIBASE__"
     }
   ],
-  "assertionMethod": ["did:web:bazaar.whereditgo.diamonds#__APP_SERVICE_KID__"],
-  "authentication": []
+  "assertionMethod": ["did:web:bazaar.whereditgo.diamonds#__APP_MERCHANT_KID__"]
 }

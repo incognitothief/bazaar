@@ -74,7 +74,7 @@ fly secrets set KEY=value -a <app>   # bazaar-g5nqca (prod) / bazaar-jwkvxw (sta
 At minimum:
 
 - `ARTIST_DID` — store owner DID, required for `/api/merchant/*`
-- `APP_SERVICE_PRIVATE_KEY` — signs receipts/consent and `bazaarRid`/`bazaarWid`/`bazaarPid`
+- `APP_MERCHANT_PRIVATE_KEY` — signs receipts/consent and `bazaarRid`/`bazaarWid`/`bazaarPid`
 - Inventory uploads: `CF_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`
 - **Litestream DB backups — a separate credential set from the one above, all four required
   together**: `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`. If even one

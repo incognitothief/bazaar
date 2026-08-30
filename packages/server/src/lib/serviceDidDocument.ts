@@ -2,7 +2,7 @@ import { createPrivateKey, createPublicKey } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeAppServicePrivateKey } from "./atproto/sign";
+import { normalizeAppMerchantPrivateKey } from "./atproto/sign";
 import { publicSpkiPemToMultibase } from "./publicKeyMultibase";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -28,12 +28,12 @@ function documentCandidates(): string[] {
 }
 
 function resolvePublicMultibase(): string {
-  const fromEnv = process.env.APP_SERVICE_PUBLIC_MULTIBASE?.trim();
+  const fromEnv = process.env.APP_MERCHANT_PUBLIC_MULTIBASE?.trim();
   if (fromEnv) return fromEnv;
-  const raw = process.env.APP_SERVICE_PRIVATE_KEY?.trim();
+  const raw = process.env.APP_MERCHANT_PRIVATE_KEY?.trim();
   if (!raw || raw.includes("PLACEHOLDER")) return "";
   try {
-    const priv = createPrivateKey(normalizeAppServicePrivateKey(raw));
+    const priv = createPrivateKey(normalizeAppMerchantPrivateKey(raw));
     const pub = createPublicKey(priv);
     const spkiPem = pub.export({ type: "spki", format: "pem" }) as string;
     return publicSpkiPemToMultibase(spkiPem);
@@ -44,10 +44,10 @@ function resolvePublicMultibase(): string {
 
 /**
  * Load DID document: prefer `did-document.template.json` with deploy-time substitution
- * (`__APP_SERVICE_KID__`, `__PUBLIC_KEY_MULTIBASE__`); fall back to static `did-document.json`.
+ * (`__APP_MERCHANT_KID__`, `__PUBLIC_KEY_MULTIBASE__`); fall back to static `did-document.json`.
  */
 export function loadServiceDidDocument(): Record<string, unknown> {
-  const kid = process.env.APP_SERVICE_KID?.trim() ?? "";
+  const kid = process.env.APP_MERCHANT_KID?.trim() ?? "";
   const multibase = resolvePublicMultibase();
 
   for (const path of documentCandidates()) {
@@ -55,11 +55,11 @@ export function loadServiceDidDocument(): Record<string, unknown> {
     const raw = readFileSync(path, "utf-8");
     if (path.endsWith("did-document.template.json")) {
       const filled = raw
-        .replaceAll("__APP_SERVICE_KID__", kid)
+        .replaceAll("__APP_MERCHANT_KID__", kid)
         .replaceAll("__PUBLIC_KEY_MULTIBASE__", multibase);
       if ((!kid || !multibase) && process.env.NODE_ENV !== "test") {
         console.warn(
-          "service DID template: set APP_SERVICE_KID and APP_SERVICE_PUBLIC_MULTIBASE (or a valid APP_SERVICE_PRIVATE_KEY to derive multibase); /.well-known/did.json may be incomplete.",
+          "service DID template: set APP_MERCHANT_KID and APP_MERCHANT_PUBLIC_MULTIBASE (or a valid APP_MERCHANT_PRIVATE_KEY to derive multibase); /.well-known/did.json may be incomplete.",
         );
       }
       return JSON.parse(filled) as Record<string, unknown>;

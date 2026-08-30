@@ -5,7 +5,7 @@ import { zipSync } from "fflate";
 import { Hono } from "hono";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
-import { appServicePublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
+import { appMerchantPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
 import { getSessionAgent } from "../lib/atproto/session";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import {
@@ -105,7 +105,7 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    const publicKeyPem = appServicePublicKeyPemFromEnv();
+    const publicKeyPem = appMerchantPublicKeyPemFromEnv();
     if (!publicKeyPem) return c.json({ error: "app_key_missing" }, 503);
 
     let entitled = false;
@@ -224,7 +224,7 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    const publicKeyPem = appServicePublicKeyPemFromEnv();
+    const publicKeyPem = appMerchantPublicKeyPemFromEnv();
     if (!publicKeyPem) return c.json({ error: "app_key_missing" }, 503);
 
     let entitled = false;

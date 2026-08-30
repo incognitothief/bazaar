@@ -2,7 +2,18 @@
 
 ## Status
 
-Accepted
+Accepted — partially amended by [ADR 0013](0013-key-rotation-and-did-document-v2.md) (Draft).
+
+> **2026-08-29 remediation note.** Terminology and mechanics have moved on since this ADR:
+> - Env vars renamed `APP_SERVICE_*` → `APP_MERCHANT_*`; `kid` fragment format
+>   `app-key-YYYY-MM-DD` → `merchant-key-YYYY-MM-DD`.
+> - `publicKeyMultibase` is now spec-conformant (multicodec `p256-pub` varint `0x80 0x24` +
+>   compressed point), and `appSig` on `purchase.receipt` / `purchase.consent` is now a
+>   compact low-S IEEE-P1363 signature (a DER fallback remains for pre-migration records).
+> - The DID document no longer carries an empty `authentication`.
+> - The multi-key DID-document shape, the `keyHistory` structure, the `app_keys` registry, the
+>   verification-path redesign, and the full rotation runbook are specified in **ADR 0013**.
+>   Treat §5 and §6 below as superseded by ADR 0013 once it lands.
 
 ## Date
 
@@ -10,7 +21,7 @@ Accepted
 
 ## Context
 
-Bazaar signs purchase receipts, purchase consent records, and self-issued identifiers (`bazaarRid`, `bazaarWid`, `bazaarPid`) with the **app service keypair** (`APP_SERVICE_PRIVATE_KEY`), not the artist's ATProto key. Third parties verify signatures by resolving `appDid` to a DID document with published verification keys.
+Bazaar signs purchase receipts, purchase consent records, and self-issued identifiers (`bazaarRid`, `bazaarWid`, `bazaarPid`) with the **app service keypair** (`APP_MERCHANT_PRIVATE_KEY`), not the artist's ATProto key. Third parties verify signatures by resolving `appDid` to a DID document with published verification keys.
 
 Without a key identifier on signed records, key rotation forces verifiers to try every historical key in the DID document. Receipts and consent on buyer PDSs are immutable — they cannot be updated after rotation.
 
@@ -20,7 +31,7 @@ Without a key identifier on signed records, key rotation forces verifiers to try
 
 `APP_DID` should match the `id` in the served DID document (e.g. `did:web:bazaar.whereditgo.diamonds`).
 
-Static template: `packages/server/config/did-document.template.json`, substituted at startup via `loadServiceDidDocument()` (`APP_SERVICE_KID`, `APP_SERVICE_PUBLIC_MULTIBASE` or derived from private key PEM).
+Static template: `packages/server/config/did-document.template.json`, substituted at startup via `loadServiceDidDocument()` (`APP_MERCHANT_KID`, `APP_MERCHANT_PUBLIC_MULTIBASE` or derived from private key PEM).
 
 Served at:
 
@@ -32,9 +43,9 @@ GET /.well-known/did.json
 
 `verificationMethod` is **append-only** (retired keys stay for historical verification). `assertionMethod` references only the **active** key fragment.
 
-### 2. `APP_SERVICE_KID`
+### 2. `APP_MERCHANT_KID`
 
-Environment variable naming the active key fragment (e.g. `app-key-2026-04-17`). Must match the `verificationMethod` id suffix in the DID document.
+Environment variable naming the active key fragment (e.g. `merchant-key-2026-08-29`). Must match the `verificationMethod` id suffix in the DID document.
 
 If unset in production, server logs a startup warning; signing continues but new records omit `kid`.
 
@@ -52,7 +63,7 @@ Lexicon descriptions updated to document app-service signing (not artist keypair
 
 ### 4. Runtime signing
 
-When `APP_SERVICE_KID` is set:
+When `APP_MERCHANT_KID` is set:
 
 - **Receipt and consent** — `fulfillCheckoutSession` includes `kid` on newly written `purchase.receipt` and `purchase.consent` records.
 
@@ -66,7 +77,7 @@ Download and entitlement paths verify `purchase.receipt#appSig` using the app pu
 
 1. Generate new keypair (`scripts/gen-did.sh` / `gen-did.ts`).
 2. Append new `verificationMethod` to DID template; update `assertionMethod` to new fragment.
-3. Set `APP_SERVICE_PRIVATE_KEY` and `APP_SERVICE_KID` on Fly (or env).
+3. Set `APP_MERCHANT_PRIVATE_KEY` and `APP_MERCHANT_KID` on Fly (or env).
 4. Deploy — new records carry new `kid`; old records remain verifiable via retained keys.
 
 ## Constraints
@@ -74,7 +85,7 @@ Download and entitlement paths verify `purchase.receipt#appSig` using the app pu
 | Rule | Value |
 |------|-------|
 | Trust anchor | `appDid` DID document |
-| `kid` format | `app-key-YYYY-MM-DD` (max 64 chars) |
+| `kid` format | `merchant-key-YYYY-MM-DD` (max 64 chars) |
 | DID route | `packages/server/src/routes/wellKnown.ts` |
 
 ## Consequences
@@ -87,7 +98,7 @@ Download and entitlement paths verify `purchase.receipt#appSig` using the app pu
 
 **Negative / trade-offs**
 
-- Operators must keep DID document, env PEM, and `APP_SERVICE_KID` in sync.
+- Operators must keep DID document, env PEM, and `APP_MERCHANT_KID` in sync.
 - Records without `kid` (pre-migration or missing env) require slower verification.
 - `did:web` requires correct DNS/host routing to the Bazaar server.
 
