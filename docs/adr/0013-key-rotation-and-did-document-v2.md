@@ -4,8 +4,10 @@
 
 **Draft** — not yet accepted. Not listed in `docs/adr/README.md` until accepted.
 
-Amends and partially supersedes [ADR 0011](0011-app-service-did-and-kid.md) (§5 verification, §6
-rotation procedure, the single-key template shape).
+Supersedes parts of [ADR 0011](0011-app-service-did-and-kid.md): its single-key template (§1), the
+"`verificationMethod` is append-only, retired keys stay in it" rule (§1, §6), verification (§5),
+and the rotation procedure (§6). Under this ADR a retired key **leaves** `verificationMethod` and
+lives on only in `keyHistory`.
 
 ## Date
 
@@ -16,231 +18,315 @@ rotation procedure, the single-key template shape).
 The 2026-08-29 remediation (see ADR 0011's remediation note) fixed the mechanical
 spec-conformance problems in the storefront DID stack:
 
-- `publicKeyMultibase` is now a conformant Multikey string (`p256-pub` multicodec varint
-  `0x80 0x24` + compressed point, base58btc) via `@atproto/crypto` `formatMultikey`.
+- `publicKeyMultibase` / `did:key` now go through `@atproto/crypto` (`p256-pub` multicodec varint
+  `0x80 0x24` + compressed point, base58btc).
 - `appSig` on `purchase.receipt` / `purchase.consent` is a compact low-S IEEE-P1363 signature
   (`packages/server/src/lib/atproto/sign.ts`), with a **temporary** DER-accepting fallback for
   pre-migration field receipts.
-- `APP_SERVICE_*` env vars → `APP_MERCHANT_*`; `kid` fragment `app-key-YYYY-MM-DD` →
-  `merchant-key-YYYY-MM-DD`.
-- The served DID document no longer carries an empty `authentication`.
+- `APP_SERVICE_*` → `APP_MERCHANT_*`; `kid` fragment `app-key-…` → `merchant-key-…`.
+- The served DID document dropped the empty `authentication` array.
 
-What is still **undesigned in practice**, and is the subject of this ADR:
+What is still undesigned in practice, and is the subject of this ADR:
 
-1. The DID-document template (`packages/server/config/did-document.template.json`) holds exactly
-   one key. Two string substitutions (`__APP_MERCHANT_KID__`, `__PUBLIC_KEY_MULTIBASE__`) in
-   `loadServiceDidDocument()` cannot express the append-only multi-key `verificationMethod` that
-   rotation requires.
-2. Nothing consults the DID document at verification time. `packages/server/src/routes/download.ts`
-   verifies `purchase.receipt#appSig` only against the key derived from `APP_MERCHANT_PRIVATE_KEY`
-   (`appMerchantPublicKeyPemFromEnv()`). `kid` is written onto records but never used to select a
-   key, and there is no path to verify a record signed by a retired key.
-3. There is no `app_keys` registry (deferred in ADR 0011; the data-model half of the vault ticket
-   `Tickets/2026-04-18 key rotation management hub.md`).
-4. `diamonds.whereditgo.bazaar.actor.merchant` has never been examined against the planned
-   `artistDid → sellerDid` generalization. It carries no seller-identity field at all today.
+1. **One-key template.** `packages/server/config/did-document.template.json` +
+   `loadServiceDidDocument()` express exactly one key via two string substitutions
+   (`__APP_MERCHANT_KID__`, `__PUBLIC_KEY_MULTIBASE__`). Rotation needs a multi-key document plus a
+   history.
+2. **Nothing consults the document at verification time.** `packages/server/src/routes/download.ts`
+   verifies `purchase.receipt#appSig` only against the key derived from `APP_MERCHANT_PRIVATE_KEY`.
+   `kid` is written onto records but never used; a record signed by a rotated-out key cannot be
+   verified.
+3. **No key registry.** Deferred in ADR 0011; the data-model half of
+   `Tickets/2026-04-18 key rotation management hub.md`.
+4. **`actor.merchant` vs `artistDid → sellerDid`.** Never examined; §7 frames it, does not resolve
+   it.
 
-The vault documents `Documentation/merchant key management/26_4_17-key-rotation-strategy-v1.md`
-and `26.4.18 Service DID & DID Document.md` describe a "retire, never remove" rotation model and
-an `app_keys` table, but predate the current code and use stale names. This ADR is the canonical
-version; those docs become the operator handbook (draft:
-`Documentation/merchant key management/2026-08-29 Storefront key handbook (DRAFT).md`).
+### Design constraints that shaped this ADR
+
+- **Turnkey, self-hostable, many independent operators.** No private keys in source control. No
+  DID-document state that only a bespoke admin UI or a maintenance tunnel can edit.
+- **CI/CD-portable.** Deploys run from GitHub Actions where a gitignored config file would be
+  absent — so operator-supplied key material must travel as environment variables / CI secrets,
+  not files.
+- **Revocation is a hard action.** Timing is unreliable across a distributed system, so no
+  timestamp is load-bearing in any verification decision — revocation is a boolean state.
 
 ## Decision
 
 ### 1. DID document shape v2
 
 Served at `GET /.well-known/did.json` (`packages/server/src/routes/wellKnown.ts`),
-`application/did+ld+json`, `Cache-Control: public, max-age=3600`.
+`Content-Type: application/did+ld+json`, `Cache-Control: public, max-age=3600`.
 
-- **`verificationMethod`** — standard, **append-only**, one entry per non-revoked key:
-  `{ id: "<APP_DID>#<kid>", type: "Multikey", controller: "<APP_DID>", publicKeyMultibase: "z…" }`.
-  Entries are never edited or reordered. A key is removed **only** on confirmed compromise
-  (§5b).
-- **`assertionMethod`** — exactly one entry: the currently active key fragment.
-- **`authentication`** — omitted (the storefront key signs records, it does not authenticate).
-- **`diamonds.whereditgo.bazaar:keyHistory`** — a top-level, namespaced member carrying the
-  lifecycle metadata that does not belong in `verificationMethod`:
+#### 1a. Key lifecycle
 
-  ```jsonc
-  "diamonds.whereditgo.bazaar:keyHistory": [
-    {
-      "kid": "merchant-key-2026-04-17",
-      "status": "retired",            // "active" | "retired" | "revoked"
-      "activatedAt": "2026-04-17T00:00:00Z",
-      "retiredAt": "2026-08-29T00:00:00Z",
-      "prev": null,
-      "next": "merchant-key-2026-08-29"
-    },
-    {
-      "kid": "merchant-key-2026-08-29",
-      "status": "active",
-      "activatedAt": "2026-08-29T00:00:00Z",
-      "retiredAt": null,
-      "prev": "merchant-key-2026-04-17",
-      "next": null
-    }
+| state | in `verificationMethod` | in `assertionMethod` | in `keyHistory` |
+|---|:--:|:--:|:--:|
+| **current** | ✓ | ✓ | ✗ |
+| **active** (valid, not the signing key) | ✓ | ✗ | ✓ `status: "active"` |
+| **retired** (dropped from `verificationMethod`) | ✗ | ✗ | ✓ `status: "retired"` |
+| **revoked** (compromised) | ✗ | ✗ | ✓ `status: "revoked"` |
+
+- `verificationMethod` — the current key **plus every still-active key**, as standard `Multikey`
+  entries. A generic `did:web` resolver accepts all of them.
+- `assertionMethod` — exactly one entry: the current key.
+- `keyHistory` — every **non-current** key. Each entry is self-contained (carries its own
+  `publicKeyMultibase`, duplicating the `verificationMethod` entry for `active` keys) so a
+  consumer can read every non-current key from one place. Ordered oldest → newest, forward-linked
+  by `supersededBy`; the tail entry's `supersededBy` is the current `kid`.
+- **Retirement** = removing a key from `verificationMethod` (it stays in `keyHistory` for
+  Bazaar-aware historical verification).
+- **Revocation** = `status: "revoked"`. No timestamp. Every verifier rejects everything it signed.
+
+`keyHistory` entry:
+
+```jsonc
+{
+  "kid": "merchant-key-2026-04-17",         // required
+  "publicKeyMultibase": "z…",               // required — self-contained
+  "status": "active",                       // required — "active" | "retired" | "revoked"
+  "supersededBy": "merchant-key-2026-08-29", // required — kid that became current after this one
+  "activatedAt": "2026-04-17T00:00:00Z",    // optional, informational — never a verification input
+  "retiredAt":   "2026-08-29T00:00:00Z",    // optional, informational — never a verification input
+  "notes": "scheduled rotation"             // optional, informational
+}
+```
+
+#### 1b. `@context` (inline)
+
+`keyHistory` and its terms are declared with an **inline context object** appended to the
+`@context` array — no second document to serve, offline-safe, one deployment dependency:
+
+```jsonc
+"@context": [
+  "https://www.w3.org/ns/did/v1",
+  "https://w3id.org/security/multikey/v1",
+  {
+    "keyHistory":   { "@id": "https://bazaar.whereditgo.diamonds/ns#keyHistory", "@container": "@list" },
+    "kid":          "https://bazaar.whereditgo.diamonds/ns#kid",
+    "status":       "https://bazaar.whereditgo.diamonds/ns#status",
+    "supersededBy": "https://bazaar.whereditgo.diamonds/ns#supersededBy",
+    "activatedAt":  "https://bazaar.whereditgo.diamonds/ns#activatedAt",
+    "retiredAt":    "https://bazaar.whereditgo.diamonds/ns#retiredAt",
+    "notes":        "https://bazaar.whereditgo.diamonds/ns#notes"
+  }
+]
+```
+
+`@container: "@list"` preserves chain order. The IRI namespace
+`https://bazaar.whereditgo.diamonds/ns#` is a **fixed Bazaar-project vocabulary URI**, identical
+for every deployment regardless of the operator's own `did:web` host; nothing needs to resolve
+there today. `publicKeyMultibase` is already defined by the multikey context.
+
+#### 1c. Full example
+
+```jsonc
+{
+  "@context": [ /* …as 1b… */ ],
+  "id": "did:web:bazaar.whereditgo.diamonds",
+  "verificationMethod": [
+    { "id": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-08-29", "type": "Multikey",
+      "controller": "did:web:bazaar.whereditgo.diamonds", "publicKeyMultibase": "z…current…" },
+    { "id": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17", "type": "Multikey",
+      "controller": "did:web:bazaar.whereditgo.diamonds", "publicKeyMultibase": "z…still-active…" }
+  ],
+  "assertionMethod": ["did:web:bazaar.whereditgo.diamonds#merchant-key-2026-08-29"],
+  "keyHistory": [
+    { "kid": "merchant-key-2026-01-10", "publicKeyMultibase": "z…", "status": "retired",
+      "supersededBy": "merchant-key-2026-04-17" },
+    { "kid": "merchant-key-2026-04-17", "publicKeyMultibase": "z…", "status": "active",
+      "supersededBy": "merchant-key-2026-08-29" }
   ]
-  ```
+}
+```
 
-  Ordered oldest → newest; `prev` / `next` make the chain explicit for consumers that walk it.
-  A generic `did:web` + Multikey resolver ignores the unknown top-level member and still reads
-  `verificationMethod` / `assertionMethod` correctly.
+#### 1d. Trade-off
 
-**Rationale for a namespaced array over per-entry extension properties on `verificationMethod`:**
-keeps each `verificationMethod` entry byte-identical to what a generic Multikey library expects
-(no unknown keys inside the entry), and keeps all lifecycle state in one auditable place that the
-git history of the served document (or the `app_keys` table) can be diffed against.
+A resolver that reads only `verificationMethod` can verify records signed by the **current or any
+active** key. Verifying a record signed by a **retired or revoked** key requires understanding the
+`keyHistory` extension. This is a deliberate departure from ADR 0011's "append-only
+`verificationMethod`, retired keys stay" model: it keeps the standard surface small (only keys the
+operator still vouches for as first-class) and pushes historical-key verification into the
+documented extension. Acceptable because every signed record carries `kid`, and `verify-receipt.ts`
++ the operator handbook document the walk.
 
-### 2. Multi-key template assembly
+### 2. Source of truth: environment only
 
-Replace the two `String.replaceAll` substitutions in `loadServiceDidDocument()`
-(`packages/server/src/lib/serviceDidDocument.ts`) with assembly from a list source (the
-`app_keys` table, §3; env-only is the degenerate single-key case):
+No file (CI-absent), no committed key material, no DB authority.
 
-- `verificationMethod` ← every `app_keys` row where `status != 'revoked'`.
-- `assertionMethod` ← the single `status = 'active'` row.
-- `keyHistory` ← every row, ordered by `activated_at`, with `prev` / `next` computed.
+| var | contents |
+|---|---|
+| `APP_MERCHANT_PRIVATE_KEY` | active (current) private key — secret |
+| `APP_MERCHANT_KID` | current key fragment, `merchant-key-YYYY-MM-DD[-N]` |
+| `APP_MERCHANT_PUBLIC_MULTIBASE` | current public key `z…` — optional, derived from the private key if unset |
+| `APP_MERCHANT_KEY_HISTORY` | **base64(JSON array)** of every non-current key descriptor (the `keyHistory` entries of §1a) |
 
-The template file keeps a static `@context` / `id` skeleton; the three dynamic arrays are built
-in code. The env single-key path (`APP_MERCHANT_KID` + `APP_MERCHANT_PUBLIC_MULTIBASE` or derived
-from `APP_MERCHANT_PRIVATE_KEY`) still works when the table has one active row and no history.
+- `APP_MERCHANT_KEY_HISTORY` decodes to the `keyHistory` array verbatim. Base64 wraps it to
+  survive dotenv / shell / CI-secret round-trips (same rationale as the PEM `\n`-escape handling);
+  a plain-JSON value is also accepted (try `JSON.parse`, then try base64-decode).
+- Public key material only — nothing secret — but it travels as one variable so CI/CD passes it
+  through like any other secret.
 
-### 3. `app_keys` ERP table
+`loadServiceDidDocument()` (`packages/server/src/lib/serviceDidDocument.ts`) stops doing string
+substitution and assembles:
 
-New table in `packages/server/src/db/schema.ts`, migration via `npm run db:generate -w
-@bazaar/server` into `packages/server/drizzle/`:
+- `@context` — static skeleton + the inline object of §1b.
+- `verificationMethod` — the current key (from the active-key vars) **+** every
+  `APP_MERCHANT_KEY_HISTORY` entry with `status: "active"`.
+- `assertionMethod` — `[ current kid ]`.
+- `keyHistory` — the full parsed `APP_MERCHANT_KEY_HISTORY` array (all non-current keys).
+
+The template file keeps only the `@context` skeleton + `id`. The env single-key path still works:
+no `APP_MERCHANT_KEY_HISTORY` → one `verificationMethod` entry, empty `keyHistory`.
+
+`scripts/rotate-did.sh` (new): generate a new keypair → read the current `APP_MERCHANT_*` values →
+emit (a) the new active-key env block and (b) the new `APP_MERCHANT_KEY_HISTORY` blob with the
+outgoing key appended (`status: "active"` if kept in `verificationMethod` for a grace window,
+`"retired"` otherwise; `supersededBy` = new kid). The operator sets the secrets (local `.env` /
+`fly secrets` / CI secret) and deploys. Nothing is committed.
+
+### 3. `app_keys` table — runtime cache + ERP surface
+
+New table in `packages/server/src/db/schema.ts`, migration via
+`npm run db:generate -w @bazaar/server` into `packages/server/drizzle/`.
 
 | column | type | notes |
 |---|---|---|
-| `kid` | text PK | e.g. `merchant-key-2026-08-29` |
-| `public_key_multibase` | text not null | conformant `z…` (matches `verificationMethod`) |
-| `public_key_pem` | text not null | SPKI PEM, for `crypto.verify` without re-decoding |
-| `status` | text not null | `active` \| `retired` \| `revoked` (check constraint) |
-| `activated_at` | integer timestamp not null | |
-| `retired_at` | integer timestamp | null unless retired/revoked |
-| `notes` | text | operator reason for retirement/revocation |
+| `kid` | text PK | |
+| `public_key_multibase` | text not null | |
+| `public_key_pem` | text not null | SPKI PEM, so `crypto.verify` needs no re-decode |
+| `status` | text not null | `current` \| `active` \| `retired` \| `revoked` (check) |
+| `superseded_by` | text | null for the current key |
+| `first_seen_at` | integer timestamp not null | when this process first recorded the key |
+| `last_verified_at` | integer timestamp | updated when a signature verifies against it |
+| `notes` | text | |
 
-Invariants: exactly one `active` row; rows are never deleted; `kid` immutable.
+**Zero authority.** Rebuilt on every boot from the environment (`buildMerchantKeyIndex()` in a
+new `lib/merchantKeys.ts`, called from `index.ts`): parse the active-key vars + the decoded
+`APP_MERCHANT_KEY_HISTORY`, upsert rows, drop rows no longer present. The in-memory index it
+returns is what verification uses. Because the served DID document is rendered from the same env,
+this *is* "backfilling from the DID document" — an optional extra step fetches the deployment's
+own `/.well-known/did.json` when the public URL is reachable and logs a warning on any drift, but
+nothing depends on that fetch.
 
-**Boot reconciliation** (`packages/server/src/index.ts` / a small `lib/merchantKeys.ts`):
-- If `APP_MERCHANT_PRIVATE_KEY` + `APP_MERCHANT_KID` are set and no matching `active` row exists,
-  insert one (derive multibase + PEM). This makes first boot and the current single-operator
-  deployment self-seed with no manual SQL.
-- Warn if the env active key disagrees with the table's `active` row.
-
-Closes ADR 0011's deferred `app_keys` item and the data-model half of
-`Tickets/2026-04-18 key rotation management hub.md`. A management UI stays out of scope.
+Value of the table beyond the in-memory index: queryable audit surface, `notes`,
+`last_verified_at` usage signal, and a place for future admin tooling. A management UI stays out
+of scope (the rotation ticket's other half).
 
 ### 4. Verification path
 
-`verifyReceiptPayload` / `verifyConsentPayload` (`sign.ts`) currently take a single
-`publicKeyPem`. Add a resolver that, given a record's optional `kid`:
+New resolver in `sign.ts` / `merchantKeys.ts`, given a record's optional `kid`:
 
-1. If `kid` present and a non-revoked `app_keys` row matches → try that key first.
-2. Else, or on failure → try every non-revoked key (`app_keys`, or `verificationMethod` from the
-   resolved DID document for an offline/external verifier).
-3. `appMerchantPublicKeyPemFromEnv()` becomes "the active key accessor", used as the fast path
-   and as the fallback when the table is unavailable — behaviour never regresses below today's
-   single-key check.
+1. `kid` present → if it is the current kid, verify against the current key; else look up the
+   `app_keys` row. `status: "revoked"` → **reject immediately**, no signature check. Otherwise try
+   that key.
+2. No `kid`, unknown `kid`, or step 1's key failed → try the current key, then each non-revoked
+   key newest → oldest.
+3. Signature check itself: compact low-S IEEE-P1363 first, DER fallback (transitional, §6).
 
-`download.ts` call sites (`appMerchantPublicKeyPemFromEnv()` at the two entitlement checks) switch
-to the resolver. `@atproto/identity` `IdResolver` (already a dependency, see ADR 0012) resolves
-our own `did:web` for the external-verifier shape.
+`packages/server/src/routes/download.ts` — the two `appMerchantPublicKeyPemFromEnv()` entitlement
+checks switch to this resolver. `appMerchantPublicKeyPemFromEnv()` remains as the "current key"
+accessor and the last-resort fallback when the index is somehow empty, so behaviour never
+regresses below today's single-key check. `@atproto/identity` `IdResolver` (already a dependency,
+ADR 0012) covers the external-verifier shape of resolving our own `did:web`.
 
-### 5. Rotation procedures
+### 5. Rotation procedures (operator)
 
 **5a. Planned rotation**
-1. `./scripts/gen-did.sh` → new keypair, `kid = merchant-key-<today>`.
-2. `INSERT` the new key into `app_keys` as `active`; flip the previous `active` row to `retired`
-   with `retired_at = now()`.
-3. Set `APP_MERCHANT_PRIVATE_KEY` + `APP_MERCHANT_KID` to the new key (Fly secrets / `.env`).
-4. Deploy. The served DID document now lists both keys in `verificationMethod`, the new one in
-   `assertionMethod`, and both in `keyHistory` with the `prev`/`next` link. New records carry the
-   new `kid`; old records still verify against the retired key.
-5. Pre-flight (`curl /.well-known/did.json`) — see the handbook.
+1. `./scripts/rotate-did.sh` → new keypair, `kid = merchant-key-<today>` (add `-2`, `-3`… for a
+   second rotation the same day).
+2. It prints the new `APP_MERCHANT_PRIVATE_KEY` / `APP_MERCHANT_KID` /
+   `APP_MERCHANT_PUBLIC_MULTIBASE` and the new `APP_MERCHANT_KEY_HISTORY` (previous current key
+   appended, `supersededBy` = new kid; `status: "active"` to keep it in `verificationMethod` for a
+   grace window, or `"retired"` to drop it immediately).
+3. Set the four vars (local / `fly secrets` / CI secret). Deploy.
+4. Pre-flight `curl /.well-known/did.json` — see the handbook.
 
-**5b. Emergency rotation (key compromise)**
-1. Generate + activate a new key as in 5a steps 1–3.
-2. `UPDATE app_keys SET status = 'revoked', retired_at = now(), notes = '<reason>'` for the
-   compromised `kid`.
-3. Deploy. The revoked key is dropped from `verificationMethod` and marked `revoked` in
-   `keyHistory` (the only case a key leaves `verificationMethod`).
-4. Accept that every `purchase.receipt` / `purchase.consent` / `bazaarIdentifier` signed with the
-   revoked key now fails verification. Reissue receipts from the `payment_fulfillment` /
-   fulfillment records where possible; notify affected buyers.
+**5b. Retiring an active key** (later — end the grace window)
+- Flip that key's `APP_MERCHANT_KEY_HISTORY` entry `status: "active"` → `"retired"`. Redeploy. It
+  leaves `verificationMethod`; it stays in `keyHistory`; records it signed still verify through
+  the extension.
+
+**5c. Emergency — key compromise**
+1. Rotate as in 5a.
+2. Set the compromised key's `APP_MERCHANT_KEY_HISTORY` entry `status: "revoked"` (add `notes`).
+   Redeploy. It is absent from `verificationMethod` and marked `revoked` in `keyHistory`.
+3. Every `purchase.receipt` / `purchase.consent` / `bazaarIdentifier` signed with it now fails
+   verification — unavoidable.
+4. **Best-effort reissue.** `fulfillCheckoutSession` already restores buyer OAuth sessions
+   (`oauthClient.restore(buyerDid)`), and `payment_fulfillment` holds `buyerDid` / `paymentRef` /
+   snapshot. For buyers whose session is still restorable the server can rewrite `purchase.receipt`
+   with the new key; buyers whose session has expired must re-authenticate before their receipt
+   can be reissued. There is no fully automatic recovery.
 
 ### 6. Transitional state (single resolution method target)
 
 The DER-accepting fallback in `verifyCanonical` (`sign.ts`) and the DER signer left in
-`bazaarIdentifiers.ts` exist only for records issued before this remediation. The **target state
-is a single resolution method**: compact low-S IEEE-P1363, verified against a `keyHistory` /
-`app_keys` key selected by `kid`.
+`bazaarIdentifiers.ts` exist only for records issued before the 2026-08-29 remediation. **Target
+state: one resolution method** — compact low-S IEEE-P1363, verified against a key selected by
+`kid` from `keyHistory` / `app_keys`.
 
 Removal is tracked by
-`bazaar-vault/Tickets/2026-08-29 Remove DER appSig fallback after field-receipt migration.md`.
-It can be done once the operator has migrated the known field receipts (all self-issued) to the
-new attestation structure. `bazaarIdentifiers` is deprecated wholesale (see §7) and its signer is
-expected to be deleted rather than converted.
+`bazaar-vault/Tickets/2026-08-29 Remove DER appSig fallback after field-receipt migration.md`,
+gated on migrating the known (all self-issued) field receipts. `bazaarIdentifiers` is deprecated
+wholesale (§7) — its signer is expected to be deleted, not converted.
 
 ### 7. `actor.merchant` identity gap (surfaced, not resolved here)
 
 Full write-up:
 `bazaar-vault/Documentation/merchant key management/2026-08-29 actor.merchant identity gap.md`.
 
-- **Today** `diamonds.whereditgo.bazaar.actor.merchant` (`packages/shared/src/lexicons/actor.merchant.json`,
-  rkey `self`, ADR 0005) holds only storefront presentation: `displayName`, `description`,
-  `storefrontUrl`, `avatarCid`, `bannerCid`, `createdAt`. Legal/contact fields live in server
-  SQLite (`merchant_business_profile`), not the PDS record. There is **no** seller-identity field
-  on the record — the seller is implied by the repo the record lives in (`ARTIST_DID` /
-  `VITE_ARTIST_DID`).
-- **Coming** `artistDid → sellerDid` is a planned generalization of the catalog + receipt model
-  (catalog lexicons still use `artistDid`; receipts use `buyerDid` + `issuerScope`). Future
-  receipt-issuance work covers the migration — this ADR deliberately does **not** redesign
-  records now.
-- **Open questions for that future pass** (no answer proposed here):
-  - Should `actor.merchant` self-declare its `sellerDid` (an explicit alias of the repo DID that
-    survives a handle/DID change)?
-  - A seller kind (`individual` | `business` | `label`) — on the PDS record, or SQLite?
-  - Should the record name the `appDid` (storefront `did:web`) that signs on its behalf, so a
-    consumer verifying a receipt can cross-check the storefront from the seller's own repo
-    without out-of-band knowledge?
-  - What stays in `merchant_business_profile` vs. moves onto the PDS record?
-
-The deliverable of this section is the framed gap, so the future migration is designed with it in
-view.
+- **Today** `diamonds.whereditgo.bazaar.actor.merchant`
+  (`packages/shared/src/lexicons/actor.merchant.json`, rkey `self`, ADR 0005) holds only
+  storefront presentation: `displayName`, `description`, `storefrontUrl`, `avatarCid`,
+  `bannerCid`, `createdAt`. Legal/contact fields are in server SQLite
+  (`merchant_business_profile`). There is **no** seller-identity field on the record — the seller
+  is implied by the repo it lives in (`ARTIST_DID` / `VITE_ARTIST_DID`).
+- **Coming** `artistDid → sellerDid` is a planned generalization (catalog lexicons still use
+  `artistDid`; receipts use `buyerDid` + `issuerScope`). Future receipt-issuance work owns the
+  migration — this ADR deliberately does **not** redesign records.
+- **Open questions for that pass** (no answer here): explicit self-declared `sellerDid`? a seller
+  kind (`individual` | `business` | `label`), PDS vs SQLite? should the record name the `appDid`
+  that signs for it, so a receipt verifier can cross-check the storefront from the seller's own
+  repo? what stays in `merchant_business_profile`?
 
 ## Constraints
 
 | Rule | Value |
 |---|---|
-| Trust anchor | `appDid` (`did:web:bazaar.whereditgo.diamonds`) DID document |
-| `kid` format | `merchant-key-YYYY-MM-DD` (max 64 chars) |
-| `verificationMethod` | append-only; removal only on compromise |
-| `assertionMethod` | exactly one (active) key |
+| Trust anchor | `appDid` (`did:web`) DID document |
+| `kid` format | `merchant-key-YYYY-MM-DD[-N]` (max 64 chars) |
+| `verificationMethod` | current key + every `status:"active"` key |
+| `assertionMethod` | exactly the current key |
 | `authentication` | omitted |
-| keyHistory member | `diamonds.whereditgo.bazaar:keyHistory` (namespaced, top-level, ordered) |
-| Key registry | `app_keys` table (`packages/server/src/db/schema.ts`) |
+| `keyHistory` | every non-current key; ordered; self-contained; `status` ∈ {active, retired, revoked}; forward-linked by `supersededBy` |
+| `keyHistory` vocab | inline `@context` object; IRI ns `https://bazaar.whereditgo.diamonds/ns#` (fixed, project-wide) |
+| Revocation | boolean `status:"revoked"`; no timestamp is a verification input |
+| Source of truth | environment only (`APP_MERCHANT_PRIVATE_KEY` / `_KID` / `_PUBLIC_MULTIBASE` / `_KEY_HISTORY`) |
+| `app_keys` table | runtime cache + audit surface, rebuilt from env each boot; zero authority |
 | Signature format | compact low-S IEEE-P1363; DER accepted transitionally on verify only |
 | DID route | `packages/server/src/routes/wellKnown.ts` |
 
 ## Consequences
 
 **Positive**
-- Rotation is expressible end-to-end: DID document, `keyHistory`, `app_keys`, verification.
-- External verifiers can resolve and select keys with a standard resolver plus the documented
-  `keyHistory` member — no Bazaar source needed.
-- Single-operator deployment self-seeds `app_keys` on boot; no manual SQL for the common path.
+- Rotation is fully expressible via four environment variables — CI/CD-portable, no committed
+  keys, no admin UI required for the core operation.
+- Standard `did:web` resolvers verify current + active keys with no Bazaar knowledge; the
+  `keyHistory` extension (documented, inline-context) covers historical keys.
+- `app_keys` is derived state, so it can never be the thing that is wrong — the environment is.
 
 **Negative / trade-offs**
-- `loadServiceDidDocument()` gains a DB read (cached at startup like today; rotation needs a
-  redeploy or a cache bust).
-- The DER fallback and `bazaarIdentifiers` DER signer linger until field-receipt migration.
-- `keyHistory` is a Bazaar-specific extension; consumers that want the chain must be told about
-  it (handbook + `verify-receipt.ts`).
+- `loadServiceDidDocument()` and `buildMerchantKeyIndex()` parse a base64 JSON blob at boot; a
+  malformed `APP_MERCHANT_KEY_HISTORY` must fail loudly, not silently drop history.
+- Retired/revoked-key verification requires the `keyHistory` extension — a bare Multikey resolver
+  cannot check those records.
+- The DER fallback and the `bazaarIdentifiers` DER signer linger until field-receipt migration.
+- DID document is built once at boot; rotation lands on redeploy (acceptable for a rare op).
 
 **Deferred**
 - Key-rotation management UI.
-- `kid` population on `bazaarIdentifier` instances (module is deprecated; likely moot).
+- `kid` on `bazaarIdentifier` instances (module deprecated; likely moot).
 - `actor.merchant` schema changes (§7) — future receipt-issuance pass.
 - Removing the DER fallback (its own ticket).
+- Promoting the inline `@context` to a hosted context document if the vocabulary grows.
