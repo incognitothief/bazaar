@@ -57,6 +57,13 @@
       "when": 1787275983951,
       "tag": "0007_quick_robin_chapel",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788056270185,
+      "tag": "0008_app_keys",
+      "breakpoints": true
     }
   ]
 }

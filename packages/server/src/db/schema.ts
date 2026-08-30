@@ -139,6 +139,29 @@ export const licenses = sqliteTable("licenses", {
     .$defaultFn(() => new Date()),
 });
 
+/**
+ * Merchant (storefront) signing keys — a boot-rebuilt audit mirror of the environment
+ * (`APP_MERCHANT_PRIVATE_KEY` / `_KID` / `_PUBLIC_MULTIBASE` / `_KEY_HISTORY`). Zero authority:
+ * `reconcileMerchantKeys()` truncates and repopulates it on every startup. Verification reads
+ * the in-memory key set, not this table. See `docs/adr/0013-key-rotation-and-did-document-v2.md`.
+ */
+export const appKeys = sqliteTable("app_keys", {
+  kid: text("kid").primaryKey(),
+  publicKeyMultibase: text("public_key_multibase").notNull(),
+  publicKeyPem: text("public_key_pem").notNull(),
+  /** "current" | "active" | "retired" | "revoked" */
+  status: text("status").notNull(),
+  supersededBy: text("superseded_by"),
+  activatedAt: text("activated_at"),
+  retiredAt: text("retired_at"),
+  notes: text("notes"),
+  firstSeenAt: integer("first_seen_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  /** Bumped when a signature verifies against this key. Deferred — not wired yet (ADR 0013). */
+  lastVerifiedAt: integer("last_verified_at", { mode: "timestamp" }),
+});
+
 export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   paymentIntentId: text("payment_intent_id").primaryKey(),
   checkoutSessionId: text("checkout_session_id"),

@@ -1,9 +1,7 @@
-import { createPrivateKey, createPublicKey } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeAppMerchantPrivateKey } from "./atproto/sign";
-import { publicSpkiPemToMultibase } from "./publicKeyMultibase";
+import { buildServiceDidDocument, getMerchantKeys } from "./merchantKeys";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -27,47 +25,45 @@ function documentCandidates(): string[] {
   return out;
 }
 
-function resolvePublicMultibase(): string {
-  const fromEnv = process.env.APP_MERCHANT_PUBLIC_MULTIBASE?.trim();
-  if (fromEnv) return fromEnv;
-  const raw = process.env.APP_MERCHANT_PRIVATE_KEY?.trim();
-  if (!raw || raw.includes("PLACEHOLDER")) return "";
-  try {
-    const priv = createPrivateKey(normalizeAppMerchantPrivateKey(raw));
-    const pub = createPublicKey(priv);
-    const spkiPem = pub.export({ type: "spki", format: "pem" }) as string;
-    return publicSpkiPemToMultibase(spkiPem);
-  } catch {
-    return "";
-  }
-}
-
 /**
- * Load DID document: prefer `did-document.template.json` with deploy-time substitution
- * (`__APP_MERCHANT_KID__`, `__PUBLIC_KEY_MULTIBASE__`); fall back to static `did-document.json`.
+ * `{ "@context", id }` skeleton the served DID document is built on. Operators edit the
+ * template's `id` / base `@context` for a different `did:web` host; the key arrays and the
+ * `keyHistory` `@context` term are assembled in code from the environment (see
+ * `merchantKeys.ts` and `docs/adr/0013-key-rotation-and-did-document-v2.md`).
  */
-export function loadServiceDidDocument(): Record<string, unknown> {
-  const kid = process.env.APP_MERCHANT_KID?.trim() ?? "";
-  const multibase = resolvePublicMultibase();
-
+function loadSkeleton(): { "@context": unknown[]; id: string } {
   for (const path of documentCandidates()) {
     if (!existsSync(path)) continue;
-    const raw = readFileSync(path, "utf-8");
-    if (path.endsWith("did-document.template.json")) {
-      const filled = raw
-        .replaceAll("__APP_MERCHANT_KID__", kid)
-        .replaceAll("__PUBLIC_KEY_MULTIBASE__", multibase);
-      if ((!kid || !multibase) && process.env.NODE_ENV !== "test") {
-        console.warn(
-          "service DID template: set APP_MERCHANT_KID and APP_MERCHANT_PUBLIC_MULTIBASE (or a valid APP_MERCHANT_PRIVATE_KEY to derive multibase); /.well-known/did.json may be incomplete.",
-        );
-      }
-      return JSON.parse(filled) as Record<string, unknown>;
-    }
-    return JSON.parse(raw) as Record<string, unknown>;
+    const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    const context = Array.isArray(raw["@context"])
+      ? (raw["@context"] as unknown[])
+      : [
+          "https://www.w3.org/ns/did/v1",
+          "https://w3id.org/security/multikey/v1",
+        ];
+    const id =
+      typeof raw.id === "string" && raw.id
+        ? raw.id
+        : "did:web:bazaar.whereditgo.diamonds";
+    return { "@context": context, id };
   }
+  return {
+    "@context": [
+      "https://www.w3.org/ns/did/v1",
+      "https://w3id.org/security/multikey/v1",
+    ],
+    id: "did:web:bazaar.whereditgo.diamonds",
+  };
+}
 
-  throw new Error(
-    `No DID document found (tried: ${documentCandidates().join(", ")})`,
-  );
+/** Assemble the DID document served at `/.well-known/did.json` from env + the skeleton file. */
+export function loadServiceDidDocument(): Record<string, unknown> {
+  const keys = getMerchantKeys();
+  if (!keys.current && process.env.NODE_ENV !== "test") {
+    console.warn(
+      "service DID: APP_MERCHANT_PRIVATE_KEY / APP_MERCHANT_KID unset — " +
+        "/.well-known/did.json will have no verificationMethod / assertionMethod.",
+    );
+  }
+  return buildServiceDidDocument(keys, loadSkeleton());
 }

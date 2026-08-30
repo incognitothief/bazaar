@@ -4,6 +4,12 @@
 
 **Draft** — not yet accepted. Not listed in `docs/adr/README.md` until accepted.
 
+Implemented on branch `feature/rework-did-document`: `lib/merchantKeys.ts`,
+`lib/serviceDidDocument.ts`, `routes/wellKnown.ts`, `routes/download.ts`, `db/schema.ts` +
+`drizzle/0008_app_keys.sql`, `scripts/rotate-did.{sh,ts}`, `APP_MERCHANT_KEY_HISTORY` in
+`.env.example`. Doc follow-ups tracked in
+`bazaar-vault/Tickets/2026-08-29 Finalize storefront key rotation docs after ADR 0013 lands.md`.
+
 Supersedes parts of [ADR 0011](0011-app-service-did-and-kid.md): its single-key template (§1), the
 "`verificationMethod` is append-only, retired keys stay in it" rule (§1, §6), verification (§5),
 and the rotation procedure (§6). Under this ADR a retired key **leaves** `verificationMethod` and

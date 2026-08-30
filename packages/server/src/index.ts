@@ -8,6 +8,7 @@ import { serveStatic } from "hono/bun";
 import { createApiRouter } from "./api";
 import { createDb } from "./db";
 import { createOAuthClient } from "./lib/atproto/oauth";
+import { reconcileMerchantKeys } from "./lib/merchantKeys";
 import { injectSpaHead } from "./lib/spaHtmlMeta";
 import {
   backfillPaymentFulfillmentFromMeta,
@@ -33,6 +34,16 @@ try {
   await migrate(db, { migrationsFolder });
 } catch (e) {
   console.error("Migration failed:", e);
+  process.exit(1);
+}
+
+try {
+  await reconcileMerchantKeys(db);
+} catch (e) {
+  console.error(
+    "Merchant key config invalid (APP_MERCHANT_KEY_HISTORY / APP_MERCHANT_*):",
+    e,
+  );
   process.exit(1);
 }
 
@@ -139,7 +150,7 @@ if (!process.env.APP_MERCHANT_KID?.trim() && process.env.NODE_ENV === "productio
   console.warn(
     "[WARN] APP_MERCHANT_KID is not set. Signed records will not carry a kid field. " +
       "Key rotation verification will require exhaustive key search. " +
-      "Set APP_MERCHANT_KID to the fragment of the active key in did-document.template.json.",
+      "Set APP_MERCHANT_KID (merchant-key-YYYY-MM-DD) alongside APP_MERCHANT_PRIVATE_KEY.",
   );
 }
 
