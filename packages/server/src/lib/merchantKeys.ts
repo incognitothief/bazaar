@@ -15,12 +15,13 @@ import { publicSpkiPemToMultibase } from "./publicKeyMultibase";
  *   APP_MERCHANT_KEY_HISTORY      base64(JSON array) of every NON-current key (see KeyHistoryEntry)
  *
  * DID document shape:
- *   verificationMethod = the current key, only.
- *   assertionMethod    = the current key.
+ *   verificationMethod = the current key + every non-revoked key.
+ *   assertionMethod    = the current key, only.
  *   keyHistory         = every non-current key, oldest → newest, forward-linked by `supersededBy`
  *                        (a full DID URL). An entry with `revoked: true` is hard-revoked —
- *                        signatures from it are rejected outright. Without the flag the key is
- *                        retired but still trusted for records it signed before rotation.
+ *                        signatures from it are rejected outright and it is absent from
+ *                        verificationMethod. Without the flag the key is retired but still trusted
+ *                        (and still in verificationMethod) for records it signed before rotation.
  *
  * `app_keys` (SQLite) is a boot-rebuilt audit mirror with zero authority.
  */
@@ -312,10 +313,12 @@ export async function reconcileMerchantKeys(db: Db): Promise<void> {
 /**
  * Assemble the served DID document from a key set and a base `@context` array.
  *
- * verificationMethod = the current key, only.
- * assertionMethod    = the current key.
+ * verificationMethod = the current key + every non-revoked key (a standard resolver can verify
+ *                      records signed by any of them, including retired keys).
+ * assertionMethod    = the current key, only.
  * keyHistory         = every non-current key (oldest → newest), each a Multikey entry plus a
- *                      full-URL `supersededBy` and an optional `revoked: true`.
+ *                      full-URL `supersededBy` and an optional `revoked: true`. Revoked keys are
+ *                      present here (as tombstones) but absent from verificationMethod.
  * authentication     = omitted.
  */
 export function buildServiceDidDocument(
@@ -324,16 +327,21 @@ export function buildServiceDidDocument(
 ): Record<string, unknown> {
   const id = merchantDid();
 
+  const vmEntry = (k: MerchantKey) => ({
+    id: k.id,
+    type: "Multikey" as const,
+    controller: id,
+    publicKeyMultibase: k.publicKeyMultibase,
+  });
+
   const verificationMethod: unknown[] = [];
   const assertionMethod: string[] = [];
   if (keys.current) {
-    verificationMethod.push({
-      id: keys.current.id,
-      type: "Multikey",
-      controller: id,
-      publicKeyMultibase: keys.current.publicKeyMultibase,
-    });
+    verificationMethod.push(vmEntry(keys.current));
     assertionMethod.push(keys.current.id);
+  }
+  for (const k of keys.history) {
+    if (!k.revoked) verificationMethod.push(vmEntry(k));
   }
 
   const keyHistory = keys.history.map((k) => ({

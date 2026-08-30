@@ -71,18 +71,21 @@ State is **derived from where a key appears** — there is no `status` field in 
 | state | in `verificationMethod` | in `assertionMethod` | in `keyHistory` |
 |---|:--:|:--:|:--:|
 | **current** — signs new records | ✓ | ✓ | ✗ |
-| **retired** — rotated out, still trusted for its historical records | ✗ | ✗ | ✓ |
+| **retired** — rotated out, still trusted for its historical records | ✓ | ✗ | ✓ |
 | **revoked** — compromised, hard-rejected | ✗ | ✗ | ✓ + `revoked: true` |
 
-- `verificationMethod` — exactly the **current** key. One `Multikey` entry.
-- `assertionMethod` — the current key.
-- `keyHistory` — every non-current key, oldest → newest, forward-linked by `supersededBy`
-  (a **full DID URL**); the tail entry's `supersededBy` is the current key's `id`.
-- **Retirement** = the key is only in `keyHistory`. Records it signed before rotation still verify
-  (the resolver walks `keyHistory`). A bare `did:web`/Multikey resolver, reading only
-  `verificationMethod`, verifies the current key's records only.
-- **Revocation** = `revoked: true` on the `keyHistory` entry. Optional boolean, no timestamp.
-  Every verifier rejects everything that key signed.
+- `verificationMethod` — the current key **plus every non-revoked key**, as standard `Multikey`
+  entries. A generic `did:web` resolver can verify records signed by any of them (current or
+  retired) with no Bazaar knowledge.
+- `assertionMethod` — the current key, only.
+- `keyHistory` — **every** non-current key (retired and revoked alike), oldest → newest,
+  forward-linked by `supersededBy` (a **full DID URL**); the tail entry's `supersededBy` is the
+  current key's `id`. Non-revoked entries are duplicated in `verificationMethod`; `keyHistory`
+  additionally carries the chain and the revocation tombstones.
+- **Retirement** = the key drops out of `assertionMethod` (no longer signs) but stays in
+  `verificationMethod` and `keyHistory`.
+- **Revocation** = `revoked: true` on the `keyHistory` entry. Optional boolean, no timestamp. The
+  key is removed from `verificationMethod`; every verifier rejects everything it signed.
 
 `keyHistory` entry:
 
@@ -128,27 +131,31 @@ there today.
   "id": "did:web:bazaar.whereditgo.diamonds",
   "verificationMethod": [
     { "id": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-08-29", "type": "Multikey",
-      "controller": "did:web:bazaar.whereditgo.diamonds", "publicKeyMultibase": "z…current…" }
+      "controller": "did:web:bazaar.whereditgo.diamonds", "publicKeyMultibase": "z…current…" },
+    { "id": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17", "type": "Multikey",
+      "controller": "did:web:bazaar.whereditgo.diamonds", "publicKeyMultibase": "z…retired…" }
   ],
   "assertionMethod": ["did:web:bazaar.whereditgo.diamonds#merchant-key-2026-08-29"],
   "keyHistory": [
     { "id": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-01-10", "type": "Multikey",
-      "publicKeyMultibase": "z…", "supersededBy": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17" },
+      "publicKeyMultibase": "z…", "revoked": true,
+      "supersededBy": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17" },
     { "id": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17", "type": "Multikey",
-      "publicKeyMultibase": "z…", "supersededBy": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-08-29" }
+      "publicKeyMultibase": "z…retired…",
+      "supersededBy": "did:web:bazaar.whereditgo.diamonds#merchant-key-2026-08-29" }
   ]
 }
 ```
 
 #### 1d. Trade-off
 
-A resolver that reads only `verificationMethod` verifies records signed by the **current** key
-only. Verifying a record signed by a **retired** key requires understanding the `keyHistory`
-extension; a **revoked** key's records never verify. This is a deliberate departure from
-ADR 0011's "append-only `verificationMethod`, retired keys stay" model — it keeps the standard
-surface to a single current key and pushes historical-key verification into the documented
-extension. Acceptable because every signed record carries `kid`, and `verify-receipt.ts` + the
-operator handbook document the walk.
+A resolver that reads only `verificationMethod` verifies records signed by the **current or any
+retired** key. Only a **revoked** key's records fail for such a resolver — which is correct.
+`keyHistory` adds two things a bare Multikey resolver does not use: the `supersededBy` chain, and
+the revocation tombstones (so a Bazaar-aware verifier can give a specific "signed by a revoked
+key" answer rather than a generic failure). This keeps ADR 0011's spirit — retired keys stay
+verifiable — while replacing "append-only `verificationMethod`" with "`verificationMethod` = every
+non-revoked key, revoked keys removed".
 
 ### 2. Source of truth: environment only
 
@@ -174,7 +181,7 @@ non-`did:web` `APP_DID` is ignored with a warning.
 `loadServiceDidDocument()` (`packages/server/src/lib/serviceDidDocument.ts`) assembles:
 
 - `@context` — base array read from `config/did-document.template.json` + the inline object of §1b.
-- `verificationMethod` — the current key, only.
+- `verificationMethod` — the current key + every non-revoked `APP_MERCHANT_KEY_HISTORY` entry.
 - `assertionMethod` — `[ current key id ]`.
 - `keyHistory` — the full parsed `APP_MERCHANT_KEY_HISTORY` array.
 
@@ -283,8 +290,8 @@ Full write-up:
 |---|---|
 | Trust anchor | `appDid` (`did:web`) DID document |
 | `kid` format | `merchant-key-YYYY-MM-DD[-N]` (max 64 chars) |
-| `verificationMethod` | the current key, only (one entry) |
-| `assertionMethod` | the current key |
+| `verificationMethod` | the current key + every non-revoked key |
+| `assertionMethod` | the current key, only |
 | `authentication` | omitted |
 | `keyHistory` | every non-current key; ordered oldest→newest; `{ id, type, publicKeyMultibase, supersededBy }` with `id` / `supersededBy` full DID URLs; optional `revoked: true` |
 | state | derived from field membership — no `status` in the document |
@@ -300,16 +307,17 @@ Full write-up:
 **Positive**
 - Rotation is fully expressible via four environment variables — CI/CD-portable, no committed
   keys, no admin UI required for the core operation.
-- Standard `did:web` resolvers verify the current key with no Bazaar knowledge; the `keyHistory`
-  extension (documented, inline-context) covers retired keys and publishes the revocation trail.
+- Standard `did:web` resolvers verify records signed by the current key or any retired key with no
+  Bazaar knowledge; the `keyHistory` extension (documented, inline-context) adds the `supersededBy`
+  chain and the revocation tombstones.
 - `app_keys` is derived state, so it can never be the thing that is wrong — the environment is.
 
 **Negative / trade-offs**
 - `loadServiceDidDocument()` and `reconcileMerchantKeys()` parse a base64 JSON blob at boot; a
   malformed `APP_MERCHANT_KEY_HISTORY` fails loudly (process exit), it does not silently drop
   history.
-- Retired/revoked-key verification requires the `keyHistory` extension — a bare Multikey resolver
-  cannot check those records.
+- Distinguishing a revoked key's records from a generic bad signature requires the `keyHistory`
+  extension — a bare Multikey resolver just sees "signature does not verify against any method".
 - The DER fallback and the `bazaarIdentifiers` DER signer linger until field-receipt migration.
 - DID document is built once at boot; rotation lands on redeploy (acceptable for a rare op).
 

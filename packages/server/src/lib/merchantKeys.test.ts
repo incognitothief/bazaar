@@ -208,7 +208,7 @@ describe("candidatePemsForKid", () => {
 });
 
 describe("buildServiceDidDocument", () => {
-  test("verificationMethod = current only; assertionMethod = current; keyHistory full URLs; no authentication", () => {
+  test("verificationMethod = current + non-revoked; assertionMethod = current; keyHistory full URLs; no authentication", () => {
     const cur = p256();
     const retired = p256();
     const revoked = p256();
@@ -225,9 +225,12 @@ describe("buildServiceDidDocument", () => {
       "https://w3id.org/security/multikey/v1",
     ]) as any;
 
+    // current + retired (non-revoked); NOT the revoked one
     expect(doc.verificationMethod.map((v: any) => v.id)).toEqual([
       `${DID}#merchant-key-2026-08-29`,
+      `${DID}#merchant-key-2026-04-17`,
     ]);
+    expect(doc.verificationMethod.every((v: any) => v.controller === DID)).toBe(true);
     expect(doc.assertionMethod).toEqual([`${DID}#merchant-key-2026-08-29`]);
     expect(doc.keyHistory.map((h: any) => h.id)).toEqual([
       `${DID}#merchant-key-2026-04-17`,
