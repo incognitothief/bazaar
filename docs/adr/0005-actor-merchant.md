@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — fields extended 2026-08-29 (see §2).
 
 ## Date
 
@@ -29,6 +29,17 @@ Record key: `literal:self` — at most one merchant record per repo (`at://{did}
 | `storefrontUrl` | Optional external URL |
 | `avatarCid`, `bannerCid` | Optional blob references |
 | `createdAt` | Set on first create |
+| `updatedAt` | Optional; set on every write (added 2026-08-29) |
+| `appDid` | Optional; the storefront `did:web` that signs on this merchant's behalf (added 2026-08-29) |
+| `keyHistory` | Optional; mirror of the `appDid` DID document's `keyHistory` entries — `#keyHistoryEntry` def, shape per [ADR 0013](0013-key-rotation-and-did-document-v2.md) (added 2026-08-29) |
+
+**`appDid` / `keyHistory` (2026-08-29).** Added so a verifier can check the storefront trust
+chain from the merchant's own repo, not only from a `purchase.receipt`'s `appDid` field, and
+eventually verify the merchant's historical records without a separate `/.well-known/did.json`
+fetch. **The write path that keeps `keyHistory` synchronized with the storefront on key rotation
+is not built yet** — the fields are pre-emptive; both are optional and may be absent or stale
+until that sync exists. The `artistDid → sellerDid` generalization is explicitly *not* part of
+this change.
 
 ### 3. OAuth scopes
 
