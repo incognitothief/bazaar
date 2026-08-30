@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "57df3a6c-feb7-4ce5-8f50-36406b7c1e21",
+  "id": "10331d22-ca62-4693-9525-ed1dc1201e48",
   "prevId": "dd0f600c-8606-4f42-b5db-0d5509e7bf90",
   "tables": {
     "app_keys": {
@@ -11,6 +11,13 @@
           "name": "kid",
           "type": "text",
           "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
@@ -42,39 +49,19 @@
           "notNull": false,
           "autoincrement": false
         },
-        "activated_at": {
-          "name": "activated_at",
-          "type": "text",
+        "revoked": {
+          "name": "revoked",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "retired_at": {
-          "name": "retired_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "first_seen_at": {
           "name": "first_seen_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "last_verified_at": {
-          "name": "last_verified_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         }
       },

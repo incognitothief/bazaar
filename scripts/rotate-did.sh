@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Rotate the storefront signing key. Generates a new keypair and prints the new
 # APP_MERCHANT_* environment block (incoming key becomes current; outgoing key is
-# appended to APP_MERCHANT_KEY_HISTORY). See docs/adr/0013 §5.
-#
-#   ROTATE_KEEP_ACTIVE=1 ./scripts/rotate-did.sh   # keep the outgoing key in verificationMethod
+# appended to APP_MERCHANT_KEY_HISTORY as retired). See docs/adr/0013 §5.
+# To hard-revoke a key, add "revoked": true to its keyHistory entry by hand.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

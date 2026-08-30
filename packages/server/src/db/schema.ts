@@ -146,20 +146,20 @@ export const licenses = sqliteTable("licenses", {
  * the in-memory key set, not this table. See `docs/adr/0013-key-rotation-and-did-document-v2.md`.
  */
 export const appKeys = sqliteTable("app_keys", {
+  /** Bare fragment, e.g. merchant-key-2026-08-29. */
   kid: text("kid").primaryKey(),
+  /** Full DID URL. */
+  id: text("id").notNull(),
   publicKeyMultibase: text("public_key_multibase").notNull(),
   publicKeyPem: text("public_key_pem").notNull(),
-  /** "current" | "active" | "retired" | "revoked" */
+  /** Derived: "current" | "retired" | "revoked". */
   status: text("status").notNull(),
+  /** Full DID URL of the key that superseded this one; null for the current key. */
   supersededBy: text("superseded_by"),
-  activatedAt: text("activated_at"),
-  retiredAt: text("retired_at"),
-  notes: text("notes"),
+  revoked: integer("revoked", { mode: "boolean" }).notNull().default(false),
   firstSeenAt: integer("first_seen_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-  /** Bumped when a signature verifies against this key. Deferred — not wired yet (ADR 0013). */
-  lastVerifiedAt: integer("last_verified_at", { mode: "timestamp" }),
 });
 
 export const paymentFulfillment = sqliteTable("payment_fulfillment", {
