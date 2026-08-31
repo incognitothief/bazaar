@@ -3,7 +3,11 @@ import { publicPemToDidKey, publicPemToMultibase } from "./pem-did";
 
 const pemPath = process.argv[2];
 if (!pemPath) {
-  console.error("usage: npx tsx scripts/gen-did.ts <path-to-service-public.pem>");
+  console.error(
+    "usage: npx tsx scripts/gen-did.ts <pem-file>\n" +
+      "  Accepts a public OR private P-256 PEM, including a file holding the raw\n" +
+      "  one-line APP_MERCHANT_PRIVATE_KEY value (it is reflowed before parsing).",
+  );
   process.exit(1);
 }
 
