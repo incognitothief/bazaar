@@ -184,6 +184,29 @@ export const catalogItems = sqliteTable("catalog_items", {
     .$defaultFn(() => new Date()),
 });
 
+/**
+ * Merchant (storefront) signing keys — a boot-rebuilt audit mirror of the environment
+ * (`APP_MERCHANT_PRIVATE_KEY` / `_KID` / `_PUBLIC_MULTIBASE` / `_KEY_HISTORY`). Zero authority:
+ * `reconcileMerchantKeys()` truncates and repopulates it on every startup. Verification reads
+ * the in-memory key set, not this table. See `docs/adr/0013-key-rotation-and-did-document-v2.md`.
+ */
+export const appKeys = sqliteTable("app_keys", {
+  /** Bare fragment, e.g. merchant-key-2026-08-29. */
+  kid: text("kid").primaryKey(),
+  /** Full DID URL. */
+  id: text("id").notNull(),
+  publicKeyMultibase: text("public_key_multibase").notNull(),
+  publicKeyPem: text("public_key_pem").notNull(),
+  /** Derived: "current" | "retired" | "revoked". */
+  status: text("status").notNull(),
+  /** Full DID URL of the key that superseded this one; null for the current key. */
+  supersededBy: text("superseded_by"),
+  revoked: integer("revoked", { mode: "boolean" }).notNull().default(false),
+  firstSeenAt: integer("first_seen_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 /** ERP-first mirror of catalog.product content. Same upsert-by-URI shape as catalogItems. */
 export const catalogProducts = sqliteTable("catalog_products", {
   uri: text("uri").primaryKey(),

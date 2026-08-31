@@ -5,34 +5,50 @@ import {
 } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import {
-  appServiceKidFromEnv,
-  normalizeAppServicePrivateKey,
+  appMerchantKidFromEnv,
+  normalizeAppMerchantPrivateKey,
   signConsentPayload,
   signReceiptPayload,
   verifyConsentPayload,
   verifyReceiptPayload,
 } from "./sign";
 
-describe("appServiceKidFromEnv", () => {
+// P-256 curve order, for low-S assertions.
+const P256_N = BigInt(
+  "0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+);
+const P256_HALF_N = P256_N >> 1n;
+
+function p256Pems() {
+  const { privateKey, publicKey } = generateKeyPairSync("ec", {
+    namedCurve: "prime256v1",
+  });
+  return {
+    privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }) as string,
+    publicKeyPem: publicKey.export({ type: "spki", format: "pem" }) as string,
+  };
+}
+
+describe("appMerchantKidFromEnv", () => {
   test("returns null when unset", () => {
-    const prev = process.env.APP_SERVICE_KID;
-    delete process.env.APP_SERVICE_KID;
+    const prev = process.env.APP_MERCHANT_KID;
+    delete process.env.APP_MERCHANT_KID;
     try {
-      expect(appServiceKidFromEnv()).toBeNull();
+      expect(appMerchantKidFromEnv()).toBeNull();
     } finally {
-      if (prev === undefined) delete process.env.APP_SERVICE_KID;
-      else process.env.APP_SERVICE_KID = prev;
+      if (prev === undefined) delete process.env.APP_MERCHANT_KID;
+      else process.env.APP_MERCHANT_KID = prev;
     }
   });
 
   test("returns trimmed value when set", () => {
-    const prev = process.env.APP_SERVICE_KID;
-    process.env.APP_SERVICE_KID = "  app-key-2026-04-19  ";
+    const prev = process.env.APP_MERCHANT_KID;
+    process.env.APP_MERCHANT_KID = "  merchant-key-2026-08-29  ";
     try {
-      expect(appServiceKidFromEnv()).toBe("app-key-2026-04-19");
+      expect(appMerchantKidFromEnv()).toBe("merchant-key-2026-08-29");
     } finally {
-      if (prev === undefined) delete process.env.APP_SERVICE_KID;
-      else process.env.APP_SERVICE_KID = prev;
+      if (prev === undefined) delete process.env.APP_MERCHANT_KID;
+      else process.env.APP_MERCHANT_KID = prev;
     }
   });
 });
@@ -55,39 +71,58 @@ function supportsNullDigestEcSign(): boolean {
 }
 
 describe("signReceiptPayload / verifyReceiptPayload", () => {
-  test("round-trip", () => {
-    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-    });
-    const privateKeyPem = privateKey.export({
-      type: "pkcs1",
-      format: "pem",
-    }) as string;
-    const publicKeyPem = publicKey.export({
-      type: "pkcs1",
-      format: "pem",
-    }) as string;
-    const params = {
-      purchasedAt: new Date().toISOString(),
-      paymentRef: "pi_test",
-      itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
-      listingCid: "bafyrei",
-      buyerDid: "did:plc:buyer",
-    };
-    const appSig = signReceiptPayload({
-      ...params,
-      privateKeyPem,
-    });
+  const params = {
+    purchasedAt: new Date().toISOString(),
+    paymentRef: "pi_test",
+    itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
+    listingCid: "bafyrei",
+    buyerDid: "did:plc:buyer",
+  };
+
+  test("round-trip with P-256 EC key (compact low-S appSig)", () => {
+    const { privateKeyPem, publicKeyPem } = p256Pems();
+    const appSig = signReceiptPayload({ ...params, privateKeyPem });
+
+    // Current wire format: 64-byte IEEE-P1363 (r || s).
+    const raw = Buffer.from(appSig, "base64url");
+    expect(raw.length).toBe(64);
+    // Low-S: s <= n/2.
+    const s = BigInt(`0x${raw.subarray(32).toString("hex")}`);
+    expect(s <= P256_HALF_N).toBe(true);
+
+    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
+  });
+
+  test("tampered field fails verification", () => {
+    const { privateKeyPem, publicKeyPem } = p256Pems();
+    const appSig = signReceiptPayload({ ...params, privateKeyPem });
     expect(
       verifyReceiptPayload({
         ...params,
+        paymentRef: "pi_tampered",
         appSig,
         publicKeyPem,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  test("round-trip with P-256 EC key (typical ATProto PEM shape)", () => {
+  test("SEC1 EC PRIVATE KEY collapsed to one line (typical .env)", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", {
+      namedCurve: "prime256v1",
+    });
+    const pemMulti = privateKey.export({ type: "sec1", format: "pem" }) as string;
+    const oneLine = pemMulti.replace(/\n/g, " ").trim();
+    const publicKeyPem = publicKey.export({
+      type: "spki",
+      format: "pem",
+    }) as string;
+    expect(normalizeAppMerchantPrivateKey(oneLine)).toContain("\n");
+
+    const appSig = signReceiptPayload({ ...params, privateKeyPem: oneLine });
+    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
+  });
+
+  test("TRANSITIONAL: verifies a legacy DER-encoded EC signature (pre-migration field receipts)", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ec", {
       namedCurve: "prime256v1",
     });
@@ -99,62 +134,33 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
       type: "spki",
       format: "pem",
     }) as string;
-    const params = {
-      purchasedAt: new Date().toISOString(),
-      paymentRef: "pi_test_ec",
-      itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
-      listingCid: "bafyrei",
-      buyerDid: "did:plc:buyer",
-    };
-    const appSig = signReceiptPayload({
-      ...params,
-      privateKeyPem,
-    });
+    const message = [
+      params.purchasedAt,
+      params.paymentRef,
+      params.itemUri,
+      params.listingCid,
+      params.buyerDid,
+    ].join(":");
+    // Default dsaEncoding is "der" — this is what the pre-remediation signer produced.
+    const derSig = Buffer.from(
+      cryptoSign(
+        "sha256",
+        Buffer.from(message, "utf8"),
+        createPrivateKey(normalizeAppMerchantPrivateKey(privateKeyPem)),
+      ),
+    ).toString("base64url");
+
     expect(
-      verifyReceiptPayload({
-        ...params,
-        appSig,
-        publicKeyPem,
-      }),
+      verifyReceiptPayload({ ...params, appSig: derSig, publicKeyPem }),
     ).toBe(true);
   });
 
-  test("SEC1 EC PRIVATE KEY collapsed to one line (typical .env)", () => {
-    const { privateKey, publicKey } = generateKeyPairSync("ec", {
-      namedCurve: "prime256v1",
-    });
-    const pemMulti = privateKey.export({
-      type: "sec1",
-      format: "pem",
-    }) as string;
-    const oneLine = pemMulti.replace(/\n/g, " ").trim();
-    const publicKeyPem = publicKey.export({
-      type: "spki",
-      format: "pem",
-    }) as string;
-    expect(normalizeAppServicePrivateKey(oneLine)).toContain("\n");
-    const params = {
-      purchasedAt: new Date().toISOString(),
-      paymentRef: "pi_test_sec1",
-      itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
-      listingCid: "bafyrei",
-      buyerDid: "did:plc:buyer",
-    };
-    const appSig = signReceiptPayload({
-      ...params,
-      privateKeyPem: oneLine,
-    });
-    expect(
-      verifyReceiptPayload({
-        ...params,
-        appSig,
-        publicKeyPem,
-      }),
-    ).toBe(true);
-  });
-
+  // Node/OpenSSL 3+ (and some Bun builds) reject crypto.sign(null, …) for EC keys with
+  // ERR_OSSL_NO_DEFAULT_DIGEST -- see supportsNullDigestEcSign above. Skip rather than
+  // fail on a capability this runtime lacks; the DER-compat test above already covers
+  // legacy-signature verification with an explicit digest.
   test.skipIf(!supportsNullDigestEcSign())(
-    "verifies legacy cryptoSign(null, …) EC signatures (pre–explicit digest)",
+    "verifies legacy cryptoSign(null, …) EC signatures (pre–explicit digest, DER)",
     () => {
       const { privateKey, publicKey } = generateKeyPairSync("ec", {
         namedCurve: "prime256v1",
@@ -167,13 +173,6 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
         type: "spki",
         format: "pem",
       }) as string;
-      const params = {
-        purchasedAt: new Date().toISOString(),
-        paymentRef: "pi_legacy_null_digest",
-        itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
-        listingCid: "bafyrei",
-        buyerDid: "did:plc:buyer",
-      };
       const message = [
         params.purchasedAt,
         params.paymentRef,
@@ -181,50 +180,30 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
         params.listingCid,
         params.buyerDid,
       ].join(":");
-      const sk = createPrivateKey(normalizeAppServicePrivateKey(privateKeyPem));
+      const sk = createPrivateKey(normalizeAppMerchantPrivateKey(privateKeyPem));
       const legacySig = Buffer.from(
         cryptoSign(null, Buffer.from(message, "utf8"), sk),
       ).toString("base64url");
+
       expect(
-        verifyReceiptPayload({
-          ...params,
-          appSig: legacySig,
-          publicKeyPem,
-        }),
+        verifyReceiptPayload({ ...params, appSig: legacySig, publicKeyPem }),
       ).toBe(true);
     },
   );
 });
 
 describe("signConsentPayload / verifyConsentPayload", () => {
-  test("round-trip", () => {
-    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-    });
-    const privateKeyPem = privateKey.export({
-      type: "pkcs1",
-      format: "pem",
-    }) as string;
-    const publicKeyPem = publicKey.export({
-      type: "pkcs1",
-      format: "pem",
-    }) as string;
-    const params = {
-      buyerDid: "did:plc:buyer",
-      licenseGrantCid: "bafyreiabc",
-      receiptCid: "bafyreixyz",
-      consentedAt: new Date().toISOString(),
-    };
-    const appSig = signConsentPayload({
-      ...params,
-      privateKeyPem,
-    });
-    expect(
-      verifyConsentPayload({
-        ...params,
-        appSig,
-        publicKeyPem,
-      }),
-    ).toBe(true);
+  const params = {
+    buyerDid: "did:plc:buyer",
+    licenseGrantCid: "bafyreiabc",
+    receiptCid: "bafyreixyz",
+    consentedAt: new Date().toISOString(),
+  };
+
+  test("round-trip with P-256 EC key (compact low-S appSig)", () => {
+    const { privateKeyPem, publicKeyPem } = p256Pems();
+    const appSig = signConsentPayload({ ...params, privateKeyPem });
+    expect(Buffer.from(appSig, "base64url").length).toBe(64);
+    expect(verifyConsentPayload({ ...params, appSig, publicKeyPem })).toBe(true);
   });
 });

@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d73282e1-da94-4dbb-9c1c-bf75feab79db",
-  "prevId": "b5d76259-6080-4e76-b58a-e8c7cda6ba21",
+  "id": "37a7230a-a0de-428f-94f5-674ba0e51433",
+  "prevId": "d73282e1-da94-4dbb-9c1c-bf75feab79db",
   "tables": {
     "app_keys": {
       "name": "app_keys",
@@ -941,6 +941,20 @@
         },
         "consent_uri": {
           "name": "consent_uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "item_uri": {
+          "name": "item_uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "listing_uri": {
+          "name": "listing_uri",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

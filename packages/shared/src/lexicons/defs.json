@@ -201,7 +201,7 @@
         "kid": {
           "type": "string",
           "maxLength": 64,
-          "description": "Key identifier for the app service keypair that produced sig. Format: app-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. app-key-2026-04-17. Used by verifiers to select the correct historical key from the appDid DID document verificationMethod array when the app keypair has been rotated. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
+          "description": "Key identifier for the app service keypair that produced sig. Format: merchant-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. merchant-key-2026-08-29. Used by verifiers to select the correct historical key from the appDid DID document verificationMethod array when the app keypair has been rotated. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
         },
         "supersededByIsrc": {
           "type": "string",

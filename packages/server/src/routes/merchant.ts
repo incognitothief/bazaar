@@ -36,6 +36,11 @@ import {
   validateBusinessState,
 } from "../lib/businessProfile";
 import {
+  checkMerchantKeySync,
+  expectedMerchantKeyRecords,
+  readMerchantKeySyncStatus,
+} from "../lib/merchantKeys";
+import {
   stripeCredentialSources,
   stripeSecretKeyFromEnv,
   stripeWebhookSecretFromEnv,
@@ -207,6 +212,28 @@ export function createMerchantRouter(db: Db) {
       .orderBy(desc(licenses.capturedAt))
       .all();
     return c.json({ licenses: rows });
+  });
+
+  /**
+   * Storefront key mirror status: does the merchant PDS's `actor.merchantKeys` collection
+   * match the current storefront key history? `expected` is the exact record set the client
+   * should `putRecord` (rkey = kid). Computed on boot; this returns the stored result, or
+   * recomputes if none is stored yet.
+   */
+  r.get("/key-sync-status", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const status =
+      (await readMerchantKeySyncStatus(db)) ?? (await checkMerchantKeySync(db));
+    return c.json({ ...status, expected: expectedMerchantKeyRecords() });
+  });
+
+  /** Re-run the mirror diff (call after the client finishes a sync). */
+  r.post("/key-sync-status/recheck", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const status = await checkMerchantKeySync(db);
+    return c.json({ ...status, expected: expectedMerchantKeyRecords() });
   });
 
   /** Store-owner only: lists `payment_fulfillment` rows for the Stripe → PDS pipeline. */

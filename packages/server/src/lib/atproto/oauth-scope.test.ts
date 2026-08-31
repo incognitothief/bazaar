@@ -37,6 +37,15 @@ describe("oauth-scope", () => {
     );
   });
 
+  test("merchant scope includes actor.merchantKeys create/update/delete", () => {
+    const s = buildOAuthScopeString();
+    for (const action of ["create", "update", "delete"]) {
+      expect(s).toContain(
+        `repo:diamonds.whereditgo.bazaar.actor.merchantKeys?action=${action}`,
+      );
+    }
+  });
+
   test("respects LEXICON_NAMESPACE", () => {
     process.env.LEXICON_NAMESPACE = "com.example.bazaar";
     const scopes = bazaarRepoOAuthScopes();

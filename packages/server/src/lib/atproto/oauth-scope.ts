@@ -14,7 +14,10 @@ function col(ns: string, suffix: string): string {
   return `${ns}.${suffix}`;
 }
 
-function repoAction(collection: string, action: "create" | "update"): string {
+function repoAction(
+  collection: string,
+  action: "create" | "update" | "delete",
+): string {
   return `repo:${collection}?action=${action}`;
 }
 
@@ -38,6 +41,9 @@ export function bazaarRepoOAuthScopes(): string[] {
     repoAction(col(ns, "purchase.consent"), "create"),
     repoAction(col(ns, "actor.merchant"), "create"),
     repoAction(col(ns, "actor.merchant"), "update"),
+    repoAction(col(ns, "actor.merchantKeys"), "create"),
+    repoAction(col(ns, "actor.merchantKeys"), "update"),
+    repoAction(col(ns, "actor.merchantKeys"), "delete"),
   ];
 }
 

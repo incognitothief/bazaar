@@ -11,33 +11,57 @@ import {
  */
 const APP_SIG_DIGEST = "sha256";
 
-const APP_SERVICE_KID_MAX = 64;
+const APP_MERCHANT_KID_MAX = 64;
 
 /**
- * Optional lexicon `kid` (e.g. app-key-2026-04-19), matching the active fragment in
- * `packages/server/config/did-document.json` assertionMethod / verificationMethod.
+ * `appSig` is a 64-byte IEEE-P1363 (raw `r || s`) ECDSA/P-256 signature, normalised to low-S,
+ * base64url-encoded. This is the AT Protocol convention (`@atproto/crypto`, and the
+ * `bazaar-vault/Demos/verify-receipt.ts` reference verifier). Older field receipts carry a
+ * DER-encoded signature instead — see the fallback in `verifyCanonical` below.
  */
-export function appServiceKidFromEnv(): string | null {
-  const k = process.env.APP_SERVICE_KID?.trim();
-  if (!k) return null;
-  return k.length > APP_SERVICE_KID_MAX ? k.slice(0, APP_SERVICE_KID_MAX) : k;
+const P256_SIG_BYTES = 64;
+
+/** P-256 curve order n and n/2, for low-S normalisation of a raw `r || s` signature. */
+const P256_N = BigInt(
+  "0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+);
+const P256_HALF_N = P256_N >> 1n;
+
+/** Normalise a 64-byte IEEE-P1363 (`r || s`) signature to low-S form; pass through anything else. */
+function toLowS(sig: Buffer): Buffer {
+  if (sig.length !== P256_SIG_BYTES) return sig;
+  const r = sig.subarray(0, 32);
+  let s = BigInt(`0x${sig.subarray(32).toString("hex")}`);
+  if (s <= P256_HALF_N) return sig;
+  s = P256_N - s;
+  return Buffer.concat([r, Buffer.from(s.toString(16).padStart(64, "0"), "hex")]);
 }
 
-/** SPKI PEM for verifyReceiptPayload / verifyConsentPayload when only APP_SERVICE_PRIVATE_KEY is configured. */
-export function appServicePublicKeyPemFromEnv(): string | null {
-  const raw = process.env.APP_SERVICE_PRIVATE_KEY?.trim();
+/**
+ * Optional lexicon `kid` (e.g. merchant-key-2026-08-29), matching the active fragment in
+ * `packages/server/config/did-document.template.json` assertionMethod / verificationMethod.
+ */
+export function appMerchantKidFromEnv(): string | null {
+  const k = process.env.APP_MERCHANT_KID?.trim();
+  if (!k) return null;
+  return k.length > APP_MERCHANT_KID_MAX ? k.slice(0, APP_MERCHANT_KID_MAX) : k;
+}
+
+/** SPKI PEM for verifyReceiptPayload / verifyConsentPayload when only APP_MERCHANT_PRIVATE_KEY is configured. */
+export function appMerchantPublicKeyPemFromEnv(): string | null {
+  const raw = process.env.APP_MERCHANT_PRIVATE_KEY?.trim();
   if (!raw) return null;
-  const priv = createPrivateKey(normalizeAppServicePrivateKey(raw));
+  const priv = createPrivateKey(normalizeAppMerchantPrivateKey(raw));
   const pub = createPublicKey(priv);
   return pub.export({ type: "spki", format: "pem" }) as string;
 }
 
 /**
- * `APP_SERVICE_PRIVATE_KEY` from `.env` is often a valid PEM that dotenv / shells mangle
+ * `APP_MERCHANT_PRIVATE_KEY` from `.env` is often a valid PEM that dotenv / shells mangle
  * (literal `\\n`, CRLF, or the whole base64 on one line). OpenSSL/Bun are picky.
  * Supports PKCS#8 (`BEGIN PRIVATE KEY`), SEC1 EC (`BEGIN EC PRIVATE KEY`), PKCS#1 RSA, etc.
  */
-export function normalizeAppServicePrivateKey(raw: string): string {
+export function normalizeAppMerchantPrivateKey(raw: string): string {
   let t = raw
     .trim()
     .replace(/\\n/g, "\n")
@@ -58,6 +82,51 @@ export function normalizeAppServicePrivateKey(raw: string): string {
   if (!body) return t;
   const chunked = body.match(/.{1,64}/g)?.join("\n") ?? body;
   return `-----BEGIN ${label}-----\n${chunked}\n-----END ${label}-----`;
+}
+
+/** Sign `message` and return a base64url low-S IEEE-P1363 (`r || s`) ECDSA/P-256 signature. */
+function signCanonical(message: string, privateKeyPem: string): string {
+  const key = createPrivateKey(normalizeAppMerchantPrivateKey(privateKeyPem));
+  const raw = cryptoSign(APP_SIG_DIGEST, Buffer.from(message, "utf8"), {
+    key,
+    dsaEncoding: "ieee-p1363",
+  });
+  return toLowS(Buffer.from(raw)).toString("base64url");
+}
+
+/**
+ * Verify `message` against a base64url signature.
+ *
+ * Current format: 64-byte IEEE-P1363 (`r || s`).
+ *
+ * TEMPORARY: falls back to a DER-encoded signature for pre-migration field receipts /
+ * consent records. Remove this fallback once those records are migrated to the new
+ * attestation structure — the target state is a single compact/low-S resolution path.
+ * See `docs/adr/0013-key-rotation-and-did-document-v2.md` and the vault ticket
+ * "2026-08-29 Remove DER appSig fallback after field-receipt migration".
+ */
+function verifyCanonical(
+  message: string,
+  appSig: string,
+  publicKeyPem: string,
+): boolean {
+  const key = createPublicKey(publicKeyPem);
+  const msg = Buffer.from(message, "utf8");
+  const sig = Buffer.from(appSig, "base64url");
+  if (sig.length === P256_SIG_BYTES) {
+    try {
+      if (cryptoVerify(APP_SIG_DIGEST, msg, { key, dsaEncoding: "ieee-p1363" }, sig)) {
+        return true;
+      }
+    } catch {
+      // fall through to the DER fallback
+    }
+  }
+  try {
+    return cryptoVerify(APP_SIG_DIGEST, msg, key, sig);
+  } catch {
+    return false;
+  }
 }
 
 function receiptPayloadString(params: {
@@ -98,10 +167,7 @@ export function signReceiptPayload(params: {
   buyerDid: string;
   privateKeyPem: string;
 }): string {
-  const message = receiptPayloadString(params);
-  const key = createPrivateKey(normalizeAppServicePrivateKey(params.privateKeyPem));
-  const sig = cryptoSign(APP_SIG_DIGEST, Buffer.from(message, "utf8"), key);
-  return Buffer.from(sig).toString("base64url");
+  return signCanonical(receiptPayloadString(params), params.privateKeyPem);
 }
 
 export function verifyReceiptPayload(params: {
@@ -113,13 +179,10 @@ export function verifyReceiptPayload(params: {
   appSig: string;
   publicKeyPem: string;
 }): boolean {
-  const message = receiptPayloadString(params);
-  const key = createPublicKey(params.publicKeyPem);
-  return cryptoVerify(
-    APP_SIG_DIGEST,
-    Buffer.from(message, "utf8"),
-    key,
-    Buffer.from(params.appSig, "base64url"),
+  return verifyCanonical(
+    receiptPayloadString(params),
+    params.appSig,
+    params.publicKeyPem,
   );
 }
 
@@ -130,10 +193,7 @@ export function signConsentPayload(params: {
   consentedAt: string;
   privateKeyPem: string;
 }): string {
-  const message = consentPayloadString(params);
-  const key = createPrivateKey(normalizeAppServicePrivateKey(params.privateKeyPem));
-  const sig = cryptoSign(APP_SIG_DIGEST, Buffer.from(message, "utf8"), key);
-  return Buffer.from(sig).toString("base64url");
+  return signCanonical(consentPayloadString(params), params.privateKeyPem);
 }
 
 export function verifyConsentPayload(params: {
@@ -144,12 +204,9 @@ export function verifyConsentPayload(params: {
   appSig: string;
   publicKeyPem: string;
 }): boolean {
-  const message = consentPayloadString(params);
-  const key = createPublicKey(params.publicKeyPem);
-  return cryptoVerify(
-    APP_SIG_DIGEST,
-    Buffer.from(message, "utf8"),
-    key,
-    Buffer.from(params.appSig, "base64url"),
+  return verifyCanonical(
+    consentPayloadString(params),
+    params.appSig,
+    params.publicKeyPem,
   );
 }

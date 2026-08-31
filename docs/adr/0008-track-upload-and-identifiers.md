@@ -44,7 +44,7 @@ Per track, **Path A (new):** full composition fields; server mints `bazaarWid` a
 
 Implemented in `packages/server/src/lib/bazaarIdentifiers.ts`; exposed as `POST /api/identifiers/{rid,wid,pid}`.
 
-All signatures use **`APP_SERVICE_PRIVATE_KEY`** (not the artist OAuth key). Trust chain: artist granted OAuth write scope → app signed identifier → record on artist PDS.
+All signatures use **`APP_MERCHANT_PRIVATE_KEY`** (not the artist OAuth key). Trust chain: artist granted OAuth write scope → app signed identifier → record on artist PDS.
 
 | Field | When generated |
 |-------|----------------|

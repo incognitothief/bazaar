@@ -13,7 +13,7 @@ import { meta, paymentFulfillment } from "../../db/schema";
 import type { OAuthClient } from "../atproto/oauth";
 import { getAgentForDid } from "../atproto/resolvePds";
 import {
-  appServiceKidFromEnv,
+  appMerchantKidFromEnv,
   signConsentPayload,
   signReceiptPayload,
 } from "../atproto/sign";
@@ -558,7 +558,7 @@ export async function fulfillCheckoutSession(opts: {
     (item?.artistDid as string | undefined) ?? process.env.ARTIST_DID ?? "";
 
   const appDid = process.env.APP_DID ?? "";
-  const privateKeyRaw = process.env.APP_SERVICE_PRIVATE_KEY;
+  const privateKeyRaw = process.env.APP_MERCHANT_PRIVATE_KEY;
 
   const ref = itemRefRaw;
   const receiptItem: Record<string, unknown> = { uri: itemRefUri };
@@ -591,7 +591,7 @@ export async function fulfillCheckoutSession(opts: {
     }
   }
 
-  const receiptKidEnv = appServiceKidFromEnv();
+  const receiptKidEnv = appMerchantKidFromEnv();
   const receiptKid =
     appSigReceipt && receiptKidEnv ? receiptKidEnv : undefined;
 
@@ -652,7 +652,7 @@ export async function fulfillCheckoutSession(opts: {
 
   if (!appSigReceipt) {
     receiptPayload.pdsError =
-      "APP_SERVICE_PRIVATE_KEY missing or receipt signing failed";
+      "APP_MERCHANT_PRIVATE_KEY missing or receipt signing failed";
     await persistReceiptMeta(db, paymentRef, receiptPayload);
     await markDeadLetter(db, paymentRef, receiptPayload.pdsError as string);
     return;
@@ -753,7 +753,7 @@ export async function fulfillCheckoutSession(opts: {
     }
   }
 
-  const consentKidEnv = appServiceKidFromEnv();
+  const consentKidEnv = appMerchantKidFromEnv();
   const consentKid = consentSig && consentKidEnv ? consentKidEnv : undefined;
 
   const consentRecord: Record<string, unknown> = {

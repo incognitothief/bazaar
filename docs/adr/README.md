@@ -18,6 +18,8 @@ were originally backfilled from) is deprecated — new decisions get an ADR here
 | [0010](0010-staging-environment.md) | Staging deployment environment | 2026-04-05 |
 | [0011](0011-app-service-did-and-kid.md) | App service DID and signing key hints | 2026-04-18 |
 | [0012](0012-repo-and-identity-resolution.md) | Repo and identity resolution (DID→PDS, handle↔DID) | 2026-08-17 |
+| [0013](0013-key-rotation-and-did-document-v2.md) | Key rotation and DID document v2 (`keyHistory`, env-sourced) | 2026-08-30 |
+| [0014](0014-merchant-side-key-mirror.md) | Merchant-side storefront key mirror (`actor.merchantKeys`) | 2026-08-30 |
 
 Alignment folders not given a dedicated ADR (covered by cross-refs above or out of scope):
 

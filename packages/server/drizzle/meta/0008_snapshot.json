@@ -1,238 +1,64 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ef0a6811-604b-4da0-9d21-f5461d2ea69a",
+  "id": "10331d22-ca62-4693-9525-ed1dc1201e48",
   "prevId": "dd0f600c-8606-4f42-b5db-0d5509e7bf90",
   "tables": {
-    "catalog_items": {
-      "name": "catalog_items",
+    "app_keys": {
+      "name": "app_keys",
       "columns": {
-        "uri": {
-          "name": "uri",
+        "kid": {
+          "name": "kid",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
-        "cid": {
-          "name": "cid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "seller_did": {
-          "name": "seller_did",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "category": {
-          "name": "category",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "format": {
-          "name": "format",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "file_checksum": {
-          "name": "file_checksum",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "file_cid": {
-          "name": "file_cid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "supersedes": {
-          "name": "supersedes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "record_created_at": {
-          "name": "record_created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "captured_at": {
-          "name": "captured_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "catalog_product_assets": {
-      "name": "catalog_product_assets",
-      "columns": {
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "product_uri": {
-          "name": "product_uri",
+        "public_key_multibase": {
+          "name": "public_key_multibase",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "object_id": {
-          "name": "object_id",
+        "public_key_pem": {
+          "name": "public_key_pem",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "role": {
-          "name": "role",
+        "status": {
+          "name": "status",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "idx_catalog_product_assets_product_uri": {
-          "name": "idx_catalog_product_assets_product_uri",
-          "columns": [
-            "product_uri"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "catalog_product_assets_object_id_inventory_upload_object_id_fk": {
-          "name": "catalog_product_assets_object_id_inventory_upload_object_id_fk",
-          "tableFrom": "catalog_product_assets",
-          "tableTo": "inventory_upload_object",
-          "columnsFrom": [
-            "object_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "catalog_products": {
-      "name": "catalog_products",
-      "columns": {
-        "uri": {
-          "name": "uri",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "cid": {
-          "name": "cid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "seller_did": {
-          "name": "seller_did",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
+        "superseded_by": {
+          "name": "superseded_by",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "items": {
-          "name": "items",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "record_created_at": {
-          "name": "record_created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "captured_at": {
-          "name": "captured_at",
+        "revoked": {
+          "name": "revoked",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": false
         },
-        "updated_at": {
-          "name": "updated_at",
+        "first_seen_at": {
+          "name": "first_seen_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

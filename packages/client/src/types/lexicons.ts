@@ -326,6 +326,22 @@ export type ActorMerchant = {
   createdAt: string;
 };
 
+/**
+ * Merchant-side mirror of one non-current storefront key (a keyHistory entry of the
+ * appDid DID document). rkey = the bare kid fragment. See ADR 0013 / ADR 0014.
+ */
+export type ActorMerchantKeys = {
+  $type: "diamonds.whereditgo.bazaar.actor.merchantKeys";
+  appDid: string;
+  id: string;
+  type: "Multikey";
+  controller?: string;
+  publicKeyMultibase: string;
+  supersededBy: string;
+  revoked?: boolean;
+  syncedAt?: string;
+};
+
 export type CatalogItem = DigitalItem | Collection | PhysicalItem | BazaarItem | Product;
 
 /**
