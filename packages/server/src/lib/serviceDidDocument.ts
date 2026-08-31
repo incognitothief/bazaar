@@ -1,11 +1,14 @@
-import { createPrivateKey, createPublicKey } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeAppServicePrivateKey } from "./atproto/sign";
-import { publicSpkiPemToMultibase } from "./publicKeyMultibase";
+import { buildServiceDidDocument, getMerchantKeys } from "./merchantKeys";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+const DEFAULT_CONTEXT = [
+  "https://www.w3.org/ns/did/v1",
+  "https://w3id.org/security/multikey/v1",
+];
 
 const DOC_NAMES = [
   "did-document.template.json",
@@ -27,47 +30,29 @@ function documentCandidates(): string[] {
   return out;
 }
 
-function resolvePublicMultibase(): string {
-  const fromEnv = process.env.APP_SERVICE_PUBLIC_MULTIBASE?.trim();
-  if (fromEnv) return fromEnv;
-  const raw = process.env.APP_SERVICE_PRIVATE_KEY?.trim();
-  if (!raw || raw.includes("PLACEHOLDER")) return "";
-  try {
-    const priv = createPrivateKey(normalizeAppServicePrivateKey(raw));
-    const pub = createPublicKey(priv);
-    const spkiPem = pub.export({ type: "spki", format: "pem" }) as string;
-    return publicSpkiPemToMultibase(spkiPem);
-  } catch {
-    return "";
-  }
-}
-
 /**
- * Load DID document: prefer `did-document.template.json` with deploy-time substitution
- * (`__APP_SERVICE_KID__`, `__PUBLIC_KEY_MULTIBASE__`); fall back to static `did-document.json`.
+ * Base `@context` for the served DID document. Read from `did-document.template.json` so an
+ * operator can add context entries without a code change; the storefront DID id itself comes
+ * from `APP_DID` (see `merchantDid()`), and the key arrays + the `keyHistory` `@context` term
+ * are assembled in code. See `docs/adr/0013-key-rotation-and-did-document-v2.md`.
  */
-export function loadServiceDidDocument(): Record<string, unknown> {
-  const kid = process.env.APP_SERVICE_KID?.trim() ?? "";
-  const multibase = resolvePublicMultibase();
-
+function loadContextBase(): unknown[] {
   for (const path of documentCandidates()) {
     if (!existsSync(path)) continue;
-    const raw = readFileSync(path, "utf-8");
-    if (path.endsWith("did-document.template.json")) {
-      const filled = raw
-        .replaceAll("__APP_SERVICE_KID__", kid)
-        .replaceAll("__PUBLIC_KEY_MULTIBASE__", multibase);
-      if ((!kid || !multibase) && process.env.NODE_ENV !== "test") {
-        console.warn(
-          "service DID template: set APP_SERVICE_KID and APP_SERVICE_PUBLIC_MULTIBASE (or a valid APP_SERVICE_PRIVATE_KEY to derive multibase); /.well-known/did.json may be incomplete.",
-        );
-      }
-      return JSON.parse(filled) as Record<string, unknown>;
-    }
-    return JSON.parse(raw) as Record<string, unknown>;
+    const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    if (Array.isArray(raw["@context"])) return raw["@context"] as unknown[];
   }
+  return DEFAULT_CONTEXT;
+}
 
-  throw new Error(
-    `No DID document found (tried: ${documentCandidates().join(", ")})`,
-  );
+/** Assemble the DID document served at `/.well-known/did.json` from env + the context base. */
+export function loadServiceDidDocument(): Record<string, unknown> {
+  const keys = getMerchantKeys();
+  if (!keys.current && process.env.NODE_ENV !== "test") {
+    console.warn(
+      "service DID: APP_MERCHANT_PRIVATE_KEY / APP_MERCHANT_KID unset — " +
+        "/.well-known/did.json will have no verificationMethod / assertionMethod.",
+    );
+  }
+  return buildServiceDidDocument(keys, loadContextBase());
 }

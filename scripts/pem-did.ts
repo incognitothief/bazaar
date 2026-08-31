@@ -1,41 +1,55 @@
 import { createPublicKey } from "node:crypto";
+import { formatDidKey, formatMultikey } from "@atproto/crypto";
 
-/** Bitcoin / multibase base58btc alphabet (no multiformats import — avoids package export issues). */
-const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-function b58encode(bytes: Uint8Array): string {
-  let n = 0n;
-  for (let i = 0; i < bytes.length; i++) {
-    n = (n << 8n) | BigInt(bytes[i]);
-  }
-  let leading = 0;
-  for (let i = 0; i < bytes.length; i++) {
-    if (bytes[i] === 0) leading++;
-    else break;
-  }
-  const digits: string[] = [];
-  let n2 = n;
-  while (n2 > 0n) {
-    const r = Number(n2 % 58n);
-    n2 = n2 / 58n;
-    digits.push(B58[r]!);
-  }
-  const body = digits.length > 0 ? digits.reverse().join("") : "";
-  return B58[0]!.repeat(leading) + body;
+/**
+ * A PEM pasted from `.env` or a Fly secret is often mangled: literal `\n`, CRLF, surrounding
+ * quotes, or the whole key on one line with spaces where the newlines belong. Reflow it into
+ * something `createPublicKey` accepts. A well-formed PEM passes through unchanged.
+ *
+ * Mirrors `normalizeAppMerchantPrivateKey` in
+ * `packages/server/src/lib/atproto/sign.ts` — keep the two in step.
+ */
+export function normalizePem(raw: Buffer | string): string {
+  const t = (typeof raw === "string" ? raw : raw.toString("utf8"))
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n?/g, "\n");
+  const begin = t.match(/-----BEGIN ([A-Z0-9 ]+?)-----/);
+  const end = t.match(/-----END ([A-Z0-9 ]+?)-----/);
+  if (!begin || !end || begin[1] !== end[1]) return t;
+  const label = begin[1];
+  const start = begin.index! + begin[0].length;
+  const stop = t.indexOf(end[0], start);
+  if (stop <= start) return t;
+  const body = t.slice(start, stop).replace(/\s+/g, "");
+  if (!body) return t;
+  const wrapped = body.match(/.{1,64}/g)!.join("\n");
+  return `-----BEGIN ${label}-----\n${wrapped}\n-----END ${label}-----\n`;
 }
 
-/** P-256 SPKI PEM → multibase string (z…), matching multiformats base58btc.encode. */
+/**
+ * Trailing 65 bytes of an SPKI DER export are the uncompressed point: 0x04 || X(32) || Y(32).
+ * `createPublicKey` accepts a private key PEM too (it derives the public half), so every helper
+ * here works whether you pass the public or the private key.
+ */
+function uncompressedPoint(pem: Buffer | string): Uint8Array {
+  const der = createPublicKey(normalizePem(pem)).export({
+    type: "spki",
+    format: "der",
+  }) as Buffer;
+  return new Uint8Array(der.subarray(-65));
+}
+
+/**
+ * P-256 SPKI PEM → spec-conformant Multikey multibase string (`z…`): `p256-pub` multicodec
+ * varint prefix (`0x80 0x24`) + compressed 33-byte point, base58btc. Matches `@atproto/crypto`,
+ * W3C Multikey, and `did:key`, so a standard `did:web` resolver can decode it.
+ */
 export function publicPemToMultibase(pem: Buffer | string): string {
-  const keyObject = createPublicKey(pem);
-  const rawKey = keyObject.export({ type: "spki", format: "der" }) as Buffer;
-  const uncompressedPoint = rawKey.subarray(-65);
-  const prefixed = new Uint8Array(2 + uncompressedPoint.length);
-  prefixed[0] = 0x12;
-  prefixed[1] = 0x00;
-  prefixed.set(uncompressedPoint, 2);
-  return `z${b58encode(prefixed)}`;
+  return formatMultikey("ES256", uncompressedPoint(pem));
 }
 
 export function publicPemToDidKey(pem: Buffer | string): string {
-  return `did:key:${publicPemToMultibase(pem)}`;
+  return formatDidKey("ES256", uncompressedPoint(pem));
 }

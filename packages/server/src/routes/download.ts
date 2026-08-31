@@ -5,8 +5,9 @@ import { zipSync } from "fflate";
 import { Hono } from "hono";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
-import { appServicePublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
 import { getSessionAgent } from "../lib/atproto/session";
+import { appMerchantPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
+import { candidatePemsForKid, getMerchantKeys } from "../lib/merchantKeys";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import {
   INVENTORY_MASTER_OBJECT_NAME,
@@ -38,7 +39,16 @@ type PurchaseReceipt = {
   paymentRef: string;
   purchasedAt: string;
   appSig: string;
+  /** Hint for selecting the storefront key that produced `appSig` (ADR 0013). */
+  kid?: string;
 };
+
+/** True when at least one storefront verification key is configured (env or key history). */
+function merchantVerifyKeysAvailable(): boolean {
+  return (
+    getMerchantKeys().byKid.size > 0 || appMerchantPublicKeyPemFromEnv() !== null
+  );
+}
 
 /** AT-URI collection NSID is authoritative; `itemType` can disagree with server LEXICON_NAMESPACE. */
 function receiptItemIsCollection(itemUri: string): boolean {
@@ -59,10 +69,9 @@ function isS3NoSuchKey(e: unknown): boolean {
 function safeVerifyReceiptForBuyer(
   rec: PurchaseReceipt,
   sessionDid: string,
-  publicKeyPem: string,
 ): boolean {
   try {
-    return verifyReceiptForBuyer(rec, sessionDid, publicKeyPem);
+    return verifyReceiptForBuyer(rec, sessionDid);
   } catch (e) {
     console.warn("download: receipt verify threw", e);
     return false;
@@ -105,8 +114,8 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    const publicKeyPem = appServicePublicKeyPemFromEnv();
-    if (!publicKeyPem) return c.json({ error: "app_key_missing" }, 503);
+    if (!merchantVerifyKeysAvailable())
+      return c.json({ error: "app_key_missing" }, 503);
 
     let entitled = false;
     let receipt: PurchaseReceipt | null = null;
@@ -116,13 +125,13 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
         const rec = row.value as PurchaseReceipt;
         if (!rec?.item?.uri) continue;
         if (rec.item.uri === itemUriRaw) {
-          if (!safeVerifyReceiptForBuyer(rec, sess.did, publicKeyPem)) continue;
+          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
           entitled = true;
           receipt = rec;
           break;
         }
         if (receiptItemIsCollection(rec.item.uri)) {
-          if (!safeVerifyReceiptForBuyer(rec, sess.did, publicKeyPem)) continue;
+          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
           const ok = await collectionContainsDigitalMember(
             rec.item.uri,
             itemUriRaw,
@@ -224,8 +233,8 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    const publicKeyPem = appServicePublicKeyPemFromEnv();
-    if (!publicKeyPem) return c.json({ error: "app_key_missing" }, 503);
+    if (!merchantVerifyKeysAvailable())
+      return c.json({ error: "app_key_missing" }, 503);
 
     let entitled = false;
     for (const row of list.data.records) {
@@ -234,7 +243,7 @@ export function createDownloadRouter(oauthClient: OAuthClient) {
         if (!rec?.item?.uri) continue;
         if (!receiptItemIsCollection(rec.item.uri)) continue;
         if (rec.item.uri !== collectionUriRaw) continue;
-        if (!safeVerifyReceiptForBuyer(rec, sess.did, publicKeyPem)) continue;
+        if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
         entitled = true;
         break;
       } catch (e) {
@@ -369,23 +378,36 @@ function extensionForDigital(
   return "bin";
 }
 
-/** appSig covers `rec.item.uri` (the purchased listing item), not an individual track URI. */
-function verifyReceiptForBuyer(
-  rec: PurchaseReceipt,
-  sessionDid: string,
-  publicKeyPem: string,
-): boolean {
+/**
+ * appSig covers `rec.item.uri` (the purchased listing item), not an individual track URI.
+ *
+ * Key selection (ADR 0013): if `rec.kid` names a revoked storefront key, reject outright.
+ * Otherwise try the hinted key first, then every other non-revoked key (current + active +
+ * retired). Falls back to the env-derived current key when no key set is configured.
+ */
+function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolean {
   const buyerDid = rec.buyerDid ?? sessionDid;
   if (buyerDid !== sessionDid) return false;
-  return verifyReceiptPayload({
-    purchasedAt: rec.purchasedAt,
-    paymentRef: rec.paymentRef,
-    itemUri: rec.item.uri,
-    listingCid: rec.listingCid,
-    buyerDid,
-    appSig: rec.appSig,
-    publicKeyPem,
-  });
+
+  const { revoked, pems } = candidatePemsForKid(getMerchantKeys(), rec.kid);
+  if (revoked) return false;
+
+  const candidates =
+    pems.length > 0
+      ? pems
+      : [appMerchantPublicKeyPemFromEnv()].filter((p): p is string => !!p);
+
+  return candidates.some((publicKeyPem) =>
+    verifyReceiptPayload({
+      purchasedAt: rec.purchasedAt,
+      paymentRef: rec.paymentRef,
+      itemUri: rec.item.uri,
+      listingCid: rec.listingCid,
+      buyerDid,
+      appSig: rec.appSig,
+      publicKeyPem,
+    }),
+  );
 }
 
 async function collectionContainsDigitalMember(

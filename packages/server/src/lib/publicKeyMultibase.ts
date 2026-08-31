@@ -1,37 +1,23 @@
 import { createPublicKey } from "node:crypto";
+import { formatMultikey } from "@atproto/crypto";
 
-/** Bitcoin / multibase base58btc alphabet (same as scripts/pem-did.ts). */
-const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-function b58encode(bytes: Uint8Array): string {
-  let n = 0n;
-  for (let i = 0; i < bytes.length; i++) {
-    n = (n << 8n) | BigInt(bytes[i]!);
-  }
-  let leading = 0;
-  for (let i = 0; i < bytes.length; i++) {
-    if (bytes[i] === 0) leading++;
-    else break;
-  }
-  const digits: string[] = [];
-  let n2 = n;
-  while (n2 > 0n) {
-    const r = Number(n2 % 58n);
-    n2 = n2 / 58n;
-    digits.push(B58[r]!);
-  }
-  const body = digits.length > 0 ? digits.reverse().join("") : "";
-  return B58[0]!.repeat(leading) + body;
-}
-
-/** SPKI PEM → multibase `z…` (P-256 / same encoding as scripts/pem-did.ts). */
+/**
+ * SPKI PEM (P-256) → spec-conformant Multikey multibase string (`z…`).
+ *
+ * Encoding: multibase base58btc (`z`) over the `p256-pub` multicodec varint prefix
+ * (`0x80 0x24`) followed by the **compressed** 33-byte EC point. This matches
+ * `@atproto/crypto` `formatMultikey`, the W3C Multikey spec, and `did:key`, so a standard
+ * `did:web` + Multikey resolver can decode `verificationMethod[].publicKeyMultibase`.
+ *
+ * (The earlier hand-rolled encoder used the raw bytes `0x12 0x00` and the uncompressed
+ * 65-byte point — internally consistent but not decodable by any conformant resolver.)
+ */
 export function publicSpkiPemToMultibase(pem: string): string {
-  const keyObject = createPublicKey(pem);
-  const rawKey = keyObject.export({ type: "spki", format: "der" }) as Buffer;
-  const uncompressedPoint = rawKey.subarray(-65);
-  const prefixed = new Uint8Array(2 + uncompressedPoint.length);
-  prefixed[0] = 0x12;
-  prefixed[1] = 0x00;
-  prefixed.set(uncompressedPoint, 2);
-  return `z${b58encode(prefixed)}`;
+  const der = createPublicKey(pem).export({
+    type: "spki",
+    format: "der",
+  }) as Buffer;
+  // Trailing 65 bytes of the SPKI DER are the uncompressed point: 0x04 || X(32) || Y(32).
+  const uncompressedPoint = der.subarray(-65);
+  return formatMultikey("ES256", new Uint8Array(uncompressedPoint));
 }

@@ -24,6 +24,13 @@ VITE_LEXICON_NAMESPACE ?=
 VITE_ARTIST_DID ?=
 VITE_API_ORIGIN ?=
 
+# `make dev TUNNEL_URL=https://<sub>.trycloudflare.com` points the OAuth / SPA origins at a
+# public HTTPS tunnel for real-OAuth testing (see the "testing auth locally" runbook), instead
+# of hand-editing packages/{server,client}/.env. It overrides APP_URL, VITE_APP_URL and
+# VITE_API_ORIGIN for that run only. Leave unset for plain loopback dev.
+TUNNEL_URL ?=
+override TUNNEL_URL := $(patsubst %/,%,$(TUNNEL_URL))
+
 .PHONY: help
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
@@ -53,8 +60,20 @@ setup-env: ## Copy .env.example files when packages/*/.env are missing
 	@echo "Wrote packages/server/.env and/or packages/client/.env from examples (skipped existing files)."
 
 .PHONY: dev
-dev: ## Run client (Vite :5173) and server (Bun :3000) via Turbo
+dev: ## Run client (:5173) + server (:3000) via Turbo. TUNNEL_URL=https://… routes OAuth origins through a tunnel.
+ifeq ($(strip $(TUNNEL_URL)),)
 	npm run dev
+else
+	@case "$(TUNNEL_URL)" in http://*|https://*) ;; *) \
+		echo "TUNNEL_URL must start with http:// or https:// (got: $(TUNNEL_URL))"; exit 1;; esac
+	@echo "dev: routing all OAuth / SPA origins through $(TUNNEL_URL)"
+	APP_URL="$(TUNNEL_URL)" \
+		ATPROTO_OAUTH_REDIRECT_URI="$(TUNNEL_URL)/api/atproto/callback" \
+		PUBLIC_WEB_APP_URL="$(TUNNEL_URL)" \
+		VITE_APP_URL="$(TUNNEL_URL)" \
+		VITE_API_ORIGIN="$(TUNNEL_URL)" \
+		npm run dev
+endif
 
 .PHONY: build
 build: ## Build all workspaces (Turbo)

@@ -8,6 +8,7 @@ import { serveStatic } from "hono/bun";
 import { createApiRouter } from "./api";
 import { createDb } from "./db";
 import { createOAuthClient } from "./lib/atproto/oauth";
+import { checkMerchantKeySync, reconcileMerchantKeys } from "./lib/merchantKeys";
 import { injectSpaHead } from "./lib/spaHtmlMeta";
 import {
   backfillPaymentFulfillmentFromMeta,
@@ -35,6 +36,22 @@ try {
   console.error("Migration failed:", e);
   process.exit(1);
 }
+
+try {
+  await reconcileMerchantKeys(db);
+} catch (e) {
+  console.error(
+    "Merchant key config invalid (APP_MERCHANT_KEY_HISTORY / APP_MERCHANT_*):",
+    e,
+  );
+  process.exit(1);
+}
+
+// Best-effort: compare the merchant PDS's actor.merchantKeys mirror against the current
+// key history and stash the result for the merchant panel. Never blocks boot.
+void checkMerchantKeySync(db).catch((e) =>
+  console.warn("merchant key sync check:", e),
+);
 
 const oauthClient = await createOAuthClient(db);
 
@@ -135,11 +152,11 @@ app.notFound(async (c) => {
   return c.text("Not found", 404);
 });
 
-if (!process.env.APP_SERVICE_KID?.trim() && process.env.NODE_ENV === "production") {
+if (!process.env.APP_MERCHANT_KID?.trim() && process.env.NODE_ENV === "production") {
   console.warn(
-    "[WARN] APP_SERVICE_KID is not set. Signed records will not carry a kid field. " +
+    "[WARN] APP_MERCHANT_KID is not set. Signed records will not carry a kid field. " +
       "Key rotation verification will require exhaustive key search. " +
-      "Set APP_SERVICE_KID to the fragment of the active key in did-document.json.",
+      "Set APP_MERCHANT_KID (merchant-key-YYYY-MM-DD) alongside APP_MERCHANT_PRIVATE_KEY.",
   );
 }
 
