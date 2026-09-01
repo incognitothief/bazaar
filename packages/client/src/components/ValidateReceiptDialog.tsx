@@ -9,7 +9,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -40,9 +39,9 @@ export function ValidateReceiptDialog({
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="rounded-none sm:max-w-lg">
         <form
-          className="space-y-4"
+          className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
             const trimmed = uri.trim();
@@ -51,6 +50,24 @@ export function ValidateReceiptDialog({
             navigate(`/dashboard/validate/${encodeURIComponent(trimmed)}`);
           }}
         >
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <Label htmlFor="dialog-receipt-uri" className="sr-only">
+                Receipt URI
+              </Label>
+              <Input
+                id="dialog-receipt-uri"
+                className="rounded-none"
+                value={uri}
+                placeholder="at://did:plc:.../purchase.receipt/..."
+                onChange={(e) => setUri(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <Button type="submit" className="rounded-none">
+              Validate
+            </Button>
+          </div>
           <DialogHeader>
             <DialogTitle>Validate a receipt URI</DialogTitle>
             <DialogDescription>
@@ -58,19 +75,6 @@ export function ValidateReceiptDialog({
               for.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="dialog-receipt-uri">Receipt URI</Label>
-            <Input
-              id="dialog-receipt-uri"
-              value={uri}
-              placeholder="at://did:plc:.../purchase.receipt/..."
-              onChange={(e) => setUri(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button type="submit">Validate</Button>
-          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
