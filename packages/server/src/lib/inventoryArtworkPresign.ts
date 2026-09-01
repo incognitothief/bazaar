@@ -18,7 +18,7 @@ const COL_COLLECTION = () => `${lexiconNs()}.catalog.collection`;
 
 export type ArtworkPresignResult =
   | { ok: true; url: string }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: 400 | 404 | 503; error: string };
 
 /**
  * Presigned GET for catalog artwork on R2 (same resolution rules as inventory-public artwork-url).

@@ -339,7 +339,7 @@ export function createMerchantRouter(db: Db) {
           400,
         );
       }
-      if (body.stripeSecretKey !== null && body.stripeSecretKey !== "") {
+      if (body.stripeSecretKey != null && body.stripeSecretKey !== "") {
         const err = validateStripeSecretKeyInput(body.stripeSecretKey);
         if (err) return c.json({ error: "validation", detail: err }, 400);
       }
@@ -356,7 +356,7 @@ export function createMerchantRouter(db: Db) {
           400,
         );
       }
-      if (body.stripeWebhookSecret !== null && body.stripeWebhookSecret !== "") {
+      if (body.stripeWebhookSecret != null && body.stripeWebhookSecret !== "") {
         const err = validateStripeWebhookSecretInput(body.stripeWebhookSecret);
         if (err) return c.json({ error: "validation", detail: err }, 400);
       }
@@ -372,14 +372,14 @@ export function createMerchantRouter(db: Db) {
     let nextWh = row?.stripeWebhookSecret ?? null;
 
     if (hasSk) {
-      if (body.stripeSecretKey === null || body.stripeSecretKey === "") {
+      if (body.stripeSecretKey == null || body.stripeSecretKey === "") {
         nextSk = null;
       } else {
         nextSk = body.stripeSecretKey.trim();
       }
     }
     if (hasWh) {
-      if (body.stripeWebhookSecret === null || body.stripeWebhookSecret === "") {
+      if (body.stripeWebhookSecret == null || body.stripeWebhookSecret === "") {
         nextWh = null;
       } else {
         nextWh = body.stripeWebhookSecret.trim();
