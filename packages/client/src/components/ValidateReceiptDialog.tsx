@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -39,7 +38,7 @@ export function ValidateReceiptDialog({
           </Button>
         }
       />
-      <DialogContent className="rounded-none sm:max-w-lg">
+      <DialogContent className="rounded-none sm:max-w-lg" showCloseButton={false}>
         <form
           className="space-y-3"
           onSubmit={(e) => {
@@ -64,16 +63,20 @@ export function ValidateReceiptDialog({
                 autoFocus
               />
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-none"
+              onClick={() => setUri("")}
+            >
+              Clear
+            </Button>
             <Button type="submit" className="rounded-none">
               Validate
             </Button>
           </div>
           <DialogHeader>
             <DialogTitle>Validate a receipt URI</DialogTitle>
-            <DialogDescription>
-              Check any purchase receipt against the listing it was issued
-              for.
-            </DialogDescription>
           </DialogHeader>
         </form>
       </DialogContent>
