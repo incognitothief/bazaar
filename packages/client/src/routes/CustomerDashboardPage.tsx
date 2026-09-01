@@ -67,7 +67,17 @@ export function CustomerDashboardPage() {
     let cancelled = false;
     void listPurchaseReceiptRows(session.did)
       .then((rows) => {
-        if (!cancelled) setPurchases(rows);
+        if (cancelled) return;
+        // A buyer's repo can hold purchase.receipt records from any Bazaar
+        // storefront, not just this one -- issuerScope is the selling
+        // merchant's own DID, stable across app-identity/key changes on our
+        // side, so it's the right signal for "did this store sell it."
+        const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim();
+        setPurchases(
+          storefrontDid
+            ? rows.filter((r) => r.receipt.issuerScope === storefrontDid)
+            : rows,
+        );
       })
       .catch(() => {
         if (!cancelled) setPurchases([]);
@@ -236,7 +246,7 @@ export function CustomerDashboardPage() {
                   buttonVariants({ variant: "secondary", size: "sm" }),
                 )}
               >
-                Open
+                View Receipt
               </Link>
             </div>
           ))}
