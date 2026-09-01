@@ -38,7 +38,10 @@ export function ValidateReceiptDialog({
           </Button>
         }
       />
-      <DialogContent className="rounded-none sm:max-w-lg" showCloseButton={false}>
+      <DialogContent
+        className="top-[16%] translate-y-0 rounded-none sm:max-w-lg"
+        showCloseButton={false}
+      >
         <form
           className="space-y-3"
           onSubmit={(e) => {
