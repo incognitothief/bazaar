@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { XIcon } from "lucide-react";
 
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { getAuthRole } from "@/lib/auth";
@@ -30,6 +31,7 @@ export function CustomerDashboardPage() {
   const [purchaseTitles, setPurchaseTitles] = useState<Record<string, string>>(
     {},
   );
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading || !session) return;
@@ -118,8 +120,22 @@ export function CustomerDashboardPage() {
             Below is a list of items you have purchased from this bazaar.
           </p>
         </div>
-        <ValidateReceiptDialog />
+        <ValidateReceiptDialog onError={setValidationError} />
       </div>
+
+      {validationError ? (
+        <div className="flex items-start justify-between gap-3 border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <p>{validationError}</p>
+          <button
+            type="button"
+            onClick={() => setValidationError(null)}
+            aria-label="Dismiss"
+            className="shrink-0 text-destructive/70 hover:text-destructive"
+          >
+            <XIcon className="size-4" />
+          </button>
+        </div>
+      ) : null}
 
       {purchases.length > 0 ? (
         <div className="rounded-lg border border-border divide-y">

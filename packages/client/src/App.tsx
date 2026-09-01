@@ -11,7 +11,6 @@ import { HomePage } from "@/routes/HomePage";
 import { ItemDetailPage } from "@/routes/ItemDetailPage";
 import { LicenseInspectorPage } from "@/routes/LicenseInspectorPage";
 import { PurchaseDetailPage } from "@/routes/PurchaseDetailPage";
-import { ValidateReceiptPage } from "@/routes/ValidateReceiptPage";
 import { PurchaseSuccessPage } from "@/routes/PurchaseSuccessPage";
 import { MerchantLayout } from "@/routes/MerchantLayout";
 import { DashboardPage } from "@/routes/DashboardPage";
@@ -47,11 +46,6 @@ const router = createBrowserRouter([
       {
         path: "/dashboard/purchase/:receiptUri",
         element: <PurchaseDetailPage />,
-      },
-      { path: "/dashboard/validate", element: <ValidateReceiptPage /> },
-      {
-        path: "/dashboard/validate/:receiptUri",
-        element: <ValidateReceiptPage />,
       },
     ],
   },
