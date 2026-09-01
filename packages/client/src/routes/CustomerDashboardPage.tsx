@@ -1,25 +1,27 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { AtUri } from "@atproto/syntax";
-import { toast } from "sonner";
+import { SearchIcon } from "lucide-react";
 
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { getAuthRole } from "@/lib/auth";
 import { merchantSignInUrl } from "@/lib/signInReturn";
-import { catalogItemRkey, itemPathCanonical } from "@/lib/itemPath";
-import { agentForRepo } from "@/lib/atproto/pdsResolve";
-import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   getRecordValue,
   listPurchaseReceiptRows,
   type PurchaseReceiptRow,
 } from "@/lib/atproto/records";
-import type { CatalogItem, Listing, PurchaseReceipt } from "@/types/lexicons";
+import type { CatalogItem } from "@/types/lexicons";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 function formatMoney(m: { amount: number; currency: string }): string {
   return new Intl.NumberFormat(undefined, {
@@ -28,28 +30,63 @@ function formatMoney(m: { amount: number; currency: string }): string {
   }).format(m.amount / 100);
 }
 
-type ReceiptValidationResult = {
-  receiptOk: boolean;
-  listingOk: boolean;
-  listingActive: boolean;
-  listingCidMatches: boolean;
-  receiptListingCid?: string;
-  receiptListingUri?: string;
-  listingStatus?: Listing["status"];
-  listingPrice?: Listing["price"];
-  listingItemCollection?: string;
-  listingItemUri?: string;
-  error?: string;
-};
+function ValidateReceiptPopover() {
+  const navigate = useNavigate();
+  const [uri, setUri] = useState("");
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button variant="outline" size="sm">
+            <SearchIcon />
+            Validate a receipt URI
+          </Button>
+        }
+      />
+      <PopoverContent align="end">
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const trimmed = uri.trim();
+            if (!trimmed) return;
+            setOpen(false);
+            navigate(`/dashboard/validate/${encodeURIComponent(trimmed)}`);
+          }}
+        >
+          <div className="space-y-1">
+            <PopoverTitle>Validate a receipt URI</PopoverTitle>
+            <PopoverDescription>
+              Check any purchase receipt against the listing it was issued
+              for.
+            </PopoverDescription>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="popover-receipt-uri">Receipt URI</Label>
+            <Input
+              id="popover-receipt-uri"
+              value={uri}
+              placeholder="at://did:plc:.../purchase.receipt/..."
+              onChange={(e) => setUri(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <Button type="submit" size="sm" className="w-full">
+            Validate
+          </Button>
+        </form>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function CustomerDashboardPage() {
   const { session, loading } = useAtpSession();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [receiptUri, setReceiptUri] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<ReceiptValidationResult | null>(null);
   const [purchases, setPurchases] = useState<PurchaseReceiptRow[]>([]);
   const [purchaseTitles, setPurchaseTitles] = useState<Record<string, string>>(
     {},
@@ -108,92 +145,6 @@ export function CustomerDashboardPage() {
     };
   }, [purchases, session]);
 
-  async function validate() {
-    if (!session) return;
-    const input = receiptUri.trim();
-    if (!input) return;
-
-    setBusy(true);
-    setResult(null);
-
-    try {
-      const receiptAt = new AtUri(input);
-      if (receiptAt.hostname !== session.did) {
-        throw new Error("That receipt is not in your account.");
-      }
-      if (receiptAt.collection !== BAZAAR_COLLECTION.receipt) {
-        throw new Error("That URI is not a Bazaar purchase receipt.");
-      }
-      if (!receiptAt.rkey) {
-        throw new Error(
-          "URI is missing its record key -- it points at the collection, not one receipt. It should end in .../purchase.receipt/<rkey>.",
-        );
-      }
-
-      const receiptAgent = await agentForRepo(receiptAt.hostname);
-      const receiptRes = await receiptAgent.com.atproto.repo.getRecord({
-        repo: receiptAt.hostname,
-        collection: receiptAt.collection,
-        rkey: receiptAt.rkey,
-      });
-
-      const receipt = receiptRes.data.value as PurchaseReceipt;
-      const receiptListingCid = receipt.listingCid;
-      const receiptListingUri = receipt.listingUri;
-
-      if (!receiptListingCid || !receiptListingUri) {
-        throw new Error("Receipt is missing listing information.");
-      }
-      if (receipt.buyerDid && receipt.buyerDid !== session.did) {
-        throw new Error("Receipt buyerDid does not match your account.");
-      }
-
-      const listingAt = new AtUri(receiptListingUri);
-      if (listingAt.collection !== BAZAAR_COLLECTION.listing) {
-        throw new Error("Receipt points to a non-Bazaar listing.");
-      }
-      if (!listingAt.rkey) throw new Error("Invalid listing URI.");
-
-      const listingAgent = await agentForRepo(listingAt.hostname);
-      const listingRes = await listingAgent.com.atproto.repo.getRecord({
-        repo: listingAt.hostname,
-        collection: listingAt.collection,
-        rkey: listingAt.rkey,
-      });
-
-      const listing = listingRes.data.value as Listing;
-      const listingCid = listingRes.data.cid;
-
-      const listingCidMatches = listingCid === receiptListingCid;
-      const listingActive = listing.status === "active";
-
-      setResult({
-        receiptOk: true,
-        listingOk: true,
-        listingActive,
-        listingCidMatches,
-        receiptListingCid,
-        receiptListingUri,
-        listingStatus: listing.status,
-        listingPrice: listing.price,
-        listingItemCollection: new AtUri(listing.item.uri).collection,
-        listingItemUri: listing.item.uri,
-      });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      toast.error("Receipt validation failed", { description: message });
-      setResult({
-        receiptOk: false,
-        listingOk: false,
-        listingActive: false,
-        listingCidMatches: false,
-        error: message,
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="px-4 py-8 text-center text-muted-foreground sm:px-6">
@@ -205,9 +156,9 @@ export function CustomerDashboardPage() {
   if (!session) {
     return (
       <div className="mx-auto max-w-lg space-y-6 px-4 py-12 text-center sm:px-6">
-        <h1 className="text-2xl font-semibold">Receipt validation</h1>
+        <h1 className="text-2xl font-semibold">Your purchases</h1>
         <p className="text-sm text-muted-foreground">
-          Sign in to validate your purchase receipts against available listings.
+          Sign in to view your purchases and validate receipts.
         </p>
         <Link
           to={merchantSignInUrl(location.pathname, location.search)}
@@ -221,11 +172,14 @@ export function CustomerDashboardPage() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-2xl space-y-8">
-      <div className="space-y-2 min-w-0">
-        <h1 className="text-2xl font-semibold">Your purchases</h1>
-        <p className="text-sm text-muted-foreground">
-          Below is a list of items you have purchased from this bazaar.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3 min-w-0">
+        <div className="space-y-2 min-w-0">
+          <h1 className="text-2xl font-semibold">Your purchases</h1>
+          <p className="text-sm text-muted-foreground">
+            Below is a list of items you have purchased from this bazaar.
+          </p>
+        </div>
+        <ValidateReceiptPopover />
       </div>
 
       {purchases.length > 0 ? (
@@ -260,89 +214,6 @@ export function CustomerDashboardPage() {
           No purchase receipts found in your PDS yet.
         </p>
       )}
-
-      <h2 className="text-lg font-medium pt-4">Validate receipt URI</h2>
-      <form
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void validate();
-        }}
-      >
-        <div className="space-y-2">
-          <Label htmlFor="receipt-uri">Receipt URI</Label>
-          <Input
-            id="receipt-uri"
-            value={receiptUri}
-            placeholder="at://did:plc:.../diamonds.whereditgo.bazaar.purchase.receipt/..."
-            onChange={(e) => setReceiptUri(e.target.value)}
-          />
-        </div>
-        <Button type="submit" disabled={busy}>
-          {busy ? "Validating…" : "Validate"}
-        </Button>
-      </form>
-
-      {result ? (
-        <div className="rounded-lg border border-border p-6 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Listing status</p>
-              {result.listingActive ? (
-                <p className="text-lg font-semibold">Active</p>
-              ) : (
-                <p className="text-lg font-semibold">Not active</p>
-              )}
-            </div>
-            <Badge variant={result.listingActive ? "default" : "secondary"}>
-              {result.listingStatus ?? "unknown"}
-            </Badge>
-          </div>
-
-          {result.listingOk && result.receiptListingUri ? (
-            <div className="text-sm space-y-1">
-              <p className="text-muted-foreground">
-                Listing CID match:{" "}
-                <span className="font-medium">
-                  {result.listingCidMatches ? "Yes" : "No"}
-                </span>
-              </p>
-              {result.listingPrice ? (
-                <p className="text-muted-foreground">
-                  Price:{" "}
-                  <span className="font-medium">
-                    {formatMoney(result.listingPrice)}
-                  </span>
-                </p>
-              ) : null}
-              {result.listingItemCollection ? (
-                <p className="text-muted-foreground">
-                  Item type:{" "}
-                  <span className="font-medium">
-                    {result.listingItemCollection}
-                  </span>
-                </p>
-              ) : null}
-              {result.listingItemUri ? (
-                <p className="pt-2">
-                  <Link
-                    to={itemPathCanonical(
-                      catalogItemRkey(result.listingItemUri),
-                    )}
-                    className="underline underline-offset-4 hover:text-foreground"
-                  >
-                    View item
-                  </Link>
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-sm text-destructive">
-              {result.error ?? "Invalid receipt"}
-            </p>
-          )}
-        </div>
-      ) : null}
     </div>
   );
 }
