@@ -125,7 +125,7 @@ export function CustomerDashboardPage() {
 
       {validationError ? (
         <div className="flex items-start justify-between gap-3 border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          <p>{validationError}</p>
+          <p className="min-w-0 break-words">{validationError}</p>
           <button
             type="button"
             onClick={() => setValidationError(null)}

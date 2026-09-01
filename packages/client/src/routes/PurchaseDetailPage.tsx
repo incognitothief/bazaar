@@ -9,6 +9,7 @@ import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { createBrowserApiURL } from "@/lib/browserApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
@@ -102,6 +103,7 @@ export function PurchaseDetailPage() {
     null,
   );
   const [pageLoading, setPageLoading] = useState(true);
+  const [artworkPreviewOpen, setArtworkPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (!receiptUri || !session) {
@@ -287,9 +289,12 @@ export function PurchaseDetailPage() {
   const isMusicProduct = isProduct && productTypeConfig(productType).value === "music";
   const isCatalogItemSingle = item.$type === BAZAAR_COLLECTION.item;
   const blobDid = catalogItemSellerDid(item);
+  const coverUrl = coverImages[0]?.url;
+  const artworkCid = catalogItemArtworkCid(item);
+  const hasArtwork = !!coverUrl || !!artworkCid;
 
   return (
-    <article className="mx-auto w-full min-w-0 max-w-2xl space-y-8 px-4 sm:px-6 py-8">
+    <article className="mx-auto w-full min-w-0 max-w-2xl space-y-8 px-4 sm:px-6 pb-8">
       <div>
         <Link
           to="/dashboard"
@@ -300,24 +305,29 @@ export function PurchaseDetailPage() {
       </div>
 
       <section className="grid gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] sm:items-start">
-        <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64">
-          {coverImages[0] ? (
-            <img
-              src={coverImages[0].url}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <ArtworkImage
-              agent={agent}
-              did={blobDid}
-              cid={catalogItemArtworkCid(item)}
-              itemUri={receipt.item.uri}
-              alt=""
-              className="h-full w-full"
-            />
-          )}
-        </div>
+        {hasArtwork ? (
+          <button
+            type="button"
+            onClick={() => setArtworkPreviewOpen(true)}
+            aria-label="View full-size artwork"
+            className="block overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64 cursor-zoom-in transition-opacity hover:opacity-90"
+          >
+            {coverUrl ? (
+              <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <ArtworkImage
+                agent={agent}
+                did={blobDid}
+                cid={artworkCid}
+                itemUri={receipt.item.uri}
+                alt=""
+                className="h-full w-full"
+              />
+            )}
+          </button>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64" />
+        )}
         <div className="space-y-3">
           <h1 className="text-2xl font-semibold">{item.title}</h1>
           <p className="text-sm text-muted-foreground">
@@ -491,6 +501,33 @@ export function PurchaseDetailPage() {
           Download is not available for this item type.
         </p>
       ) : null}
+
+      <Dialog open={artworkPreviewOpen} onOpenChange={setArtworkPreviewOpen}>
+        <DialogContent
+          overlayClassName="bg-black/90 backdrop-blur-sm"
+          className="flex w-auto max-w-[95vw] items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-[95vw]"
+          showCloseButton={false}
+        >
+          <div className="bg-muted leading-none">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt=""
+                className="block max-h-[85vh] max-w-[85vw] object-contain"
+              />
+            ) : (
+              <ArtworkImage
+                agent={agent}
+                did={blobDid}
+                cid={artworkCid}
+                itemUri={receipt.item.uri}
+                alt=""
+                className="max-h-[85vh] max-w-[85vw]"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </article>
   );
 }
