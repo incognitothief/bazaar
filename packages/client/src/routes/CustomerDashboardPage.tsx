@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { SearchIcon } from "lucide-react";
 
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { getAuthRole } from "@/lib/auth";
@@ -11,75 +10,15 @@ import {
   type PurchaseReceiptRow,
 } from "@/lib/atproto/records";
 import type { CatalogItem } from "@/types/lexicons";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverTitle,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { ValidateReceiptDialog } from "@/components/ValidateReceiptDialog";
 
 function formatMoney(m: { amount: number; currency: string }): string {
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: m.currency,
   }).format(m.amount / 100);
-}
-
-function ValidateReceiptPopover() {
-  const navigate = useNavigate();
-  const [uri, setUri] = useState("");
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Button variant="outline" size="sm">
-            <SearchIcon />
-            Validate a receipt URI
-          </Button>
-        }
-      />
-      <PopoverContent align="end">
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const trimmed = uri.trim();
-            if (!trimmed) return;
-            setOpen(false);
-            navigate(`/dashboard/validate/${encodeURIComponent(trimmed)}`);
-          }}
-        >
-          <div className="space-y-1">
-            <PopoverTitle>Validate a receipt URI</PopoverTitle>
-            <PopoverDescription>
-              Check any purchase receipt against the listing it was issued
-              for.
-            </PopoverDescription>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="popover-receipt-uri">Receipt URI</Label>
-            <Input
-              id="popover-receipt-uri"
-              value={uri}
-              placeholder="at://did:plc:.../purchase.receipt/..."
-              onChange={(e) => setUri(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <Button type="submit" size="sm" className="w-full">
-            Validate
-          </Button>
-        </form>
-      </PopoverContent>
-    </Popover>
-  );
 }
 
 export function CustomerDashboardPage() {
@@ -179,7 +118,7 @@ export function CustomerDashboardPage() {
             Below is a list of items you have purchased from this bazaar.
           </p>
         </div>
-        <ValidateReceiptPopover />
+        <ValidateReceiptDialog />
       </div>
 
       {purchases.length > 0 ? (

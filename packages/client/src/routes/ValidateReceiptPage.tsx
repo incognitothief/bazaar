@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
 
@@ -9,10 +9,8 @@ import { catalogItemRkey, itemPathCanonical } from "@/lib/itemPath";
 import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import type { Listing, PurchaseReceipt } from "@/types/lexicons";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { ValidateReceiptDialog } from "@/components/ValidateReceiptDialog";
 
 type ReceiptValidationResult = {
   receiptOk: boolean;
@@ -37,12 +35,10 @@ function formatMoney(m: { amount: number; currency: string }): string {
 
 export function ValidateReceiptPage() {
   const { session, loading } = useAtpSession();
-  const navigate = useNavigate();
   const location = useLocation();
   const { receiptUri: encoded } = useParams<{ receiptUri?: string }>();
   const uriFromRoute = encoded ? decodeURIComponent(encoded) : "";
 
-  const [input, setInput] = useState(uriFromRoute);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ReceiptValidationResult | null>(null);
 
@@ -133,7 +129,6 @@ export function ValidateReceiptPage() {
   }
 
   useEffect(() => {
-    setInput(uriFromRoute);
     if (session && uriFromRoute) void validate(uriFromRoute);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uriFromRoute, session]);
@@ -173,37 +168,22 @@ export function ValidateReceiptPage() {
         >
           ← Your purchases
         </Link>
-        <h1 className="text-2xl font-semibold">Validate receipt URI</h1>
-        <p className="text-sm text-muted-foreground">
-          Paste a purchase receipt's AT-URI to check it against the listing
-          it was issued for.
-        </p>
       </div>
 
-      <form
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const trimmed = input.trim();
-          if (!trimmed) return;
-          navigate(`/dashboard/validate/${encodeURIComponent(trimmed)}`);
-        }}
-      >
-        <div className="space-y-2">
-          <Label htmlFor="receipt-uri">Receipt URI</Label>
-          <Input
-            id="receipt-uri"
-            value={input}
-            placeholder="at://did:plc:.../diamonds.whereditgo.bazaar.purchase.receipt/..."
-            onChange={(e) => setInput(e.target.value)}
-          />
+      <div className="flex flex-wrap items-start justify-between gap-3 min-w-0">
+        <div className="space-y-2 min-w-0">
+          <h1 className="text-2xl font-semibold">Validate receipt URI</h1>
+          <p className="text-sm text-muted-foreground">
+            Check a purchase receipt's AT-URI against the listing it was
+            issued for.
+          </p>
         </div>
-        <Button type="submit" disabled={busy}>
-          {busy ? "Validating…" : "Validate"}
-        </Button>
-      </form>
+        <ValidateReceiptDialog initialUri={uriFromRoute} />
+      </div>
 
-      {result ? (
+      {busy ? (
+        <p className="text-sm text-muted-foreground">Validating…</p>
+      ) : result ? (
         <div className="rounded-lg border border-border p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-1">
@@ -262,7 +242,11 @@ export function ValidateReceiptPage() {
             </p>
           )}
         </div>
-      ) : null}
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No receipt validated yet. Use "Validate a receipt URI" above.
+        </p>
+      )}
     </div>
   );
 }
