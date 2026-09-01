@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
 
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { createBrowserApiURL } from "@/lib/browserApi";
+import { merchantSignInUrl } from "@/lib/signInReturn";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { pdslsRecordUrl } from "@/lib/pdsls";
 import {
@@ -118,6 +119,7 @@ function TriageField({
 }
 
 export function PurchaseDetailPage() {
+  const location = useLocation();
   const { receiptUri: enc } = useParams<{ receiptUri: string }>();
   const receiptUri = enc ? decodeURIComponent(enc) : "";
   const { session, loading } = useAtpSession();
@@ -305,8 +307,11 @@ export function PurchaseDetailPage() {
     return (
       <div className="mx-auto max-w-lg px-4 py-12 text-center">
         <p className="text-muted-foreground">Sign in to view this purchase.</p>
-        <Link to="/dashboard" className="underline mt-4 inline-block">
-          Dashboard
+        <Link
+          to={merchantSignInUrl(location.pathname, location.search)}
+          className="underline mt-4 inline-block"
+        >
+          Sign in
         </Link>
       </div>
     );
