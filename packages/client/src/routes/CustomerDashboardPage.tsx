@@ -5,6 +5,7 @@ import { XIcon } from "lucide-react";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { getAuthRole } from "@/lib/auth";
 import { merchantSignInUrl } from "@/lib/signInReturn";
+import { pdslsRecordUrl } from "@/lib/pdsls";
 import {
   getRecordValue,
   listPurchaseReceiptRows,
@@ -14,6 +15,7 @@ import type { CatalogItem } from "@/types/lexicons";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ValidateReceiptDialog } from "@/components/ValidateReceiptDialog";
+import { CopyButton } from "@/components/shared/CopyButton";
 
 function formatMoney(m: { amount: number; currency: string }): string {
   return new Intl.NumberFormat(undefined, {
@@ -30,6 +32,9 @@ export function CustomerDashboardPage() {
   const [purchases, setPurchases] = useState<PurchaseReceiptRow[]>([]);
   const [purchaseTitles, setPurchaseTitles] = useState<Record<string, string>>(
     {},
+  );
+  const [unresolvedItemUris, setUnresolvedItemUris] = useState<Set<string>>(
+    new Set(),
   );
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -70,16 +75,31 @@ export function CustomerDashboardPage() {
     let cancelled = false;
     void (async () => {
       const next: Record<string, string> = {};
+      const failed = new Set<string>();
       for (const row of purchases) {
         const uri = row.receipt.item.uri;
         try {
           const item = await getRecordValue<CatalogItem>(uri);
-          if (item?.title) next[row.uri] = item.title;
+          if (item?.title) {
+            next[row.uri] = item.title;
+          } else {
+            // Record resolved but has no title, or resolved to nothing --
+            // treat the same as "couldn't find it" for display purposes.
+            failed.add(row.uri);
+          }
         } catch {
-          /* ignore */
+          // Most commonly: the merchant deleted/replaced this item after
+          // the purchase was made, so it no longer resolves. The receipt
+          // itself is still a real, valid record -- just orphaned.
+          failed.add(row.uri);
         }
       }
-      if (!cancelled) setPurchaseTitles((prev) => ({ ...prev, ...next }));
+      if (!cancelled) {
+        setPurchaseTitles((prev) => ({ ...prev, ...next }));
+        setUnresolvedItemUris(
+          (prev) => new Set([...prev, ...failed]),
+        );
+      }
     })();
     return () => {
       cancelled = true;
@@ -139,30 +159,68 @@ export function CustomerDashboardPage() {
 
       {purchases.length > 0 ? (
         <div className="rounded-lg border border-border divide-y">
-          {purchases.map((row) => (
-            <div
-              key={row.uri}
-              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-            >
-              <div className="min-w-0 space-y-0.5">
-                <p className="font-medium truncate">
-                  {purchaseTitles[row.uri] ?? row.receipt.item.uri}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {formatMoney(row.receipt.pricePaid)} ·{" "}
-                  {new Date(row.receipt.purchasedAt).toLocaleString()}
-                </p>
-              </div>
-              <Link
-                to={`/dashboard/purchase/${encodeURIComponent(row.uri)}`}
-                className={cn(
-                  buttonVariants({ variant: "secondary", size: "sm" }),
-                )}
+          {purchases.map((row) => {
+            const unresolved = unresolvedItemUris.has(row.uri);
+            const receiptHref = pdslsRecordUrl(row.uri);
+            return (
+              <div
+                key={row.uri}
+                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
               >
-                View Receipt
-              </Link>
-            </div>
-          ))}
+                <div className="min-w-0 space-y-0.5">
+                  {unresolved ? (
+                    <>
+                      <p className="font-medium text-muted-foreground">
+                        Item unavailable
+                      </p>
+                      <div className="flex min-w-0 items-center gap-1">
+                        <code
+                          className="min-w-0 truncate text-[11px] text-muted-foreground"
+                          title={row.receipt.item.uri}
+                        >
+                          {row.receipt.item.uri}
+                        </code>
+                        <CopyButton
+                          value={row.receipt.item.uri}
+                          label="Copy item URI"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <p className="font-medium truncate">
+                      {purchaseTitles[row.uri] ?? row.receipt.item.uri}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {formatMoney(row.receipt.pricePaid)} ·{" "}
+                    {new Date(row.receipt.purchasedAt).toLocaleString()}
+                  </p>
+                </div>
+                {unresolved && receiptHref ? (
+                  <a
+                    href={receiptHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="The item behind this receipt couldn't be found -- opening the raw receipt record on pdsls instead"
+                    className={cn(
+                      buttonVariants({ variant: "secondary", size: "sm" }),
+                    )}
+                  >
+                    View Receipt
+                  </a>
+                ) : (
+                  <Link
+                    to={`/dashboard/purchase/${encodeURIComponent(row.uri)}`}
+                    className={cn(
+                      buttonVariants({ variant: "secondary", size: "sm" }),
+                    )}
+                  >
+                    View Receipt
+                  </Link>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">

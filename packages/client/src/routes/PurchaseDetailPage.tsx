@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { CollectionMemberDownloads } from "@/components/public/TrackList";
+import { CopyButton } from "@/components/shared/CopyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
@@ -77,6 +78,42 @@ function PdslsCidLink({
         {cid}
       </a>
     </p>
+  );
+}
+
+/**
+ * Label + copyable raw value + optional pdsls link, for the "something
+ * didn't resolve" states below -- meant to be readable and actionable by
+ * either the buyer or merchant support looking into a broken purchase, not
+ * just a developer.
+ */
+function TriageField({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value: string;
+  href?: string | null;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="flex items-start gap-1.5">
+        <code className="min-w-0 flex-1 break-all text-[11px]">{value}</code>
+        <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />
+      </div>
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block text-[11px] text-primary underline-offset-2 hover:underline"
+        >
+          Open on pdsls ↗
+        </a>
+      ) : null}
+    </div>
   );
 }
 
@@ -275,10 +312,77 @@ export function PurchaseDetailPage() {
     );
   }
 
-  if (!receipt || !item) {
+  if (!receipt) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-12 text-muted-foreground">
-        Purchase not found.
+      <div className="mx-auto max-w-lg space-y-6 px-4 py-12">
+        <p className="text-muted-foreground">
+          This receipt could not be loaded. It may not exist, may belong to
+          a different account, or the URI may be incomplete.
+        </p>
+        {receiptUri ? (
+          <TriageField
+            label="Receipt URI"
+            value={receiptUri}
+            href={pdslsRecordUrl(receiptUri)}
+          />
+        ) : null}
+        <Link
+          to="/dashboard"
+          className="inline-block text-sm text-muted-foreground underline underline-offset-4"
+        >
+          ← Purchases
+        </Link>
+      </div>
+    );
+  }
+
+  if (!item) {
+    return (
+      <div className="mx-auto max-w-lg space-y-6 px-4 py-12">
+        <div className="space-y-1">
+          <h1 className="text-lg font-medium">Item record not found</h1>
+          <p className="text-sm text-muted-foreground">
+            The purchase itself is real -- this receipt exists and was
+            issued by this store -- but the item it references no longer
+            resolves. This usually means the merchant removed or replaced
+            it after the purchase was made. If you're following up with
+            support, these are the exact values to share.
+          </p>
+        </div>
+        <div className="space-y-4 rounded-lg border border-border p-4">
+          <TriageField
+            label="Receipt URI"
+            value={receiptUri}
+            href={pdslsRecordUrl(receiptUri)}
+          />
+          {receiptCid ? (
+            <TriageField label="Receipt record CID" value={receiptCid} />
+          ) : null}
+          <TriageField
+            label="Item URI (not found)"
+            value={receipt.item.uri}
+            href={pdslsRecordUrl(receipt.item.uri)}
+          />
+          {receipt.item.cid ? (
+            <TriageField
+              label="Item CID (at purchase)"
+              value={receipt.item.cid}
+            />
+          ) : null}
+          {receipt.listingUri ? (
+            <TriageField
+              label="Listing URI"
+              value={receipt.listingUri}
+              href={pdslsRecordUrl(receipt.listingUri)}
+            />
+          ) : null}
+        </div>
+        <Link
+          to="/dashboard"
+          className="inline-block text-sm text-muted-foreground underline underline-offset-4"
+        >
+          ← Purchases
+        </Link>
       </div>
     );
   }
