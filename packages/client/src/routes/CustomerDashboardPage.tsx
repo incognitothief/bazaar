@@ -124,7 +124,11 @@ export function CustomerDashboardPage() {
       if (receiptAt.collection !== BAZAAR_COLLECTION.receipt) {
         throw new Error("That URI is not a Bazaar purchase receipt.");
       }
-      if (!receiptAt.rkey) throw new Error("Invalid receipt URI.");
+      if (!receiptAt.rkey) {
+        throw new Error(
+          "URI is missing its record key -- it points at the collection, not one receipt. It should end in .../purchase.receipt/<rkey>.",
+        );
+      }
 
       const receiptAgent = await agentForRepo(receiptAt.hostname);
       const receiptRes = await receiptAgent.com.atproto.repo.getRecord({
