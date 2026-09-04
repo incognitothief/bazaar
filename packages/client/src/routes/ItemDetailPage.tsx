@@ -840,6 +840,11 @@ export function ItemDetailPage() {
               <MetadataChip key={g}>{g}</MetadataChip>
             ))
           : null}
+        {"tags" in item && item.tags
+          ? item.tags.map((t: string) => (
+              <MetadataChip key={t}>{t}</MetadataChip>
+            ))
+          : null}
       </section>
 
       {isCollection ? (
