@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { TagsInput } from "@/components/shared/TagsInput";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -1176,7 +1177,7 @@ function CatalogItemEditForm({
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
-  const [tagsLine, setTagsLine] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
@@ -1195,7 +1196,7 @@ function CatalogItemEditForm({
     setTitle(r.title);
     setCategory(r.category ?? "");
     setDescription(r.description ?? "");
-    setTagsLine((r.tags ?? []).join(", "));
+    setTags(r.tags ?? []);
     setLoading(false);
   }, [uri]);
 
@@ -1207,10 +1208,6 @@ function CatalogItemEditForm({
     if (!row) return;
     setSaving(true);
     try {
-      const tags = tagsLine
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
       await putCatalogItem(agent, uri, {
         title: title.trim(),
         category: category.trim() || undefined,
@@ -1267,7 +1264,7 @@ function CatalogItemEditForm({
       setTitle(row.title);
       setCategory(row.category ?? "");
       setDescription(row.description ?? "");
-      setTagsLine((row.tags ?? []).join(", "));
+      setTags(row.tags ?? []);
     }
     setEditing(false);
   }
@@ -1409,11 +1406,11 @@ function CatalogItemEditForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ci-tags">Tags (comma-separated)</Label>
-            <Input
+            <Label htmlFor="ci-tags">Tags</Label>
+            <TagsInput
               id="ci-tags"
-              value={tagsLine}
-              onChange={(e) => setTagsLine(e.target.value)}
+              tags={tags}
+              onChange={setTags}
               placeholder="e.g. lofi, drum loop, 90bpm"
             />
           </div>

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
 import { BatchFileDropzone, type BatchFileEntry } from "@/components/shared/BatchFileDropzone";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
+import { TagsInput } from "@/components/shared/TagsInput";
 import {
   createInventorySession,
   inventoryUserFacingError,
@@ -73,7 +74,7 @@ export function MerchantProductDetailPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [tagsLine, setTagsLine] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [items, setItems] = useState<ItemRef[]>([]);
   const [productType, setProductType] = useState<string | null>(null);
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(false);
@@ -109,7 +110,7 @@ export function MerchantProductDetailPage() {
     setProduct(p);
     setTitle(p.title);
     setDescription(p.description ?? "");
-    setTagsLine((p.tags ?? []).join(", "));
+    setTags(p.tags ?? []);
     setItems(p.items as ItemRef[]);
     setProductType(p.productType);
     setArtIncludedInDownload(p.artIncludedInDownload);
@@ -296,10 +297,6 @@ export function MerchantProductDetailPage() {
     if (!agent || !product) return;
     setSaving(true);
     try {
-      const tags = tagsLine
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
       await putCatalogProduct(agent, uri, {
         title: title.trim(),
         description: description.trim() || undefined,
@@ -358,7 +355,7 @@ export function MerchantProductDetailPage() {
     if (product) {
       setTitle(product.title);
       setDescription(product.description ?? "");
-      setTagsLine((product.tags ?? []).join(", "));
+      setTags(product.tags ?? []);
       setItems(product.items as ItemRef[]);
     }
     setEditing(false);
@@ -471,11 +468,11 @@ export function MerchantProductDetailPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="prod-tags">Tags (comma-separated)</Label>
-            <Input
+            <Label htmlFor="prod-tags">Tags</Label>
+            <TagsInput
               id="prod-tags"
-              value={tagsLine}
-              onChange={(e) => setTagsLine(e.target.value)}
+              tags={tags}
+              onChange={setTags}
               placeholder="e.g. lofi, instrumental, album"
             />
           </div>

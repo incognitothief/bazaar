@@ -12,6 +12,7 @@ import {
 } from "@/lib/api/inventoryApi";
 import { BatchFileDropzone, type BatchFileEntry } from "@/components/shared/BatchFileDropzone";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
+import { TagsInput } from "@/components/shared/TagsInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,8 +32,7 @@ type ItemDraftRow = {
   file: File;
   title: string;
   category: string;
-  /** Comma-separated; parsed into string[] at publish time. */
-  tagsLine: string;
+  tags: string[];
   /** Detected from the file itself (parsed audio metadata, falling back to the extension) -- never merchant-editable, so it always reflects what was actually uploaded. */
   format: string;
   /** Parsed client-side for audio files only; null/undefined when the file isn't audio or metadata parsing failed. */
@@ -124,7 +124,7 @@ export function AddProductPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [tagsLine, setTagsLine] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [productType, setProductType] = useState<ProductType>(GENERIC_PRODUCT_TYPE);
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(
     () => productTypeConfig(GENERIC_PRODUCT_TYPE).defaultArtIncludedInDownload,
@@ -208,7 +208,7 @@ export function AddProductPage() {
           file: entry.file,
           title: meta?.title?.trim() || titleFromFileName(entry.file.name),
           category: "",
-          tagsLine: "",
+          tags: [],
           format: meta?.format || formatFromFileName(entry.file.name),
           durationMs: meta?.durationMs,
           objectId: null,
@@ -290,7 +290,7 @@ export function AddProductPage() {
   const updateItem = useCallback(
     (
       id: string,
-      patch: Partial<Pick<ItemDraftRow, "title" | "category" | "tagsLine">>,
+      patch: Partial<Pick<ItemDraftRow, "title" | "category" | "tags">>,
     ) => {
       setItems((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
     },
@@ -379,18 +379,11 @@ export function AddProductPage() {
       const artworkObjectIds = coverImages
         .map((img) => img.objectId)
         .filter((id): id is string => !!id);
-      const parseTagsLine = (line: string): string[] | undefined => {
-        const tags = line
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean);
-        return tags.length ? tags : undefined;
-      };
       await saveInventoryDraft(sessionId, {
         product: {
           title: title.trim(),
           description: description.trim() || undefined,
-          tags: parseTagsLine(tagsLine),
+          tags: tags.length ? tags : undefined,
           artworkObjectIds,
           productType,
           artIncludedInDownload: artworkObjectIds.length > 0 ? artIncludedInDownload : false,
@@ -403,7 +396,7 @@ export function AddProductPage() {
           objectId: r.objectId,
           title: r.title.trim(),
           category: r.category.trim() || undefined,
-          tags: parseTagsLine(r.tagsLine),
+          tags: r.tags.length ? r.tags : undefined,
           format: r.format.trim() || undefined,
           durationMs: r.durationMs,
         })),
@@ -422,7 +415,7 @@ export function AddProductPage() {
     sessionId,
     title,
     description,
-    tagsLine,
+    tags,
     coverImages,
     productType,
     artIncludedInDownload,
@@ -510,12 +503,12 @@ export function AddProductPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="product-tags">Tags (comma-separated)</Label>
-            <Input
+            <Label htmlFor="product-tags">Tags (optional)</Label>
+            <TagsInput
               id="product-tags"
-              value={tagsLine}
-              onChange={(e) => setTagsLine(e.target.value)}
-              placeholder="Optional -- e.g. lofi, instrumental, album"
+              tags={tags}
+              onChange={setTags}
+              placeholder="e.g. lofi, instrumental, album"
             />
           </div>
           <div className="space-y-1.5">
@@ -687,12 +680,11 @@ export function AddProductPage() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor={`${row.id}-tags`}>Tags (comma-separated)</Label>
-                    <Input
+                    <Label htmlFor={`${row.id}-tags`}>Tags (optional)</Label>
+                    <TagsInput
                       id={`${row.id}-tags`}
-                      value={row.tagsLine}
-                      onChange={(e) => updateItem(row.id, { tagsLine: e.target.value })}
-                      placeholder="Optional"
+                      tags={row.tags}
+                      onChange={(next) => updateItem(row.id, { tags: next })}
                     />
                   </div>
                   <div className="space-y-1">
