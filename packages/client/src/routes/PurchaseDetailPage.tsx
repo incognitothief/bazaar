@@ -1,29 +1,46 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
 
 import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { CollectionMemberDownloads } from "@/components/public/TrackList";
+import { CopyButton } from "@/components/shared/CopyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { createBrowserApiURL } from "@/lib/browserApi";
+import { merchantSignInUrl } from "@/lib/signInReturn";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { pdslsRecordUrl } from "@/lib/pdsls";
-import { getRecordValue, listPurchaseConsentRows } from "@/lib/atproto/records";
+import {
+  getCatalogItem,
+  getCatalogProduct,
+  getRecordValue,
+  listPurchaseConsentRows,
+} from "@/lib/atproto/records";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { agentForRepo } from "@/lib/atproto/pdsResolve";
-import type {
-  CatalogItem,
-  Collection,
-  DigitalItem,
-  LicenseTerms,
-  PurchaseConsent,
-  PurchaseReceipt,
+import { productTypeConfig } from "@/lib/productTypes";
+import {
+  catalogItemArtworkCid,
+  catalogItemSellerDid,
+  type CatalogItem,
+  type Collection,
+  type LicenseTerms,
+  type PurchaseConsent,
+  type PurchaseReceipt,
 } from "@/types/lexicons";
+
+function formatDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
 
 function formatMoney(m: { amount: number; currency: string }): string {
   return new Intl.NumberFormat(undefined, {
@@ -65,7 +82,44 @@ function PdslsCidLink({
   );
 }
 
+/**
+ * Label + copyable raw value + optional pdsls link, for the "something
+ * didn't resolve" states below -- meant to be readable and actionable by
+ * either the buyer or merchant support looking into a broken purchase, not
+ * just a developer.
+ */
+function TriageField({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value: string;
+  href?: string | null;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="flex items-start gap-1.5">
+        <code className="min-w-0 flex-1 break-all text-[11px]">{value}</code>
+        <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />
+      </div>
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block text-[11px] text-primary underline-offset-2 hover:underline"
+        >
+          Open on pdsls ↗
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
 export function PurchaseDetailPage() {
+  const location = useLocation();
   const { receiptUri: enc } = useParams<{ receiptUri: string }>();
   const receiptUri = enc ? decodeURIComponent(enc) : "";
   const { session, loading } = useAtpSession();
@@ -75,12 +129,20 @@ export function PurchaseDetailPage() {
   const [receiptCid, setReceiptCid] = useState<string | null>(null);
   const [consent, setConsent] = useState<PurchaseConsent | null>(null);
   const [item, setItem] = useState<CatalogItem | null>(null);
+  const [coverImages, setCoverImages] = useState<
+    Array<{ objectId: string; url: string }>
+  >([]);
+  const [productType, setProductType] = useState<string | null>(null);
+  const [productItemMeta, setProductItemMeta] = useState<
+    Record<string, { title: string; durationMs: number | null }>
+  >({});
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [zipBusy, setZipBusy] = useState(false);
   const [itemDownloadingUri, setItemDownloadingUri] = useState<string | null>(
     null,
   );
   const [pageLoading, setPageLoading] = useState(true);
+  const [artworkPreviewOpen, setArtworkPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (!receiptUri || !session) {
@@ -121,10 +183,33 @@ export function PurchaseDetailPage() {
         const itemVal = await getRecordValue<CatalogItem>(itemUri);
         if (!cancelled) setItem(itemVal ?? null);
 
+        if (itemVal?.$type === BAZAAR_COLLECTION.product && "items" in itemVal) {
+          const [p, resolvedItems] = await Promise.all([
+            getCatalogProduct(itemUri),
+            Promise.all(itemVal.items.map((ref) => getCatalogItem(ref.uri))),
+          ]);
+          if (!cancelled) {
+            setCoverImages(p?.coverImages ?? []);
+            setProductType(p?.productType ?? null);
+            setProductItemMeta(
+              Object.fromEntries(
+                itemVal.items.map((ref, i) => [
+                  ref.uri,
+                  {
+                    title: resolvedItems[i]?.title ?? ref.uri,
+                    durationMs: resolvedItems[i]?.durationMs ?? null,
+                  },
+                ]),
+              ),
+            );
+          }
+        } else if (itemVal?.$type === BAZAAR_COLLECTION.item) {
+          const it = await getCatalogItem(itemUri);
+          if (!cancelled) setCoverImages(it?.coverImages ?? []);
+        }
+
         if (rec.licenseGrantUri) {
-          const lt = await getRecordValue<LicenseTerms>(
-            rec.licenseGrantUri,
-          );
+          const lt = await getRecordValue<LicenseTerms>(rec.licenseGrantUri);
           if (!cancelled) setLicense(lt);
         }
       } catch {
@@ -155,6 +240,33 @@ export function PurchaseDetailPage() {
       toast.error(e instanceof Error ? e.message : "Download failed");
     } finally {
       setItemDownloadingUri(null);
+    }
+  }
+
+  async function downloadProductZip(productUri: string) {
+    if (!session) return;
+    setZipBusy(true);
+    try {
+      const url = createBrowserApiURL("/api/download/product-zip");
+      url.searchParams.set("productUri", productUri);
+      const res = await fetch(url.href, { credentials: "include" });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || res.statusText);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get("Content-Disposition");
+      const match = dispo?.match(/filename="([^"]+)"/);
+      const name = match?.[1] ?? "product.zip";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setZipBusy(false);
     }
   }
 
@@ -195,31 +307,103 @@ export function PurchaseDetailPage() {
     return (
       <div className="mx-auto max-w-lg px-4 py-12 text-center">
         <p className="text-muted-foreground">Sign in to view this purchase.</p>
-        <Link to="/dashboard" className="underline mt-4 inline-block">
-          Dashboard
+        <Link
+          to={merchantSignInUrl(location.pathname, location.search)}
+          className="underline mt-4 inline-block"
+        >
+          Sign in
         </Link>
       </div>
     );
   }
 
-  if (!receipt || !item) {
+  if (!receipt) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-12 text-muted-foreground">
-        Purchase not found.
+      <div className="mx-auto max-w-lg space-y-6 px-4 py-12">
+        <p className="text-muted-foreground">
+          This receipt could not be loaded. It may not exist, may belong to
+          a different account, or the URI may be incomplete.
+        </p>
+        {receiptUri ? (
+          <TriageField
+            label="Receipt URI"
+            value={receiptUri}
+            href={pdslsRecordUrl(receiptUri)}
+          />
+        ) : null}
+        <Link
+          to="/dashboard"
+          className="inline-block text-sm text-muted-foreground underline underline-offset-4"
+        >
+          ← Purchases
+        </Link>
+      </div>
+    );
+  }
+
+  if (!item) {
+    return (
+      <div className="mx-auto max-w-lg space-y-6 px-4 py-12">
+        <div className="space-y-1">
+          <h1 className="text-lg font-medium">Item record not found</h1>
+          <p className="text-sm text-muted-foreground">
+            The purchase itself is real -- this receipt exists and was
+            issued by this store -- but the item it references no longer
+            resolves. This usually means the merchant removed or replaced
+            it after the purchase was made. If you're following up with
+            support, these are the exact values to share.
+          </p>
+        </div>
+        <div className="space-y-4 rounded-lg border border-border p-4">
+          <TriageField
+            label="Receipt URI"
+            value={receiptUri}
+            href={pdslsRecordUrl(receiptUri)}
+          />
+          {receiptCid ? (
+            <TriageField label="Receipt record CID" value={receiptCid} />
+          ) : null}
+          <TriageField
+            label="Item URI (not found)"
+            value={receipt.item.uri}
+            href={pdslsRecordUrl(receipt.item.uri)}
+          />
+          {receipt.item.cid ? (
+            <TriageField
+              label="Item CID (at purchase)"
+              value={receipt.item.cid}
+            />
+          ) : null}
+          {receipt.listingUri ? (
+            <TriageField
+              label="Listing URI"
+              value={receipt.listingUri}
+              href={pdslsRecordUrl(receipt.listingUri)}
+            />
+          ) : null}
+        </div>
+        <Link
+          to="/dashboard"
+          className="inline-block text-sm text-muted-foreground underline underline-offset-4"
+        >
+          ← Purchases
+        </Link>
       </div>
     );
   }
 
   const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
   const isCollection = item.$type === BAZAAR_COLLECTION.collection;
-  const blobDid = isDigital
-    ? (item as DigitalItem).artistDid
-    : isCollection
-      ? (item as Collection).artistDid
-      : receipt.issuerScope;
+  const isProduct = item.$type === BAZAAR_COLLECTION.product;
+  const isMusicProduct = isProduct && productTypeConfig(productType).value === "music";
+  const isCatalogItemSingle = item.$type === BAZAAR_COLLECTION.item;
+  const blobDid = catalogItemSellerDid(item);
+  const coverUrl = coverImages[0]?.url;
+  const artworkCid = catalogItemArtworkCid(item);
+  const hasArtwork = !!coverUrl || !!artworkCid;
 
   return (
-    <article className="mx-auto w-full min-w-0 max-w-2xl space-y-8 px-4 sm:px-6 py-8">
+    <article className="mx-auto w-full min-w-0 max-w-2xl space-y-8 px-4 sm:px-6 pb-8">
       <div>
         <Link
           to="/dashboard"
@@ -230,16 +414,29 @@ export function PurchaseDetailPage() {
       </div>
 
       <section className="grid gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] sm:items-start">
-        <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64">
-          <ArtworkImage
-            agent={agent}
-            did={blobDid}
-            cid={item.artworkCid}
-            itemUri={receipt.item.uri}
-            alt=""
-            className="h-full w-full"
-          />
-        </div>
+        {hasArtwork ? (
+          <button
+            type="button"
+            onClick={() => setArtworkPreviewOpen(true)}
+            aria-label="View full-size artwork"
+            className="block overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64 cursor-zoom-in transition-opacity hover:opacity-90"
+          >
+            {coverUrl ? (
+              <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <ArtworkImage
+                agent={agent}
+                did={blobDid}
+                cid={artworkCid}
+                itemUri={receipt.item.uri}
+                alt=""
+                className="h-full w-full"
+              />
+            )}
+          </button>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64" />
+        )}
         <div className="space-y-3">
           <h1 className="text-2xl font-semibold">{item.title}</h1>
           <p className="text-sm text-muted-foreground">
@@ -267,6 +464,21 @@ export function PurchaseDetailPage() {
               </code>
             </p>
           ) : null}
+          <hr className="my-3 border-border" />
+          {receipt.listingCid && receipt.listingUri ? (
+            <PdslsCidLink
+              cid={receipt.listingCid}
+              recordUri={receipt.listingUri}
+              label="Listing (at purchase) CID:"
+            />
+          ) : null}
+          {receipt.item.cid ? (
+            <PdslsCidLink
+              cid={receipt.item.cid}
+              recordUri={receipt.item.uri}
+              label="Item (at purchase) CID:"
+            />
+          ) : null}
         </div>
       </section>
 
@@ -290,9 +502,9 @@ export function PurchaseDetailPage() {
         {"durationMs" in item && item.durationMs ? (
           <MetadataChip>{Math.round(item.durationMs / 60000)} min</MetadataChip>
         ) : null}
-        {item.genre?.map((g) => (
-          <MetadataChip key={g}>{g}</MetadataChip>
-        ))}
+        {"genre" in item
+          ? item.genre?.map((g) => <MetadataChip key={g}>{g}</MetadataChip>)
+          : null}
       </section>
 
       {"description" in item && item.description ? (
@@ -329,7 +541,59 @@ export function PurchaseDetailPage() {
         </section>
       ) : null}
 
-      {isDigital ? (
+      {isProduct && "items" in item ? (
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium">Your downloads</h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={zipBusy}
+            onClick={() => void downloadProductZip(receipt.item.uri)}
+          >
+            {zipBusy ? "Preparing…" : "Download all (.zip)"}
+          </Button>
+          <ol className="list-none space-y-2 text-sm m-0 p-0">
+            {item.items.map((ref, index) => {
+              const meta = productItemMeta[ref.uri];
+              return (
+                <li
+                  key={ref.uri}
+                  className="flex items-center justify-between gap-2 py-1.5"
+                >
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    {isMusicProduct ? (
+                      <span className="tabular-nums text-muted-foreground shrink-0 w-5 text-right">
+                        {index + 1}.
+                      </span>
+                    ) : null}
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      <span className="font-medium">{meta?.title ?? ref.uri}</span>
+                      {meta?.durationMs != null ? (
+                        <span className="ml-2 text-muted-foreground tabular-nums">
+                          {formatDuration(meta.durationMs)}
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    disabled={itemDownloadingUri === ref.uri}
+                    onClick={() => void downloadDigitalItemUri(ref.uri)}
+                  >
+                    {itemDownloadingUri === ref.uri ? "Preparing…" : "Download"}
+                  </Button>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ) : null}
+
+      {isDigital || isCatalogItemSingle ? (
         <section>
           <Button
             type="button"
@@ -341,11 +605,38 @@ export function PurchaseDetailPage() {
         </section>
       ) : null}
 
-      {!isDigital && !isCollection ? (
+      {!isDigital && !isCollection && !isProduct && !isCatalogItemSingle ? (
         <p className="text-sm text-muted-foreground">
           Download is not available for this item type.
         </p>
       ) : null}
+
+      <Dialog open={artworkPreviewOpen} onOpenChange={setArtworkPreviewOpen}>
+        <DialogContent
+          overlayClassName="bg-black/90 backdrop-blur-sm"
+          className="flex w-auto max-w-[95vw] items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-[95vw]"
+          showCloseButton={false}
+        >
+          <div className="bg-muted leading-none">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt=""
+                className="block max-h-[85vh] max-w-[85vw] object-contain"
+              />
+            ) : (
+              <ArtworkImage
+                agent={agent}
+                did={blobDid}
+                cid={artworkCid}
+                itemUri={receipt.item.uri}
+                alt=""
+                className="max-h-[85vh] max-w-[85vw]"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </article>
   );
 }

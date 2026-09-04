@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { formatMoney } from "@/lib/format";
-import type { CatalogItem, Listing } from "@/types/lexicons";
+import { catalogItemArtworkCid, type CatalogItem, type Listing } from "@/types/lexicons";
 import { ArtworkImage } from "./ArtworkImage";
 
 export function ItemCard({
@@ -13,6 +13,7 @@ export function ItemCard({
   artistDid,
   itemUri,
   item,
+  coverImages,
   listing,
   preview,
 }: {
@@ -20,12 +21,15 @@ export function ItemCard({
   artistDid: string;
   itemUri: string;
   item: CatalogItem;
+  /** catalog.product only -- presigned R2 URLs, bypasses the CID-based ArtworkImage path entirely. */
+  coverImages?: Array<{ objectId: string; url: string }>;
   listing: Listing;
   /** Local-only catalog preview (not on PDS). */
   preview?: boolean;
 }) {
   const title = item.title;
-  const artworkCid = item.artworkCid;
+  const artworkCid = catalogItemArtworkCid(item);
+  const coverUrl = coverImages?.[0]?.url;
   const trackCount =
     item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
       ? item.items.filter((i) => i.role === "track").length
@@ -39,14 +43,18 @@ export function ItemCard({
     >
       <Card className="h-full gap-0 overflow-hidden rounded-b-xl rounded-t-none py-0 ring-border transition-shadow hover:shadow-md">
         <div className="aspect-square w-full overflow-hidden bg-muted">
-          <ArtworkImage
-            agent={agent}
-            did={artistDid}
-            cid={artworkCid}
-            itemUri={itemUri}
-            alt=""
-            className="h-full w-full"
-          />
+          {coverUrl ? (
+            <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <ArtworkImage
+              agent={agent}
+              did={artistDid}
+              cid={artworkCid}
+              itemUri={itemUri}
+              alt=""
+              className="h-full w-full"
+            />
+          )}
         </div>
         <CardContent className="space-y-2 p-4">
           <h3 className="font-semibold leading-tight line-clamp-2">

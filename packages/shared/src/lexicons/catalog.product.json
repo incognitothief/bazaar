@@ -1,0 +1,58 @@
+{
+  "lexicon": 1,
+  "id": "diamonds.whereditgo.bazaar.catalog.product",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "description": "The public declaration of a product's composition — one or more catalog.item records sold or released together (an album, a sample pack bundle, a box set, etc.). This is the part of a product that needs to be publicly verifiable; internal-only metadata (e.g. cover art, liner notes) that isn't essential to the product's identity is tracked separately in the merchant's own inventory records, not here.",
+        "required": [
+          "title",
+          "sellerDid",
+          "items",
+          "createdAt"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Freely mutable via putRecord."
+          },
+          "sellerDid": {
+            "type": "string",
+            "format": "did",
+            "description": "Immutable. Ownership transfer is not supported."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Freely mutable via putRecord."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Freeform, seller-authored tags for search/filtering. No fixed taxonomy. Freely mutable via putRecord."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
+            },
+            "minLength": 1,
+            "description": "The catalog.item records that compose this product, in display order. Freely mutable via putRecord -- a listing pins the item/product CID it was created against (itemRef.cid), so editing a product's composition later cannot silently change what an existing buyer already paid for."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Immutable."
+          }
+        }
+      }
+    }
+  }
+}

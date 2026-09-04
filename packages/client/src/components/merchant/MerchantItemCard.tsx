@@ -14,6 +14,8 @@ import {
   itemDetailText,
   kindLabel,
   listingStatusBadgeVariant,
+  rowArtworkCid,
+  rowCoverImageUrl,
   storefrontHref,
 } from "./merchantItemDisplay";
 
@@ -37,21 +39,31 @@ export function MerchantItemCard({
 
   return (
     <Card className="h-full gap-0 overflow-hidden py-0 ring-border transition-shadow hover:shadow-md">
-      <Link to={editHref(row.uri)} className="block focus-visible:outline-none">
+      <Link to={editHref(row)} className="block focus-visible:outline-none">
         <div className="aspect-square w-full overflow-hidden bg-muted">
-          <ArtworkImage
-            agent={agent}
-            did={merchantDid}
-            cid={row.item.artworkCid}
-            itemUri={row.uri}
-            alt=""
-            className="h-full w-full"
-          />
+          {row.kind === "product" || row.kind === "item" ? (
+            rowCoverImageUrl(row) ? (
+              <img
+                src={rowCoverImageUrl(row)}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : null
+          ) : (
+            <ArtworkImage
+              agent={agent}
+              did={merchantDid}
+              cid={rowArtworkCid(row)}
+              itemUri={row.uri}
+              alt=""
+              className="h-full w-full"
+            />
+          )}
         </div>
       </Link>
       <CardContent className="space-y-1.5 p-3">
         <Link
-          to={editHref(row.uri)}
+          to={editHref(row)}
           className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
         >
           <h3 className="text-sm font-medium leading-tight line-clamp-2 hover:underline">
@@ -82,7 +94,7 @@ export function MerchantItemCard({
           </span>
           <div className="flex items-center gap-0.5">
             <Link
-              to={editHref(row.uri)}
+              to={editHref(row)}
               className={cn(buttonVariants({ variant: "ghost", size: "icon-xs" }))}
               title="Edit"
               aria-label="Edit"

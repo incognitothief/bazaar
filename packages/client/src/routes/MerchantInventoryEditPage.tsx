@@ -1,17 +1,39 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Download, Pencil, Tag } from "lucide-react";
+import { AtUri } from "@atproto/syntax";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { TagsInput } from "@/components/shared/TagsInput";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
+  findStaleListingsForItem,
+  getCatalogItem,
   getRecordValue,
+  listListingRows,
+  putCatalogItem,
   putCollection,
   putDigitalItem,
+  putListing,
   putPhysicalItem,
+  getCatalogItemDownloadUrl,
+  syncCatalogItem,
+  type CatalogItemRow,
+  type ListingRow,
 } from "@/lib/atproto/records";
+import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import type { ATPRepoClient } from "@/lib/atproto/session";
 import { uploadBlob } from "@/lib/atproto/upload";
 import { cn } from "@/lib/utils";
@@ -77,12 +99,23 @@ export function MerchantInventoryEditPage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
 
+  const isCatalogItemUri = useMemo(() => {
+    if (!itemUri) return false;
+    try {
+      return new AtUri(itemUri).collection === BAZAAR_COLLECTION.item;
+    } catch {
+      return false;
+    }
+  }, [itemUri]);
+
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [record, setRecord] = useState<CatalogItem | null>(null);
 
   const load = useCallback(async () => {
     if (!agent || !itemUri) return;
+    // catalog.item is ERP-first (see CatalogItemEditForm below), not PDS-direct.
+    if (isCatalogItemUri) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -101,7 +134,7 @@ export function MerchantInventoryEditPage() {
     } finally {
       setLoading(false);
     }
-  }, [agent, itemUri]);
+  }, [agent, itemUri, isCatalogItemUri]);
 
   useEffect(() => {
     void load();
@@ -120,6 +153,10 @@ export function MerchantInventoryEditPage() {
         </Link>
       </div>
     );
+  }
+
+  if (isCatalogItemUri) {
+    return <CatalogItemEditForm uri={itemUri} agent={agent} />;
   }
 
   if (loading) {
@@ -1114,6 +1151,352 @@ function PhysicalEditForm({
           Reload
         </button>
       </div>
+    </form>
+  );
+}
+
+/**
+ * catalog.item is ERP-first (getCatalogItem), not PDS-direct like the
+ * three legacy forms above -- consistent with "ERP-first everywhere."
+ * Only title/category/description are editable; fileCid/fileChecksum/
+ * format/sellerDid are preserved as-authored (see putCatalogItem).
+ */
+function CatalogItemEditForm({
+  uri,
+  agent,
+}: {
+  uri: string;
+  agent: ATPRepoClient;
+}) {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [row, setRow] = useState<CatalogItemRow | null>(null);
+
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    const r = await getCatalogItem(uri);
+    if (!r) {
+      setRow(null);
+      setLoadError("Could not load this item.");
+      setLoading(false);
+      return;
+    }
+    setRow(r);
+    setTitle(r.title);
+    setCategory(r.category ?? "");
+    setDescription(r.description ?? "");
+    setTags(r.tags ?? []);
+    setLoading(false);
+  }, [uri]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function doSave(archiveTargets: ListingRow[]) {
+    if (!row) return;
+    setSaving(true);
+    try {
+      await putCatalogItem(agent, uri, {
+        title: title.trim(),
+        category: category.trim() || undefined,
+        description: description.trim() || undefined,
+        tags: tags.length ? tags : undefined,
+      });
+      for (const listing of archiveTargets) {
+        await putListing(agent, listing.uri, {
+          ...listing.listing,
+          status: "archived",
+        });
+      }
+      await syncCatalogItem(uri);
+      if (archiveTargets.length > 0) {
+        toast.success("Saved — the old listing has been de-listed", {
+          description: "Create a new listing to sell this item again.",
+          action: {
+            label: "Create listing",
+            onClick: () =>
+              navigate(
+                `/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`,
+              ),
+          },
+        });
+      } else {
+        toast.success("Saved");
+      }
+      setStaleListings(null);
+      await load();
+      setEditing(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not save changes.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!row) return;
+    const listings = await listListingRows(row.sellerDid).catch(() => []);
+    const stale = findStaleListingsForItem(listings, row.uri, row.cid);
+    if (stale.length > 0) {
+      setStaleListings(stale);
+      return;
+    }
+    await doSave([]);
+  }
+
+  function cancelEditing() {
+    if (row) {
+      setTitle(row.title);
+      setCategory(row.category ?? "");
+      setDescription(row.description ?? "");
+      setTags(row.tags ?? []);
+    }
+    setEditing(false);
+  }
+
+  /** Incident-response tool: get this file directly, not the buyer-facing download path. */
+  async function onDownload() {
+    setDownloading(true);
+    try {
+      const result = await getCatalogItemDownloadUrl(uri);
+      if (!result) {
+        toast.error("Could not get a download link for this item.");
+        return;
+      }
+      window.location.href = result.url;
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <p className="text-sm text-muted-foreground">Loading item…</p>
+    );
+  }
+
+  if (loadError || !row) {
+    return (
+      <div className="w-full min-w-0 space-y-4">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError ?? "Unknown error."}
+        </div>
+        <Link to="/merchant/inventory" className={cn(buttonVariants())}>
+          Back to inventory
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(e) => void onSubmit(e)}
+      className="w-full min-w-0 max-w-2xl space-y-6"
+    >
+      <h1 className="text-2xl font-semibold">
+        {editing ? "Edit item" : "Item"}
+      </h1>
+
+      <div className="flex flex-wrap items-start gap-4">
+        {row.coverImages.length > 0 ? (
+          <div className="max-w-xs">
+            <CoverImageSlideshow images={row.coverImages} alt={row.title} />
+          </div>
+        ) : null}
+        <div className="ml-auto grid grid-cols-2 gap-1">
+          {!editing ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Edit item"
+              title="Edit item"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="size-4" />
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            disabled={downloading}
+            onClick={() => void onDownload()}
+            aria-label={downloading ? "Preparing download" : "Download"}
+            title="Get this file directly -- for support/incident handoff, not the buyer-facing download"
+          >
+            <Download className="size-4" />
+          </Button>
+          {!editing ? (
+            <Link
+              to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
+              className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
+              aria-label="Create listing"
+              title="Create listing"
+            >
+              <Tag className="size-4" />
+            </Link>
+          ) : null}
+          <Link
+            to="/merchant/inventory"
+            className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
+            aria-label="Back to inventory"
+            title="Back to inventory"
+          >
+            <ArrowLeft className="size-4" />
+          </Link>
+        </div>
+      </div>
+
+      {editing ? (
+        <>
+          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1">
+            <p className="text-muted-foreground text-xs">
+              File identity (format, checksum, CID) is immutable — upload a new
+              file via a replace flow to change the asset.
+            </p>
+            <p className="text-xs">
+              Format: <span className="font-medium">{row.format || "—"}</span>
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ci-title">Title</Label>
+            <Input
+              id="ci-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              maxLength={512}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ci-category">Category</Label>
+            <Input
+              id="ci-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Freeform, e.g. track, ebook, sample pack"
+              maxLength={64}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ci-desc">Description</Label>
+            <Textarea
+              id="ci-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
+              maxLength={4096}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ci-tags">Tags</Label>
+            <TagsInput
+              id="ci-tags"
+              tags={tags}
+              onChange={setTags}
+              placeholder="e.g. lofi, drum loop, 90bpm"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button type="submit" className={cn(buttonVariants())} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              className={cn(buttonVariants({ variant: "ghost" }))}
+              onClick={cancelEditing}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-medium">{row.title}</h2>
+            {row.description ? (
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {row.description}
+              </p>
+            ) : null}
+          </div>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Category: </span>
+            {row.category || "—"}
+          </p>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Format: </span>
+            {row.format || "—"}
+          </p>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Tags: </span>
+            {row.tags?.length ? row.tags.join(", ") : "—"}
+          </p>
+        </div>
+      )}
+
+      <Dialog
+        open={!!staleListings}
+        onOpenChange={(open) => {
+          if (!open) setStaleListings(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {staleListings?.length === 1
+                ? "1 listing will be de-listed"
+                : `${staleListings?.length ?? 0} listings will be de-listed`}
+            </DialogTitle>
+            <DialogDescription>
+              Saving changes this item's content, which invalidates the CID
+              that {staleListings?.length === 1 ? "this listing" : "these listings"}{" "}
+              pinned when created. To protect buyers from checking out
+              against terms they never saw,{" "}
+              {staleListings?.length === 1 ? "it" : "they"} will be
+              permanently de-listed and can't be reactivated — create a new
+              listing afterward if you want to sell this item again.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setStaleListings(null)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void doSave(staleListings ?? [])}
+              disabled={saving}
+            >
+              {saving
+                ? "Saving…"
+                : "I acknowledge this item will be de-listed"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

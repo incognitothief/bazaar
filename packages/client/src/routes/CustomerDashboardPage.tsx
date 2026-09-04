@@ -1,25 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { AtUri } from "@atproto/syntax";
-import { toast } from "sonner";
+import { XIcon } from "lucide-react";
 
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { getAuthRole } from "@/lib/auth";
 import { merchantSignInUrl } from "@/lib/signInReturn";
-import { catalogItemRkey, itemPathCanonical } from "@/lib/itemPath";
-import { agentForRepo } from "@/lib/atproto/pdsResolve";
-import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
+import { pdslsRecordUrl } from "@/lib/pdsls";
 import {
   getRecordValue,
   listPurchaseReceiptRows,
   type PurchaseReceiptRow,
 } from "@/lib/atproto/records";
-import type { CatalogItem, Listing, PurchaseReceipt } from "@/types/lexicons";
-import { Button, buttonVariants } from "@/components/ui/button";
+import type { CatalogItem } from "@/types/lexicons";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { ValidateReceiptDialog } from "@/components/ValidateReceiptDialog";
+import { CopyButton } from "@/components/shared/CopyButton";
 
 function formatMoney(m: { amount: number; currency: string }): string {
   return new Intl.NumberFormat(undefined, {
@@ -28,32 +24,19 @@ function formatMoney(m: { amount: number; currency: string }): string {
   }).format(m.amount / 100);
 }
 
-type ReceiptValidationResult = {
-  receiptOk: boolean;
-  listingOk: boolean;
-  listingActive: boolean;
-  listingCidMatches: boolean;
-  receiptListingCid?: string;
-  receiptListingUri?: string;
-  listingStatus?: Listing["status"];
-  listingPrice?: Listing["price"];
-  listingItemType?: string;
-  listingItemUri?: string;
-  error?: string;
-};
-
 export function CustomerDashboardPage() {
   const { session, loading } = useAtpSession();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [receiptUri, setReceiptUri] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<ReceiptValidationResult | null>(null);
   const [purchases, setPurchases] = useState<PurchaseReceiptRow[]>([]);
   const [purchaseTitles, setPurchaseTitles] = useState<Record<string, string>>(
     {},
   );
+  const [unresolvedItemUris, setUnresolvedItemUris] = useState<Set<string>>(
+    new Set(),
+  );
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading || !session) return;
@@ -67,7 +50,17 @@ export function CustomerDashboardPage() {
     let cancelled = false;
     void listPurchaseReceiptRows(session.did)
       .then((rows) => {
-        if (!cancelled) setPurchases(rows);
+        if (cancelled) return;
+        // A buyer's repo can hold purchase.receipt records from any Bazaar
+        // storefront, not just this one -- issuerScope is the selling
+        // merchant's own DID, stable across app-identity/key changes on our
+        // side, so it's the right signal for "did this store sell it."
+        const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim();
+        setPurchases(
+          storefrontDid
+            ? rows.filter((r) => r.receipt.issuerScope === storefrontDid)
+            : rows,
+        );
       })
       .catch(() => {
         if (!cancelled) setPurchases([]);
@@ -82,103 +75,36 @@ export function CustomerDashboardPage() {
     let cancelled = false;
     void (async () => {
       const next: Record<string, string> = {};
+      const failed = new Set<string>();
       for (const row of purchases) {
         const uri = row.receipt.item.uri;
         try {
           const item = await getRecordValue<CatalogItem>(uri);
-          if (item?.title) next[row.uri] = item.title;
+          if (item?.title) {
+            next[row.uri] = item.title;
+          } else {
+            // Record resolved but has no title, or resolved to nothing --
+            // treat the same as "couldn't find it" for display purposes.
+            failed.add(row.uri);
+          }
         } catch {
-          /* ignore */
+          // Most commonly: the merchant deleted/replaced this item after
+          // the purchase was made, so it no longer resolves. The receipt
+          // itself is still a real, valid record -- just orphaned.
+          failed.add(row.uri);
         }
       }
-      if (!cancelled) setPurchaseTitles((prev) => ({ ...prev, ...next }));
+      if (!cancelled) {
+        setPurchaseTitles((prev) => ({ ...prev, ...next }));
+        setUnresolvedItemUris(
+          (prev) => new Set([...prev, ...failed]),
+        );
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, [purchases, session]);
-
-  async function validate() {
-    if (!session) return;
-    const input = receiptUri.trim();
-    if (!input) return;
-
-    setBusy(true);
-    setResult(null);
-
-    try {
-      const receiptAt = new AtUri(input);
-      if (receiptAt.hostname !== session.did) {
-        throw new Error("That receipt is not in your account.");
-      }
-      if (receiptAt.collection !== BAZAAR_COLLECTION.receipt) {
-        throw new Error("That URI is not a Bazaar purchase receipt.");
-      }
-      if (!receiptAt.rkey) throw new Error("Invalid receipt URI.");
-
-      const receiptAgent = await agentForRepo(receiptAt.hostname);
-      const receiptRes = await receiptAgent.com.atproto.repo.getRecord({
-        repo: receiptAt.hostname,
-        collection: receiptAt.collection,
-        rkey: receiptAt.rkey,
-      });
-
-      const receipt = receiptRes.data.value as PurchaseReceipt;
-      const receiptListingCid = receipt.listingCid;
-      const receiptListingUri = receipt.listingUri;
-
-      if (!receiptListingCid || !receiptListingUri) {
-        throw new Error("Receipt is missing listing information.");
-      }
-      if (receipt.buyerDid && receipt.buyerDid !== session.did) {
-        throw new Error("Receipt buyerDid does not match your account.");
-      }
-
-      const listingAt = new AtUri(receiptListingUri);
-      if (listingAt.collection !== BAZAAR_COLLECTION.listing) {
-        throw new Error("Receipt points to a non-Bazaar listing.");
-      }
-      if (!listingAt.rkey) throw new Error("Invalid listing URI.");
-
-      const listingAgent = await agentForRepo(listingAt.hostname);
-      const listingRes = await listingAgent.com.atproto.repo.getRecord({
-        repo: listingAt.hostname,
-        collection: listingAt.collection,
-        rkey: listingAt.rkey,
-      });
-
-      const listing = listingRes.data.value as Listing;
-      const listingCid = listingRes.data.cid;
-
-      const listingCidMatches = listingCid === receiptListingCid;
-      const listingActive = listing.status === "active";
-
-      setResult({
-        receiptOk: true,
-        listingOk: true,
-        listingActive,
-        listingCidMatches,
-        receiptListingCid,
-        receiptListingUri,
-        listingStatus: listing.status,
-        listingPrice: listing.price,
-        listingItemType: listing.item.itemType,
-        listingItemUri: listing.item.uri,
-      });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      toast.error("Receipt validation failed", { description: message });
-      setResult({
-        receiptOk: false,
-        listingOk: false,
-        listingActive: false,
-        listingCidMatches: false,
-        error: message,
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
 
   if (loading) {
     return (
@@ -191,9 +117,9 @@ export function CustomerDashboardPage() {
   if (!session) {
     return (
       <div className="mx-auto max-w-lg space-y-6 px-4 py-12 text-center sm:px-6">
-        <h1 className="text-2xl font-semibold">Receipt validation</h1>
+        <h1 className="text-2xl font-semibold">Your purchases</h1>
         <p className="text-sm text-muted-foreground">
-          Sign in to validate your purchase receipts against available listings.
+          Sign in to view your purchases and validate receipts.
         </p>
         <Link
           to={merchantSignInUrl(location.pathname, location.search)}
@@ -207,127 +133,100 @@ export function CustomerDashboardPage() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-2xl space-y-8">
-      <div className="space-y-2 min-w-0">
-        <h1 className="text-2xl font-semibold">Your purchases</h1>
-        <p className="text-sm text-muted-foreground">
-          Downloads and terms for receipts in your repo. Validate a specific
-          receipt URI below if needed.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3 min-w-0">
+        <div className="space-y-2 min-w-0">
+          <h1 className="text-2xl font-semibold">Your purchases</h1>
+          <p className="text-sm text-muted-foreground">
+            Below is a list of items you have purchased from this bazaar.
+          </p>
+        </div>
+        <ValidateReceiptDialog onError={setValidationError} />
       </div>
+
+      {validationError ? (
+        <div className="flex items-start justify-between gap-3 border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <p className="min-w-0 break-words">{validationError}</p>
+          <button
+            type="button"
+            onClick={() => setValidationError(null)}
+            aria-label="Dismiss"
+            className="shrink-0 text-destructive/70 hover:text-destructive"
+          >
+            <XIcon className="size-4" />
+          </button>
+        </div>
+      ) : null}
 
       {purchases.length > 0 ? (
         <div className="rounded-lg border border-border divide-y">
-          {purchases.map((row) => (
-            <div
-              key={row.uri}
-              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-            >
-              <div className="min-w-0 space-y-0.5">
-                <p className="font-medium truncate">
-                  {purchaseTitles[row.uri] ?? row.receipt.item.uri}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {formatMoney(row.receipt.pricePaid)} ·{" "}
-                  {new Date(row.receipt.purchasedAt).toLocaleString()}
-                </p>
-              </div>
-              <Link
-                to={`/dashboard/purchase/${encodeURIComponent(row.uri)}`}
-                className={cn(
-                  buttonVariants({ variant: "secondary", size: "sm" }),
-                )}
+          {purchases.map((row) => {
+            const unresolved = unresolvedItemUris.has(row.uri);
+            const receiptHref = pdslsRecordUrl(row.uri);
+            return (
+              <div
+                key={row.uri}
+                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
               >
-                Open
-              </Link>
-            </div>
-          ))}
+                <div className="min-w-0 space-y-0.5">
+                  {unresolved ? (
+                    <>
+                      <p className="font-medium text-muted-foreground">
+                        Item unavailable
+                      </p>
+                      <div className="flex min-w-0 items-center gap-1">
+                        <code
+                          className="min-w-0 truncate text-[11px] text-muted-foreground"
+                          title={row.receipt.item.uri}
+                        >
+                          {row.receipt.item.uri}
+                        </code>
+                        <CopyButton
+                          value={row.receipt.item.uri}
+                          label="Copy item URI"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <p className="font-medium truncate">
+                      {purchaseTitles[row.uri] ?? row.receipt.item.uri}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {formatMoney(row.receipt.pricePaid)} ·{" "}
+                    {new Date(row.receipt.purchasedAt).toLocaleString()}
+                  </p>
+                </div>
+                {unresolved && receiptHref ? (
+                  <a
+                    href={receiptHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="The item behind this receipt couldn't be found -- opening the raw receipt record on pdsls instead"
+                    className={cn(
+                      buttonVariants({ variant: "secondary", size: "sm" }),
+                    )}
+                  >
+                    View Receipt
+                  </a>
+                ) : (
+                  <Link
+                    to={`/dashboard/purchase/${encodeURIComponent(row.uri)}`}
+                    className={cn(
+                      buttonVariants({ variant: "secondary", size: "sm" }),
+                    )}
+                  >
+                    View Receipt
+                  </Link>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
           No purchase receipts found in your PDS yet.
         </p>
       )}
-
-      <h2 className="text-lg font-medium pt-4">Validate receipt URI</h2>
-      <form
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void validate();
-        }}
-      >
-        <div className="space-y-2">
-          <Label htmlFor="receipt-uri">Receipt URI</Label>
-          <Input
-            id="receipt-uri"
-            value={receiptUri}
-            placeholder="at://did:plc:.../diamonds.whereditgo.bazaar.purchase.receipt/..."
-            onChange={(e) => setReceiptUri(e.target.value)}
-          />
-        </div>
-        <Button type="submit" disabled={busy}>
-          {busy ? "Validating…" : "Validate"}
-        </Button>
-      </form>
-
-      {result ? (
-        <div className="rounded-lg border border-border p-6 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Listing status</p>
-              {result.listingActive ? (
-                <p className="text-lg font-semibold">Active</p>
-              ) : (
-                <p className="text-lg font-semibold">Not active</p>
-              )}
-            </div>
-            <Badge variant={result.listingActive ? "default" : "secondary"}>
-              {result.listingStatus ?? "unknown"}
-            </Badge>
-          </div>
-
-          {result.listingOk && result.receiptListingUri ? (
-            <div className="text-sm space-y-1">
-              <p className="text-muted-foreground">
-                Listing CID match:{" "}
-                <span className="font-medium">
-                  {result.listingCidMatches ? "Yes" : "No"}
-                </span>
-              </p>
-              {result.listingPrice ? (
-                <p className="text-muted-foreground">
-                  Price:{" "}
-                  <span className="font-medium">
-                    {formatMoney(result.listingPrice)}
-                  </span>
-                </p>
-              ) : null}
-              {result.listingItemType ? (
-                <p className="text-muted-foreground">
-                  Item type:{" "}
-                  <span className="font-medium">{result.listingItemType}</span>
-                </p>
-              ) : null}
-              {result.listingItemUri ? (
-                <p className="pt-2">
-                  <Link
-                    to={itemPathCanonical(
-                      catalogItemRkey(result.listingItemUri),
-                    )}
-                    className="underline underline-offset-4 hover:text-foreground"
-                  >
-                    View item
-                  </Link>
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-sm text-destructive">
-              {result.error ?? "Invalid receipt"}
-            </p>
-          )}
-        </div>
-      ) : null}
     </div>
   );
 }

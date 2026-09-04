@@ -5,6 +5,8 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
+  getCatalogItem,
+  getCatalogProduct,
   getRecordValue,
   getRecordValueWithCid,
   listListingRows,
@@ -51,17 +53,22 @@ import { BuyButton } from "@/components/public/BuyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
+import { productTypeConfig } from "@/lib/productTypes";
 import {
   CollectionMemberDownloads,
   TrackList,
 } from "@/components/public/TrackList";
-import { Button } from "@/components/ui/button";
-import type {
-  ActorMerchant,
-  CatalogItem,
-  DigitalItem,
-  LicenseTerms,
-  Listing,
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+import {
+  catalogItemArtworkCid,
+  catalogItemSellerDid,
+  type ActorMerchant,
+  type CatalogItem,
+  type DigitalItem,
+  type LicenseTerms,
+  type Listing,
 } from "@/types/lexicons";
 
 function formatMoney(m: { amount: number; currency: string }): string {
@@ -69,6 +76,13 @@ function formatMoney(m: { amount: number; currency: string }): string {
     style: "currency",
     currency: m.currency,
   }).format(m.amount / 100);
+}
+
+function formatDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
 export function ItemDetailPage() {
@@ -91,12 +105,24 @@ export function ItemDetailPage() {
   const [listingUri, setListingUri] = useState<string | null>(null);
   const [allArtistListings, setAllArtistListings] = useState<ListingRow[]>([]);
   const [ownsCollection, setOwnsCollection] = useState(false);
+  const [ownsProduct, setOwnsProduct] = useState(false);
+  /** Ownership of a standalone purchase (legacy digital item or a catalog.item single) -- collection/product have their own owns* flags above since a bundle purchase is entitlement-checked differently. */
+  const [ownsItem, setOwnsItem] = useState(false);
+  /** catalog.product's own cover art, or a catalog.item single's borrowed from its owning product -- neither is ever a PDS blob CID. */
+  const [coverImages, setCoverImages] = useState<
+    Array<{ objectId: string; url: string }>
+  >([]);
+  const [productItemMeta, setProductItemMeta] = useState<
+    Record<string, { title: string; durationMs: number | null }>
+  >({});
+  const [productType, setProductType] = useState<string | null>(null);
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [licenseCid, setLicenseCid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloadBusyUri, setDownloadBusyUri] = useState<string | null>(null);
   const [zipBusy, setZipBusy] = useState(false);
   const [legalOpen, setLegalOpen] = useState(false);
+  const [artworkPreviewOpen, setArtworkPreviewOpen] = useState(false);
   const [relayAvatarUrl, setRelayAvatarUrl] = useState<string | null>(null);
   const [relayAvatarBroken, setRelayAvatarBroken] = useState(false);
   const [bazaarAvatarObjectUrl, setBazaarAvatarObjectUrl] = useState<
@@ -196,12 +222,72 @@ export function ItemDetailPage() {
               receipts.some(
                 (r) =>
                   r.receipt.item.uri === itemUri &&
-                  r.receipt.item.itemType === BAZAAR_COLLECTION.collection,
+                  new AtUri(r.receipt.item.uri).collection ===
+                    BAZAAR_COLLECTION.collection,
               ),
             );
           }
         } else if (!cancelled) {
           setOwnsCollection(false);
+        }
+
+        if (
+          v &&
+          "$type" in v &&
+          (v.$type === BAZAAR_COLLECTION.digitalItem ||
+            v.$type === BAZAAR_COLLECTION.item) &&
+          buyerAgent &&
+          session?.did
+        ) {
+          const receipts = await listPurchaseReceiptRows(session.did);
+          if (!cancelled) {
+            setOwnsItem(receipts.some((r) => r.receipt.item.uri === itemUri));
+          }
+        } else if (!cancelled) {
+          setOwnsItem(false);
+        }
+
+        if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.product) {
+          if (buyerAgent && session?.did) {
+            const receipts = await listPurchaseReceiptRows(session.did);
+            if (!cancelled) {
+              setOwnsProduct(receipts.some((r) => r.receipt.item.uri === itemUri));
+            }
+          } else if (!cancelled) {
+            setOwnsProduct(false);
+          }
+          const [p, resolvedItems] = await Promise.all([
+            getCatalogProduct(itemUri),
+            Promise.all(v.items.map((ref) => getCatalogItem(ref.uri))),
+          ]);
+          if (!cancelled) {
+            setCoverImages(p?.coverImages ?? []);
+            setProductType(p?.productType ?? null);
+            setProductItemMeta(
+              Object.fromEntries(
+                v.items.map((ref, i) => [
+                  ref.uri,
+                  {
+                    title: resolvedItems[i]?.title ?? ref.uri,
+                    durationMs: resolvedItems[i]?.durationMs ?? null,
+                  },
+                ]),
+              ),
+            );
+          }
+        } else if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.item) {
+          setOwnsProduct(false);
+          setProductType(null);
+          setProductItemMeta({});
+          // A single has no cover art of its own -- borrowed from its owning
+          // product, resolved server-side (see catalog.ts's GET /items).
+          const r = await getCatalogItem(itemUri);
+          if (!cancelled) setCoverImages(r?.coverImages ?? []);
+        } else if (!cancelled) {
+          setOwnsProduct(false);
+          setCoverImages([]);
+          setProductType(null);
+          setProductItemMeta({});
         }
 
         let licUri = listingRow?.licenseUri;
@@ -236,7 +322,7 @@ export function ItemDetailPage() {
   }, [relayAvatarUrl]);
 
   useEffect(() => {
-    const authorDid = item?.artistDid?.trim();
+    const authorDid = (item ? catalogItemSellerDid(item) : undefined)?.trim();
     if (!authorDid?.startsWith("did:")) {
       setRelayAvatarUrl(null);
       setAuthorDisplayName(null);
@@ -318,10 +404,13 @@ export function ItemDetailPage() {
         return null;
       });
     };
-  }, [agent, item?.artistDid]);
+  }, [agent, item ? catalogItemSellerDid(item) : undefined]);
 
   const isCollection =
     item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
+  const isProduct = item?.$type === BAZAAR_COLLECTION.product;
+  const isCatalogItemSingle = item?.$type === BAZAAR_COLLECTION.item;
+  const isMusicProduct = isProduct && productTypeConfig(productType).value === "music";
 
   const purchaseByTrackUri = useMemo(() => {
     const m = new Map<string, { listingUri: string; listing: Listing }>();
@@ -330,11 +419,25 @@ export function ItemDetailPage() {
       const L = row.listing;
       if (L.status !== "active") continue;
       if (L.parentListing !== listingUri) continue;
-      if (L.item.itemType !== BAZAAR_COLLECTION.digitalItem) continue;
+      if (new AtUri(L.item.uri).collection !== BAZAAR_COLLECTION.digitalItem) continue;
       m.set(L.item.uri, { listingUri: row.uri, listing: L });
     }
     return m;
   }, [isCollection, listingUri, allArtistListings]);
+
+  /** Active per-item listings sold as singles under this product's own listing -- same parentListing convention as purchaseByTrackUri above. */
+  const purchaseByProductItemUri = useMemo(() => {
+    const m = new Map<string, { listingUri: string; listing: Listing }>();
+    if (!isProduct || !listingUri) return m;
+    for (const row of allArtistListings) {
+      const L = row.listing;
+      if (L.status !== "active") continue;
+      if (L.parentListing !== listingUri) continue;
+      if (new AtUri(L.item.uri).collection !== BAZAAR_COLLECTION.item) continue;
+      m.set(L.item.uri, { listingUri: row.uri, listing: L });
+    }
+    return m;
+  }, [isProduct, listingUri, allArtistListings]);
 
   if (legacySegment && rkeyParam) {
     try {
@@ -406,7 +509,7 @@ export function ItemDetailPage() {
   const collectionTrackCount = isCollection
     ? item.items.filter((i) => i.role === "track").length
     : 0;
-  const authorDid = item.artistDid;
+  const authorDid = catalogItemSellerDid(item);
   const authorInitial =
     authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
 
@@ -466,6 +569,36 @@ export function ItemDetailPage() {
     }
   }
 
+  async function downloadProductZip() {
+    if (!session) {
+      toast.error("Sign in to download");
+      return;
+    }
+    setZipBusy(true);
+    try {
+      const url = createBrowserApiURL("/api/download/product-zip");
+      url.searchParams.set("productUri", itemUri);
+      const res = await fetch(url.href, { credentials: "include" });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || res.statusText);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get("Content-Disposition");
+      const match = dispo?.match(/filename="([^"]+)"/);
+      const name = match?.[1] ?? "product.zip";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setZipBusy(false);
+    }
+  }
+
   const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
 
   const blobDid = isDigital ? item.artistDid : (artistDid ?? "");
@@ -483,6 +616,13 @@ export function ItemDetailPage() {
     ? stableArtworkOpenUrl(itemUri)
     : defaultOgImageAbsolute();
   const twSite = import.meta.env.VITE_PUBLIC_TWITTER_SITE?.trim();
+
+  const coverUrl =
+    (isProduct || isCatalogItemSingle) && coverImages[0]
+      ? coverImages[0].url
+      : null;
+  const artworkCid = catalogItemArtworkCid(item);
+  const hasArtwork = !!coverUrl || !!artworkCid;
 
   return (
     <article className="space-y-10">
@@ -524,16 +664,38 @@ export function ItemDetailPage() {
         </p>
       ) : null}
       <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
-        <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)]">
-          <ArtworkImage
-            agent={agent}
-            did={blobDid}
-            cid={item.artworkCid}
-            itemUri={itemUri}
-            alt=""
-            className="h-full w-full"
-          />
-        </div>
+        {hasArtwork ? (
+          <button
+            type="button"
+            onClick={() => setArtworkPreviewOpen(true)}
+            aria-label="View full-size artwork"
+            className="block overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)] cursor-zoom-in transition-opacity hover:opacity-90"
+          >
+            {coverUrl ? (
+              <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <ArtworkImage
+                agent={agent}
+                did={blobDid}
+                cid={artworkCid}
+                itemUri={itemUri}
+                alt=""
+                className="h-full w-full"
+              />
+            )}
+          </button>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)]">
+            <ArtworkImage
+              agent={agent}
+              did={blobDid}
+              cid={artworkCid}
+              itemUri={itemUri}
+              alt=""
+              className="h-full w-full"
+            />
+          </div>
+        )}
         <div className="space-y-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
@@ -589,29 +751,28 @@ export function ItemDetailPage() {
               <p className="text-2xl font-medium">
                 {formatMoney(listing.price)}
               </p>
-              {isDigital || isCollection ? (
+              {(isCollection && ownsCollection) ||
+              (isProduct && ownsProduct) ||
+              ((isDigital || isCatalogItemSingle) && ownsItem) ? (
                 <p className="text-sm text-muted-foreground">
-                  {isCollection ? (
-                    <>
-                      After purchase, you can{" "}
-                      <a
-                        href="/dashboard"
-                        className="text-primary underline underline-offset-2"
-                      >
-                        download this release.
-                      </a>
-                    </>
-                  ) : (
-                    <>
-                      After purchase, you can{" "}
-                      <a
-                        href="/dashboard"
-                        className="text-primary underline underline-offset-2"
-                      >
-                        download this item.
-                      </a>
-                    </>
-                  )}
+                  You have purchased this item. Your downloads are available
+                  below
+                </p>
+              ) : isDigital || isCollection || isProduct || isCatalogItemSingle ? (
+                <p className="text-sm text-muted-foreground">
+                  After purchase, you can{" "}
+                  <a
+                    href="/dashboard"
+                    className="text-primary underline underline-offset-2"
+                  >
+                    download this{" "}
+                    {isCollection || isMusicProduct
+                      ? "release"
+                      : isProduct
+                        ? "product"
+                        : "item"}
+                    .
+                  </a>
                 </p>
               ) : null}
             </>
@@ -662,9 +823,26 @@ export function ItemDetailPage() {
             {collectionTrackCount === 1 ? "track" : "tracks"}
           </MetadataChip>
         ) : null}
+        {isProduct && "items" in item ? (
+          <MetadataChip>
+            {item.items.length}{" "}
+            {isMusicProduct
+              ? item.items.length === 1
+                ? "track"
+                : "tracks"
+              : item.items.length === 1
+                ? "item"
+                : "items"}
+          </MetadataChip>
+        ) : null}
         {"genre" in item && item.genre
           ? item.genre.map((g: string) => (
               <MetadataChip key={g}>{g}</MetadataChip>
+            ))
+          : null}
+        {"tags" in item && item.tags
+          ? item.tags.map((t: string) => (
+              <MetadataChip key={t}>{t}</MetadataChip>
             ))
           : null}
       </section>
@@ -688,6 +866,105 @@ export function ItemDetailPage() {
               purchaseByTrackUri={purchaseByTrackUri}
             />
           )}
+        </section>
+      ) : null}
+
+      {isProduct && "items" in item ? (
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium">
+            {ownsProduct ? "Your downloads" : isMusicProduct ? "Tracks" : "Items"}
+          </h2>
+          {ownsProduct ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={zipBusy}
+              onClick={() => void downloadProductZip()}
+            >
+              {zipBusy ? "Preparing…" : "Download all (.zip)"}
+            </Button>
+          ) : null}
+          <ol className="list-none space-y-2 text-sm m-0 p-0">
+            {item.items.map((ref, index) => {
+              const purchase = purchaseByProductItemUri.get(ref.uri);
+              const meta = productItemMeta[ref.uri];
+              return (
+                <li
+                  key={ref.uri}
+                  className="flex items-center justify-between gap-2 py-1.5"
+                >
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    {isMusicProduct ? (
+                      <span className="tabular-nums text-muted-foreground shrink-0 w-5 text-right">
+                        {index + 1}.
+                      </span>
+                    ) : null}
+                    <span
+                      className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-sm"
+                      style={{
+                        maskImage:
+                          "linear-gradient(to right, black 85%, transparent 100%)",
+                        WebkitMaskImage:
+                          "linear-gradient(to right, black 85%, transparent 100%)",
+                      }}
+                    >
+                      <span className="font-medium">{meta?.title ?? ref.uri}</span>
+                      {meta?.durationMs != null ? (
+                        <span className="ml-2 text-muted-foreground tabular-nums">
+                          {formatDuration(meta.durationMs)}
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                  {ownsProduct ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={downloadBusyUri === ref.uri}
+                      onClick={() => void downloadDigitalItemUri(ref.uri)}
+                    >
+                      {downloadBusyUri === ref.uri ? "Preparing…" : "Download"}
+                    </Button>
+                  ) : purchase ? (
+                    <Link
+                      to={itemPathPretty(
+                        catalogItemRkey(ref.uri),
+                        meta?.title ?? ref.uri,
+                      )}
+                      className={cn(
+                        buttonVariants({ size: "sm", variant: "outline" }),
+                        "shrink-0",
+                      )}
+                    >
+                      Buy · {formatMoney(purchase.listing.price)}
+                    </Link>
+                  ) : (
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      Not sold separately
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ) : null}
+
+      {(isDigital || isCatalogItemSingle) && ownsItem ? (
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium">Your download</h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={downloadBusyUri === itemUri}
+            onClick={() => void downloadDigitalItemUri(itemUri)}
+          >
+            {downloadBusyUri === itemUri ? "Preparing…" : "Download"}
+          </Button>
         </section>
       ) : null}
 
@@ -739,16 +1016,46 @@ export function ItemDetailPage() {
         </section>
       ) : null}
 
-      {listing && listingUri && !(isCollection && ownsCollection) ? (
+      {listing &&
+      listingUri &&
+      !(isCollection && ownsCollection) &&
+      !(isProduct && ownsProduct) &&
+      !((isDigital || isCatalogItemSingle) && ownsItem) ? (
         <section>
           <BuyButton
             listingUri={listingUri}
             listing={listing}
-            item={item}
             licenseTerms={license}
           />
         </section>
       ) : null}
+
+      <Dialog open={artworkPreviewOpen} onOpenChange={setArtworkPreviewOpen}>
+        <DialogContent
+          overlayClassName="bg-black/90 backdrop-blur-sm"
+          className="flex w-auto max-w-[95vw] items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-[95vw]"
+          showCloseButton={false}
+        >
+          <div className="bg-muted leading-none">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt=""
+                className="block max-h-[85vh] max-w-[85vw] object-contain"
+              />
+            ) : (
+              <ArtworkImage
+                agent={agent}
+                did={blobDid}
+                cid={artworkCid}
+                itemUri={itemUri}
+                alt=""
+                className="max-h-[85vh] max-w-[85vw]"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </article>
   );
 }

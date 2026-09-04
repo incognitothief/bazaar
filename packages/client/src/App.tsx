@@ -17,9 +17,12 @@ import { DashboardPage } from "@/routes/DashboardPage";
 import { CustomerDashboardPage } from "./routes/CustomerDashboardPage";
 import { MerchantInventoryPage } from "@/routes/MerchantInventoryPage";
 import { MerchantInventoryEditPage } from "@/routes/MerchantInventoryEditPage";
+import { AddProductPage } from "@/routes/AddProductPage";
+import { MerchantProductDetailPage } from "@/routes/MerchantProductDetailPage";
 import { UploadTracksPage } from "@/routes/UploadTracksPage";
 import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
 import { ListingsPage } from "@/routes/ListingsPage";
+import { CreateListingPage } from "@/routes/CreateListingPage";
 import { LicensePage } from "@/routes/LicensePage";
 import { SettingsPage } from "@/routes/SettingsPage";
 import { MerchantTransactionsPage } from "@/routes/MerchantTransactionsPage";
@@ -57,6 +60,8 @@ const router = createBrowserRouter([
         element: <Navigate to="/merchant/upload/tracks" replace />,
       },
       { path: "inventory", element: <MerchantInventoryPage /> },
+      { path: "inventory/new", element: <AddProductPage /> },
+      { path: "inventory/products", element: <MerchantProductDetailPage /> },
       {
         path: "inventory/edit",
         element: <MerchantInventoryEditPage />,
@@ -64,6 +69,7 @@ const router = createBrowserRouter([
       { path: "upload/tracks", element: <UploadTracksPage /> },
       { path: "upload/physical", element: <UploadPhysicalPage /> },
       { path: "listings", element: <ListingsPage /> },
+      { path: "listings/new", element: <CreateListingPage /> },
       { path: "license", element: <LicensePage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "transactions", element: <MerchantTransactionsPage /> },

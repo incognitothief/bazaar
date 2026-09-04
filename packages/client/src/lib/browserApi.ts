@@ -6,20 +6,6 @@
  * `VITE_API_ORIGIN` is `http://127.0.0.1:3000` but the page is `http://localhost:5173`.
  */
 
-export function apiServerOrigin(): string {
-  const raw = (import.meta.env.VITE_API_ORIGIN ?? "").trim();
-  if (raw.startsWith("http://") || raw.startsWith("https://")) {
-    return raw.replace(/\/$/, "");
-  }
-  if (raw.length > 0) {
-    return `https://${raw.replace(/\/$/, "")}`;
-  }
-  if (import.meta.env.DEV) {
-    return "http://127.0.0.1:3000";
-  }
-  return "";
-}
-
 /**
  * Use for `fetch()` / `uploadBlob` to this app's API. In `import.meta.env.DEV`, always
  * same-origin relative paths so the Vite proxy is used.

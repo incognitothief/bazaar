@@ -23,6 +23,11 @@ VITE_APP_URL ?=
 VITE_LEXICON_NAMESPACE ?=
 VITE_ARTIST_DID ?=
 VITE_API_ORIGIN ?=
+# Optional cloudflared quick-tunnel origin. When set, `make dev` exports it into
+# the client/server URL vars so you don't rewrite packages/*/.env on each new hostname.
+#   make tunnel
+#   make dev CLOUDFLARED_URL=https://xxxx.trycloudflare.com
+CLOUDFLARED_URL ?=
 
 # `make dev TUNNEL_URL=https://<sub>.trycloudflare.com` points the OAuth / SPA origins at a
 # public HTTPS tunnel for real-OAuth testing (see the "testing auth locally" runbook), instead
@@ -112,7 +117,7 @@ gen-did: ## Generate service keys and DID snippets (scripts/gen-did.sh)
 	./scripts/gen-did.sh
 
 .PHONY: tunnel
-tunnel: ## Expose local Vite dev server via cloudflared (port 5173)
+tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<printed url>
 	./tunnel.sh
 
 .PHONY: docker-build

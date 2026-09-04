@@ -10,7 +10,7 @@ import { agentForRepo } from "./pdsResolve";
 import type { ATPRepoClient } from "./session";
 import type {
   ActorMerchant,
-  BazaarItemType,
+  BazaarItem,
   CatalogItem,
   Collection,
   Composition,
@@ -19,6 +19,7 @@ import type {
   LicenseTerms,
   Listing,
   PhysicalItem,
+  Product,
   PurchaseConsent,
   PurchaseReceipt,
   Recording,
@@ -146,6 +147,25 @@ export async function createListing(
   return { uri: res.data.uri, cid: res.data.cid };
 }
 
+/** archived/superseded are permanent retirements -- a listing in either state never becomes sellable again, only a fresh listing (pointed at the same item) can replace it. */
+export function isTerminalListingStatus(status: Listing["status"]): boolean {
+  return status === "archived" || status === "superseded";
+}
+
+export async function deleteListing(
+  agent: ATPRepoClient,
+  uri: string,
+): Promise<void> {
+  const did = agent.session?.did;
+  if (!did) throw new Error("Not authenticated");
+  const at = new AtUri(uri);
+  await agent.com.atproto.repo.deleteRecord({
+    repo: did,
+    collection: BAZAAR_COLLECTION.listing,
+    rkey: at.rkey,
+  });
+}
+
 export async function createLicenseTerms(
   agent: ATPRepoClient,
   record: Omit<LicenseTerms, "$type" | "createdAt">,
@@ -225,6 +245,22 @@ function isCollection(v: unknown): v is Collection {
     v !== null &&
     (v as Collection).$type ===
       "diamonds.whereditgo.bazaar.catalog.collection"
+  );
+}
+
+function isBazaarItem(v: unknown): v is BazaarItem {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as BazaarItem).$type === BAZAAR_COLLECTION.item
+  );
+}
+
+function isProduct(v: unknown): v is Product {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as Product).$type === BAZAAR_COLLECTION.product
   );
 }
 
@@ -446,6 +482,48 @@ export async function listCollectionRows(
     }));
 }
 
+export type BazaarItemRow = { uri: string; cid: string; item: BazaarItem };
+export type ProductRow = { uri: string; cid: string; item: Product };
+
+/**
+ * PDS-direct (not the ERP-first /api/merchant/catalog/items list), same
+ * pattern as listDigitalItemRows/listCollectionRows above -- public storefront
+ * pages read straight from the repo, no merchant auth. Cover art (ERP-only,
+ * never on the PDS record) isn't included here; callers needing it fetch it
+ * separately per product via getCatalogProduct (see useCatalog.ts).
+ */
+export async function listBazaarItemRows(did: string): Promise<BazaarItemRow[]> {
+  const agent = await agentForRepo(did);
+  const res = (await agent.com.atproto.repo.listRecords({
+    repo: did,
+    collection: BAZAAR_COLLECTION.item,
+    limit: 100,
+  })) as ListRecordsResponse;
+  return res.data.records
+    .filter((r) => isBazaarItem(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      item: r.value as BazaarItem,
+    }));
+}
+
+export async function listProductRows(did: string): Promise<ProductRow[]> {
+  const agent = await agentForRepo(did);
+  const res = (await agent.com.atproto.repo.listRecords({
+    repo: did,
+    collection: BAZAAR_COLLECTION.product,
+    limit: 100,
+  })) as ListRecordsResponse;
+  return res.data.records
+    .filter((r) => isProduct(r.value))
+    .map((r) => ({
+      uri: r.uri,
+      cid: r.cid,
+      item: r.value as Product,
+    }));
+}
+
 export async function listCatalogItems(did: string): Promise<DigitalItem[]> {
   const rows = await listDigitalItemRows(did);
   return rows.map((r) => r.item);
@@ -619,6 +697,230 @@ export function incrementLicenseVersion(version: string): string {
   return `${prefix}${Number(num) + 1}${suffix}`;
 }
 
+export type CatalogItemRow = {
+  uri: string;
+  cid: string;
+  sellerDid: string;
+  title: string;
+  category: string | null;
+  description: string | null;
+  tags: string[] | null;
+  format: string | null;
+  fileChecksum: string | null;
+  fileCid: string | null;
+  supersedes: string | null;
+  /** The owning product's cover images (an item has none of its own) -- see merchant.ts's GET /catalog/items. */
+  coverImages: Array<{ objectId: string; url: string }>;
+  /** Audio duration from the upload object (ERP-only), null for non-audio files or legacy uploads with no parsed duration. */
+  durationMs: number | null;
+  recordCreatedAt: string | null;
+  capturedAt: string;
+  updatedAt: string;
+};
+
+export type CatalogProductRow = {
+  uri: string;
+  cid: string;
+  sellerDid: string;
+  title: string;
+  description: string | null;
+  tags: string[] | null;
+  items: Array<{ uri: string; cid?: string; variantSku?: string }>;
+  /** UI-only classification (e.g. "music", "generic") -- never on the PDS record. */
+  productType: string | null;
+  /** Whether cover art is bundled into the buyer's download package -- also UI-only. */
+  artIncludedInDownload: boolean;
+  /** Presigned URLs, in slideshow order. Any number -- single-image types just have one. */
+  coverImages: Array<{ objectId: string; url: string }>;
+  recordCreatedAt: string | null;
+  capturedAt: string;
+  updatedAt: string;
+};
+
+/** ERP-first: the merchant's full catalog.item list, from GET /api/merchant/catalog/items. */
+export async function listCatalogItemRows(): Promise<CatalogItemRow[]> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/items"), {
+    credentials: "include",
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { items: CatalogItemRow[] };
+  return data.items;
+}
+
+/** ERP-first: the merchant's full catalog.product list, from GET /api/merchant/catalog/products. */
+export async function listCatalogProductRows(): Promise<CatalogProductRow[]> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products"), {
+    credentials: "include",
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { products: CatalogProductRow[] };
+  return data.products;
+}
+
+/** ERP-first, public: a single catalog.item by URI (no auth needed, same data storefront reads use). */
+export async function getCatalogItem(uri: string): Promise<CatalogItemRow | null> {
+  const res = await fetch(
+    browserApiUrl(`/api/catalog/items?uri=${encodeURIComponent(uri)}`),
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { item: CatalogItemRow };
+  return data.item;
+}
+
+/** ERP-first, public: a single catalog.product by URI. */
+export async function getCatalogProduct(uri: string): Promise<CatalogProductRow | null> {
+  const res = await fetch(
+    browserApiUrl(`/api/catalog/products?uri=${encodeURIComponent(uri)}`),
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { product: CatalogProductRow };
+  return data.product;
+}
+
+/** Manual "Sync with PDS": re-fetches live and refreshes the ERP row. */
+export async function syncCatalogItem(uri: string): Promise<CatalogItemRow | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/items/sync"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uri }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { item: CatalogItemRow | null };
+  return data.item;
+}
+
+/** Manual "Sync with PDS" for a product. */
+export async function syncCatalogProduct(uri: string): Promise<CatalogProductRow | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/sync"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uri }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { product: CatalogProductRow | null };
+  return data.product;
+}
+
+/**
+ * Updates productType/artIncludedInDownload -- both are ERP-only columns,
+ * never on the PDS record, so this never touches the CID and can never
+ * make a listing's pinned CID go stale.
+ */
+export async function updateCatalogProductSettings(
+  uri: string,
+  settings: { productType?: string | null; artIncludedInDownload?: boolean },
+): Promise<CatalogProductRow | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/settings"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uri, ...settings }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { product: CatalogProductRow | null };
+  return data.product;
+}
+
+export type CatalogProductAssets = {
+  coverImages: Array<{ id: string; objectId: string; url: string }>;
+  includedAssets: Array<{
+    id: string;
+    objectId: string;
+    role: string;
+    fileName: string;
+  }>;
+};
+
+/** Store-owner: cover art + included assets for one product, each with its own asset-row id (for removal). */
+export async function getCatalogProductAssets(
+  productUri: string,
+): Promise<CatalogProductAssets | null> {
+  const res = await fetch(
+    browserApiUrl(`/api/merchant/catalog/products/assets?uri=${encodeURIComponent(productUri)}`),
+    { credentials: "include" },
+  );
+  if (!res.ok) return null;
+  return (await res.json()) as CatalogProductAssets;
+}
+
+/** Links an already-uploaded object to a product as cover art (role "coverArt") or an included asset (role is the merchant's freeform label). */
+export async function addCatalogProductAsset(params: {
+  productUri: string;
+  objectId: string;
+  role: string;
+}): Promise<CatalogProductAssets | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/assets"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as CatalogProductAssets;
+}
+
+/** Detaches one cover-art or included-asset row from its product. */
+export async function removeCatalogProductAsset(
+  id: string,
+): Promise<CatalogProductAssets | null> {
+  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/assets/remove"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as CatalogProductAssets;
+}
+
+/**
+ * Presigned URL for a single catalog.item's file -- an incident-response
+ * tool for the merchant dashboard, not the buyer-facing download path.
+ */
+export async function getCatalogItemDownloadUrl(
+  uri: string,
+): Promise<{ url: string; fileName: string } | null> {
+  const res = await fetch(
+    browserApiUrl(`/api/merchant/catalog/items/download?uri=${encodeURIComponent(uri)}`),
+    { credentials: "include" },
+  );
+  if (!res.ok) return null;
+  return (await res.json()) as { url: string; fileName: string };
+}
+
+/** URL for the full product package zip (same content a buyer's download would have). */
+export function catalogProductDownloadUrl(uri: string): string {
+  return browserApiUrl(
+    `/api/merchant/catalog/products/download?uri=${encodeURIComponent(uri)}`,
+  );
+}
+
+/**
+ * Listings currently pinned to itemUri's CID -- i.e. the ones a save is
+ * about to invalidate. A record's post-edit CID isn't knowable ahead of
+ * the actual putRecord (it's content-addressed), so the check works off
+ * the *current* CID instead: any listing accurately pinned to it right now
+ * is exactly the set that will go stale the moment this save succeeds
+ * (the checkout-time pin check in stripe.ts /checkout would otherwise
+ * reject them cold for a buyer with no warning). Terminal statuses are
+ * excluded since they're already not purchasable for unrelated reasons.
+ */
+export function findStaleListingsForItem(
+  listingRows: ListingRow[],
+  itemUri: string,
+  currentCid: string,
+): ListingRow[] {
+  return listingRows.filter((row) => {
+    const status = row.listing.status;
+    if (status === "archived" || status === "soldOut" || status === "superseded") {
+      return false;
+    }
+    return row.listing.item.uri === itemUri && row.listing.item.cid === currentCid;
+  });
+}
+
 /**
  * Resolve storefront catalog item AT-URI from record key (TID) in the artist repo.
  * Tries digital → collection → physical (same order as storefront catalog).
@@ -632,6 +934,8 @@ export async function resolveCatalogItemUriFromRkey(
     BAZAAR_COLLECTION.digitalItem,
     BAZAAR_COLLECTION.collection,
     BAZAAR_COLLECTION.physicalItem,
+    BAZAAR_COLLECTION.item,
+    BAZAAR_COLLECTION.product,
   ] as const;
   const agent = await agentForRepo(repoDid);
   for (const collection of collections) {
@@ -690,7 +994,7 @@ export async function getRecordValueWithCid<T>(
   }
 }
 
-/** Resolve `item` + `cid` for a new listing from a catalog AT-URI. */
+/** Resolve `item` + `cid` (for listing-time CID pinning) for a catalog AT-URI. */
 export async function buildItemRefFromUri(
   itemUri: string,
 ): Promise<ItemRef | null> {
@@ -705,11 +1009,7 @@ export async function buildItemRefFromUri(
     })) as GetRecordResponse;
     const v = res.data.value as CatalogItem;
     if (!v || typeof v !== "object" || !("$type" in v)) return null;
-    return {
-      uri: itemUri,
-      cid: res.data.cid,
-      itemType: (v as { $type: BazaarItemType }).$type,
-    };
+    return { uri: itemUri, cid: res.data.cid };
   } catch {
     return null;
   }
@@ -861,6 +1161,101 @@ export async function putPhysicalItem(
     swapRecord: cur.data.cid,
     record: merged as unknown as Record<string, unknown>,
   });
+}
+
+/** Only title/category/description are editable -- fileCid/fileChecksum/format/sellerDid are preserved as-authored. */
+export async function putCatalogItem(
+  agent: ATPRepoClient,
+  uri: string,
+  draft: {
+    title: string;
+    category?: string;
+    description?: string;
+    tags?: string[];
+  },
+): Promise<{ cid: string }> {
+  const did = agent.session?.did;
+  if (!did) throw new Error("Not authenticated");
+  const at = new AtUri(uri);
+  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
+  if (at.hostname !== did) throw new Error("Record must be in your repo");
+  if (at.collection !== BAZAAR_COLLECTION.item) {
+    throw new Error("Not a catalog.item record");
+  }
+  const readAgent = await agentForRepo(did);
+  const cur = (await readAgent.com.atproto.repo.getRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+  })) as GetRecordResponse;
+  const prev = cur.data.value as BazaarItem;
+  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.item") {
+    throw new Error("Invalid record type");
+  }
+  const merged: BazaarItem = {
+    ...prev,
+    title: draft.title,
+    category: draft.category,
+    description: draft.description,
+    tags: draft.tags,
+  };
+  const res = (await agent.com.atproto.repo.putRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+    swapRecord: cur.data.cid,
+    record: merged as unknown as Record<string, unknown>,
+  })) as { cid: string };
+  return { cid: res.cid };
+}
+
+/** title/description/tags/items are all editable -- items[] is mutable (see catalog.product.json). sellerDid/createdAt are preserved. */
+export async function putCatalogProduct(
+  agent: ATPRepoClient,
+  uri: string,
+  draft: {
+    title: string;
+    description?: string;
+    tags?: string[];
+    items: ItemRef[];
+  },
+): Promise<{ cid: string }> {
+  const did = agent.session?.did;
+  if (!did) throw new Error("Not authenticated");
+  const at = new AtUri(uri);
+  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
+  if (at.hostname !== did) throw new Error("Record must be in your repo");
+  if (at.collection !== BAZAAR_COLLECTION.product) {
+    throw new Error("Not a catalog.product record");
+  }
+  const readAgent = await agentForRepo(did);
+  const cur = (await readAgent.com.atproto.repo.getRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+  })) as GetRecordResponse;
+  const prev = cur.data.value as Product;
+  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.product") {
+    throw new Error("Invalid record type");
+  }
+  if (draft.items.length === 0) {
+    throw new Error("A product needs at least one item");
+  }
+  const merged: Product = {
+    ...prev,
+    title: draft.title,
+    description: draft.description,
+    tags: draft.tags,
+    items: draft.items,
+  };
+  const res = (await agent.com.atproto.repo.putRecord({
+    repo: did,
+    collection: at.collection,
+    rkey: at.rkey,
+    swapRecord: cur.data.cid,
+    record: merged as unknown as Record<string, unknown>,
+  })) as { cid: string };
+  return { cid: res.cid };
 }
 
 export async function listTracksForArtist(

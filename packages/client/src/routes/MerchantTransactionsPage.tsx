@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { browserApiUrl } from "@/lib/browserApi";
 import { resolveHandleForDid } from "@/lib/atproto/pdsResolve";
 import { pdslsRecordUrl, pdslsRepoCollectionsUrl } from "@/lib/pdsls";
+import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { cn } from "@/lib/utils";
 
 export type PaymentFulfillmentRow = {
@@ -15,6 +17,10 @@ export type PaymentFulfillmentRow = {
   receiptUri: string | null;
   receiptCid: string | null;
   consentUri: string | null;
+  itemUri: string | null;
+  listingUri: string | null;
+  /** ERP-first (catalogItems/catalogProducts); null for rows predating this column or a legacy digital/physical/collection sale. */
+  itemTitle: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -183,12 +189,13 @@ export function MerchantTransactionsPage() {
         <p className="text-sm text-muted-foreground">No payment rows yet.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[960px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/50">
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">PaymentIntent</th>
                 <th className="px-3 py-2 font-medium">Buyer</th>
+                <th className="px-3 py-2 font-medium">Item</th>
                 <th className="px-3 py-2 font-medium">Attempts</th>
                 <th className="px-3 py-2 font-medium">Updated</th>
                 <th className="px-3 py-2 font-medium">Receipt</th>
@@ -226,6 +233,22 @@ export function MerchantTransactionsPage() {
                       >
                         {handles[r.buyerDid] ?? r.buyerDid}
                       </a>
+                    ) : (
+                      <Ellipsis text="" />
+                    )}
+                  </td>
+                  <td className="px-3 py-2 align-top max-w-[12rem]">
+                    {r.itemUri ? (
+                      <Link
+                        to={itemPathPretty(
+                          catalogItemRkey(r.itemUri),
+                          r.itemTitle ?? undefined,
+                        )}
+                        className="block truncate text-xs text-primary underline-offset-2 hover:underline"
+                        title={r.itemTitle ?? r.itemUri}
+                      >
+                        {r.itemTitle ?? r.itemUri}
+                      </Link>
                     ) : (
                       <Ellipsis text="" />
                     )}

@@ -1,10 +1,17 @@
 import { catalogItemUriKey } from "@/lib/atproto/records";
-import type { Collection, DigitalItem, PhysicalItem } from "@/types/lexicons";
+import type {
+  BazaarItem,
+  Collection,
+  DigitalItem,
+  PhysicalItem,
+  Product,
+} from "@/types/lexicons";
 
-export type CatalogEntryForSort =
-  | { uri: string; cid: string; item: DigitalItem }
-  | { uri: string; cid: string; item: Collection }
-  | { uri: string; cid: string; item: PhysicalItem };
+export type CatalogEntryForSort = {
+  uri: string;
+  cid: string;
+  item: DigitalItem | Collection | PhysicalItem | BazaarItem | Product;
+};
 
 function parseIsoMs(s: string | undefined): number {
   if (!s) return 0;
@@ -26,6 +33,12 @@ function storefrontSortMs(
     return parseIsoMs(item.releaseDate);
   }
   if (item.$type === "diamonds.whereditgo.bazaar.catalog.item.physical") {
+    return parseIsoMs(item.createdAt);
+  }
+  if (
+    item.$type === "diamonds.whereditgo.bazaar.catalog.item" ||
+    item.$type === "diamonds.whereditgo.bazaar.catalog.product"
+  ) {
     return parseIsoMs(item.createdAt);
   }
   const own = item.releaseDate;

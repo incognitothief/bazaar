@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -13,21 +21,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
-import {
-  fetchLatestInventoryPrefill,
-  type InventoryPrefillPayload,
-} from "@/lib/api/inventoryApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   buildItemRefFromUri,
-  createListing,
+  deleteListing,
   getRecordValue,
-  listCollectionRows,
-  listDigitalItemRows,
-  listLicensesWithStatus,
+  isTerminalListingStatus,
   listListingRows,
   putListing,
-  type LicenseListRow,
   type ListingRow,
 } from "@/lib/atproto/records";
 import {
@@ -38,6 +39,7 @@ import {
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
+import { collectionFromAtUri } from "@/lib/atUri";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { CatalogItem, Listing } from "@/types/lexicons";
@@ -58,15 +60,55 @@ function devDummyListingRow(merchantDid: string | undefined): ListingRow | null 
   };
 }
 
-type CatalogPick = {
-  uri: string;
-  title: string;
-  kind: "digital" | "collection";
-};
+function fmtCreatedAt(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString();
+  } catch {
+    return iso;
+  }
+}
 
-function catalogItemKindFromAtUri(uri: string): CatalogPick["kind"] {
-  if (uri.includes(`${BAZAAR_COLLECTION.collection}/`)) return "collection";
-  return "digital";
+type SortKey = "name" | "date" | "price" | "status";
+
+function SortHeader({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey | null;
+  dir: "asc" | "desc";
+  onSort: (key: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = activeKey === sortKey;
+  return (
+    <th className={cn("p-3 font-medium", align === "right" ? "text-right" : "text-left")}>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-foreground",
+          align === "right" && "flex-row-reverse",
+        )}
+        onClick={() => onSort(sortKey)}
+      >
+        {label}
+        {active ? (
+          dir === "asc" ? (
+            <ChevronUp className="size-3.5" />
+          ) : (
+            <ChevronDown className="size-3.5" />
+          )
+        ) : (
+          <ChevronsUpDown className="size-3.5 text-muted-foreground/50" />
+        )}
+      </button>
+    </th>
+  );
 }
 
 async function loadListingTitles(
@@ -88,195 +130,34 @@ async function loadListingTitles(
 export function ListingsPage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
-  const location = useLocation();
-  const navigate = useNavigate();
   const [rows, setRows] = useState<ListingRow[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
-  const [catalogOptions, setCatalogOptions] = useState<CatalogPick[]>([]);
-  const [licenseRows, setLicenseRows] = useState<LicenseListRow[]>([]);
   const [editRow, setEditRow] = useState<ListingRow | null>(null);
   const [editDollars, setEditDollars] = useState("");
-  const [newItemUri, setNewItemUri] = useState("");
-  const [newTitle, setNewTitle] = useState("");
-  const [newPrice, setNewPrice] = useState("9.99");
-  const [newLicenseUri, setNewLicenseUri] = useState("");
-  const [newLicenseCid, setNewLicenseCid] = useState("");
-  const [newParentListingUri, setNewParentListingUri] = useState("");
-  const [createBusy, setCreateBusy] = useState(false);
-  /** From latest inventory publish — tracks marked “allow individual purchase” on upload. */
-  const [prefillCollectionUri, setPrefillCollectionUri] = useState<string | null>(
-    null,
-  );
-  const [prefillIndividualTrackUris, setPrefillIndividualTrackUris] = useState<
-    string[]
-  >([]);
-  const [createIndividualTrackListings, setCreateIndividualTrackListings] =
-    useState(false);
-  const [individualTracksPriceUsd, setIndividualTracksPriceUsd] =
-    useState("1.99");
+  const [deleteTarget, setDeleteTarget] = useState<ListingRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  const refreshListingsAndCatalog = useCallback(async () => {
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  const refreshListings = useCallback(async () => {
     if (!agent || !session) return;
-    const [list, digital, collections, licenses] = await Promise.all([
-      listListingRows(session.did),
-      listDigitalItemRows(session.did),
-      listCollectionRows(session.did),
-      listLicensesWithStatus(session.did),
-    ]);
+    const list = await listListingRows(session.did);
     setRows(list);
     setTitles(await loadListingTitles(session.did, list));
-    setLicenseRows(licenses.filter((l) => !l.retired));
-    const listed = new Set(list.map((r) => r.listing.item.uri));
-    const opts: CatalogPick[] = [
-      ...digital
-        .filter((r) => !listed.has(r.uri))
-        .map((r) => ({
-          uri: r.uri,
-          title: r.item.title,
-          kind: "digital" as const,
-        })),
-      ...collections
-        .filter((r) => !listed.has(r.uri))
-        .map((r) => ({
-          uri: r.uri,
-          title: r.item.title,
-          kind: "collection" as const,
-        })),
-    ];
-    opts.sort((a, b) => a.title.localeCompare(b.title));
-    setCatalogOptions(opts);
   }, [agent, session]);
 
   useEffect(() => {
-    void refreshListingsAndCatalog();
-  }, [refreshListingsAndCatalog]);
-
-  const applyInventoryPrefill = useCallback((p: InventoryPrefillPayload) => {
-    setNewItemUri(p.primaryItemUri);
-    setNewLicenseUri(
-      typeof p.licenseUri === "string" ? p.licenseUri : "",
-    );
-    setNewLicenseCid(
-      typeof p.licenseGrantCid === "string" ? p.licenseGrantCid : "",
-    );
-    setNewPrice(typeof p.priceUsd === "string" ? p.priceUsd : "9.99");
-    setPrefillCollectionUri(p.primaryItemUri);
-    const uris = Array.isArray(p.individualPurchaseTrackUris)
-      ? p.individualPurchaseTrackUris.filter(
-          (u): u is string => typeof u === "string" && u.length > 0,
-        )
-      : [];
-    setPrefillIndividualTrackUris(uris);
-    setCreateIndividualTrackListings(false);
-  }, []);
-
-  /** Load latest inventory publish into the form when the page is shown. */
-  useEffect(() => {
-    if (!agent || !session?.did) return;
-    let cancelled = false;
-    void fetchLatestInventoryPrefill()
-      .then((data) => {
-        if (cancelled || !data.prefill?.primaryItemUri) return;
-        applyInventoryPrefill(data.prefill);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [agent, session?.did, applyInventoryPrefill]);
-
-  useEffect(() => {
-    if (!agent || !session) return;
-    const q = new URLSearchParams(location.search);
-    const sourceUpload = q.get("source") === "upload";
-    const legacyItem = q.get("prefillItemUri");
-    if (!sourceUpload && !legacyItem) return;
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const data = await fetchLatestInventoryPrefill();
-        if (cancelled) return;
-        const p = data.prefill;
-        if (p && typeof p.primaryItemUri === "string") {
-          applyInventoryPrefill(p);
-        } else if (legacyItem) {
-          setNewItemUri(legacyItem);
-          setPrefillCollectionUri(null);
-          setPrefillIndividualTrackUris([]);
-          const licenseUri = q.get("licenseUri");
-          const licenseGrantCid = q.get("licenseGrantCid");
-          const priceUsd = q.get("priceUsd");
-          if (licenseUri && licenseGrantCid) {
-            setNewLicenseUri(licenseUri);
-            setNewLicenseCid(licenseGrantCid);
-          }
-          if (priceUsd) setNewPrice(priceUsd);
-        }
-      } catch {
-        if (!cancelled && legacyItem) {
-          setNewItemUri(legacyItem);
-          setPrefillCollectionUri(null);
-          setPrefillIndividualTrackUris([]);
-        }
-      } finally {
-        if (!cancelled) navigate("/merchant/listings", { replace: true });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [location.search, agent, session, navigate, applyInventoryPrefill]);
-
-  useEffect(() => {
-    if (!agent || !newItemUri) {
-      setNewTitle("");
-      return;
-    }
-    let cancelled = false;
-    void getRecordValue<CatalogItem>(newItemUri).then((item) => {
-      if (!cancelled) setNewTitle(item?.title ?? "");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [agent, newItemUri]);
-
-  const selectCatalogOptions = useMemo(() => {
-    if (
-      newItemUri &&
-      !catalogOptions.some((o) => o.uri === newItemUri)
-    ) {
-      return [
-        {
-          uri: newItemUri,
-          title: newTitle || "(from link)",
-          kind: catalogItemKindFromAtUri(newItemUri),
-        },
-        ...catalogOptions,
-      ];
-    }
-    return catalogOptions;
-  }, [catalogOptions, newItemUri, newTitle]);
-
-  const collectionListingOptions = useMemo(
-    () =>
-      rows.filter(
-        (r) => r.listing.item.itemType === BAZAAR_COLLECTION.collection,
-      ),
-    [rows],
-  );
-
-  const newItemKind = useMemo(() => {
-    const o = selectCatalogOptions.find((x) => x.uri === newItemUri);
-    return o?.kind;
-  }, [selectCatalogOptions, newItemUri]);
-
-  const showBulkIndividualTracks =
-    newItemKind === "collection" &&
-    prefillCollectionUri != null &&
-    newItemUri === prefillCollectionUri &&
-    prefillIndividualTrackUris.length > 0;
+    void refreshListings();
+  }, [refreshListings]);
 
   async function savePrice() {
     if (!agent || !editRow) return;
@@ -286,8 +167,14 @@ export function ListingsPage() {
       return;
     }
     const cents = Math.round(dollars * 100);
+    // Saving a listing is a natural checkpoint to re-pin the item's CID to
+    // its current value -- fixes listings stuck failing checkout with
+    // "item_changed" after an old item/product edit, without silently
+    // changing what's referenced on someone else's schedule.
+    const freshRef = await buildItemRefFromUri(editRow.listing.item.uri);
     const next: Listing = {
       ...editRow.listing,
+      item: freshRef ?? editRow.listing.item,
       price: { ...editRow.listing.price, amount: cents },
     };
     try {
@@ -306,125 +193,40 @@ export function ListingsPage() {
     }
   }
 
-  async function submitNewListing() {
-    if (!agent || !session) return;
-    if (!newItemUri.trim()) {
-      toast.error("Choose a catalog item");
-      return;
-    }
-    if (!newLicenseUri || !newLicenseCid) {
-      toast.error("Choose a license");
-      return;
-    }
-    const dollars = parseFloat(newPrice);
-    if (!Number.isFinite(dollars) || dollars < 0) {
-      toast.error("Invalid price");
-      return;
-    }
-
-    const doBulkTracks =
-      showBulkIndividualTracks && createIndividualTrackListings;
-    let trackCents = 0;
-    if (doBulkTracks) {
-      const td = parseFloat(individualTracksPriceUsd);
-      if (!Number.isFinite(td) || td < 0) {
-        toast.error("Invalid individual track price");
-        return;
-      }
-      trackCents = Math.round(td * 100);
-    }
-
-    setCreateBusy(true);
+  async function confirmDelete() {
+    if (!agent || !deleteTarget) return;
+    setDeleting(true);
     try {
-      const itemRef = await buildItemRefFromUri(newItemUri);
-      if (!itemRef?.cid) {
-        toast.error("Could not load catalog item");
-        return;
-      }
-      const cents = Math.round(dollars * 100);
-      const parentForPrimary =
-        newItemKind === "digital"
-          ? newParentListingUri.trim() || undefined
-          : undefined;
-
-      const { uri: createdListingUri } = await createListing(agent, {
-        item: itemRef,
-        price: { amount: cents, currency: "USD" },
-        status: "active",
-        licenseUri: newLicenseUri,
-        licenseGrantCid: newLicenseCid,
-        parentListing: parentForPrimary,
-      });
-
-      let createdTrackCount = 0;
-      if (doBulkTracks && createdListingUri) {
-        const listedUris = new Set(rows.map((r) => r.listing.item.uri));
-        listedUris.add(newItemUri);
-        for (const trackUri of prefillIndividualTrackUris) {
-          if (listedUris.has(trackUri)) continue;
-          const tRef = await buildItemRefFromUri(trackUri);
-          if (!tRef?.cid) continue;
-          await createListing(agent, {
-            item: tRef,
-            price: { amount: trackCents, currency: "USD" },
-            status: "active",
-            licenseUri: newLicenseUri,
-            licenseGrantCid: newLicenseCid,
-            parentListing: createdListingUri,
-          });
-          createdTrackCount += 1;
-          listedUris.add(trackUri);
-        }
-      }
-
-      if (doBulkTracks) {
-        if (createdTrackCount > 0) {
-          toast.success(
-            `Created collection listing and ${createdTrackCount} track listing(s).`,
-          );
-        } else {
-          toast.success(
-            "Collection listing created. No new track listings (already listed or items missing).",
-          );
-        }
-      } else {
-        toast.success("Listing created");
-      }
-
-      setNewItemUri("");
-      setNewTitle("");
-      setNewLicenseUri("");
-      setNewLicenseCid("");
-      setNewParentListingUri("");
-      setNewPrice("9.99");
-      setPrefillCollectionUri(null);
-      setPrefillIndividualTrackUris([]);
-      setCreateIndividualTrackListings(false);
-      setIndividualTracksPriceUsd("1.99");
-      await refreshListingsAndCatalog();
+      await deleteListing(agent, deleteTarget.uri);
+      setRows((prev) => prev.filter((x) => x.uri !== deleteTarget.uri));
+      toast.success("Listing deleted");
+      setDeleteTarget(null);
     } catch (e) {
-      toast.error("Could not create listing", {
+      toast.error("Failed to delete listing", {
         description: e instanceof Error ? e.message : undefined,
       });
     } finally {
-      setCreateBusy(false);
+      setDeleting(false);
     }
   }
 
   async function toggleStatus(row: ListingRow) {
     if (!agent) return;
     if (isDummyListingRow(row)) return;
+    if (isTerminalListingStatus(row.listing.status)) return;
     const nextStatus =
       row.listing.status === "active" ? "paused" : "active";
     const next: Listing = { ...row.listing, status: nextStatus };
-    const isCollectionListing =
-      row.listing.item.itemType === BAZAAR_COLLECTION.collection;
+    const rowCollection = collectionFromAtUri(row.listing.item.uri);
+    const isParentListing =
+      rowCollection === BAZAAR_COLLECTION.collection ||
+      rowCollection === BAZAAR_COLLECTION.product;
     const activeChildren = rows.filter(
       (x) =>
         x.listing.parentListing === row.uri && x.listing.status === "active",
     );
     try {
-      if (nextStatus === "paused" && isCollectionListing) {
+      if (nextStatus === "paused" && isParentListing) {
         for (const ch of activeChildren) {
           const paused: Listing = { ...ch.listing, status: "paused" };
           await putListing(agent, ch.uri, paused);
@@ -436,7 +238,7 @@ export function ListingsPage() {
           if (x.uri === row.uri) return { ...x, listing: next };
           if (
             nextStatus === "paused" &&
-            isCollectionListing &&
+            isParentListing &&
             activeChildren.some((c) => c.uri === x.uri)
           ) {
             return { ...x, listing: { ...x.listing, status: "paused" } };
@@ -449,240 +251,40 @@ export function ListingsPage() {
     }
   }
 
-  async function applyLatestPublishPrefill() {
-    try {
-      const data = await fetchLatestInventoryPrefill();
-      const p = data.prefill;
-      if (!p || typeof p.primaryItemUri !== "string") {
-        toast.message("No inventory publish prefill found yet.");
-        return;
-      }
-      applyInventoryPrefill(p);
-      toast.success("Form filled from your latest publish.");
-    } catch (e) {
-      toast.error("Could not load prefill", {
-        description: e instanceof Error ? e.message : undefined,
-      });
-    }
-  }
-
   if (!session || !agent) return null;
 
   const dummy = devDummyListingRow(session.did);
   const displayRows = rows.length > 0 ? rows : dummy ? [dummy] : [];
   const showingListingsDummy = rows.length === 0 && dummy != null;
-  const canSubmitCreate =
-    Boolean(newItemUri.trim() && newLicenseUri && newLicenseCid) &&
-    !createBusy &&
-    !(
-      showBulkIndividualTracks &&
-      createIndividualTrackListings &&
-      (!Number.isFinite(parseFloat(individualTracksPriceUsd)) ||
-        parseFloat(individualTracksPriceUsd) < 0)
-    );
+
+  const sortedRows = useMemo(() => {
+    if (!sortKey) return displayRows;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...displayRows].sort((a, b) => {
+      switch (sortKey) {
+        case "name":
+          return (titles[a.uri] ?? "").localeCompare(titles[b.uri] ?? "") * dir;
+        case "date": {
+          const at = new Date(a.listing.createdAt).getTime();
+          const bt = new Date(b.listing.createdAt).getTime();
+          return ((Number.isNaN(at) ? 0 : at) - (Number.isNaN(bt) ? 0 : bt)) * dir;
+        }
+        case "price":
+          return (a.listing.price.amount - b.listing.price.amount) * dir;
+        case "status":
+          return a.listing.status.localeCompare(b.listing.status) * dir;
+      }
+    });
+  }, [displayRows, sortKey, sortDir, titles]);
 
   return (
     <div className="w-full min-w-0 space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Listings</h1>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void applyLatestPublishPrefill()}
-        >
-          Prefill from latest publish
-        </Button>
+        <Link to="/merchant/listings/new" className={cn(buttonVariants())}>
+          Create new listing
+        </Link>
       </div>
-
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg">New listing</CardTitle>
-          <CardDescription>
-            The latest inventory publish loads automatically when you open this page.
-            Pick a catalog item that is not already listed, choose license terms, set
-            a price, then publish the listing to your PDS.{" "}
-            <Link
-              to="/merchant/inventory"
-              className="text-foreground underline underline-offset-2"
-            >
-              Inventory
-            </Link>{" "}
-            shows everything in your repo;{" "}
-            <Link
-              to="/merchant/upload/tracks"
-              className="text-foreground underline underline-offset-2"
-            >
-              Upload
-            </Link>{" "}
-            adds new tracks.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="space-y-2">
-            <Label htmlFor="new-listing-item">Catalog item</Label>
-            <select
-              id="new-listing-item"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={newItemUri}
-              onChange={(e) => setNewItemUri(e.target.value)}
-            >
-              <option value="">Select item…</option>
-              {selectCatalogOptions.map((o) => (
-                <option key={o.uri} value={o.uri}>
-                  {o.title} ({o.kind === "digital" ? "Digital" : "Collection"})
-                </option>
-              ))}
-            </select>
-            {newItemUri ? (
-              <p className="text-xs text-muted-foreground break-all">{newItemUri}</p>
-            ) : null}
-          </div>
-
-          {showBulkIndividualTracks ? (
-            <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-4">
-              <p className="text-sm font-medium">
-                Individual tracks ({prefillIndividualTrackUris.length})
-              </p>
-              <p className="text-xs text-muted-foreground">
-                These tracks were marked for individual sale when you published the
-                collection. Create the collection listing first, then optionally add
-                matching track listings with the same license.
-              </p>
-              <label className="flex items-start gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-input"
-                  checked={createIndividualTrackListings}
-                  onChange={(e) =>
-                    setCreateIndividualTrackListings(e.target.checked)
-                  }
-                />
-                <span>
-                  Create listings for individual sale tracks
-                  <span className="block text-xs text-muted-foreground font-normal mt-1">
-                    Each track gets an active listing with{" "}
-                    <code className="text-[11px]">parentListing</code> set to this
-                    album listing.
-                  </span>
-                </span>
-              </label>
-              {createIndividualTrackListings ? (
-                <div className="space-y-2 max-w-xs">
-                  <Label htmlFor="individual-tracks-price">
-                    Price for each track (USD)
-                  </Label>
-                  <Input
-                    id="individual-tracks-price"
-                    inputMode="decimal"
-                    value={individualTracksPriceUsd}
-                    onChange={(e) => setIndividualTracksPriceUsd(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Same price applied to all {prefillIndividualTrackUris.length}{" "}
-                    track(s). Album price is set above.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {newItemKind === "digital" ? (
-            <div className="space-y-2">
-              <Label htmlFor="new-parent-listing">Parent collection listing</Label>
-              <select
-                id="new-parent-listing"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                value={newParentListingUri}
-                onChange={(e) => setNewParentListingUri(e.target.value)}
-              >
-                <option value="">None (standalone single)</option>
-                {collectionListingOptions.map((r) => (
-                  <option key={r.uri} value={r.uri}>
-                    {titles[r.uri] ?? r.listing.item.uri}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                Set when selling a track as a single under an album listing. Pausing the
-                album listing pauses linked track listings.
-              </p>
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <Label>License</Label>
-            {licenseRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No licenses yet.{" "}
-                <Link to="/merchant/license" className="underline underline-offset-2">
-                  Create one
-                </Link>
-                .
-              </p>
-            ) : (
-              <div className="grid gap-2 max-h-40 overflow-y-auto sm:grid-cols-2">
-                {licenseRows.map((row) => {
-                  const picked =
-                    newLicenseUri === row.uri && newLicenseCid === row.cid;
-                  return (
-                    <button
-                      key={row.uri}
-                      type="button"
-                      onClick={() => {
-                        setNewLicenseUri(row.uri);
-                        setNewLicenseCid(row.cid);
-                      }}
-                      className={cn(
-                        "rounded-lg border p-3 text-left text-sm transition-colors",
-                        picked && "ring-2 ring-ring bg-muted/40",
-                      )}
-                    >
-                      <span className="font-medium">{row.title}</span>
-                      <span className="block text-xs text-muted-foreground mt-1">
-                        {row.version}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {licenseRows.length > 0 ? (
-              <Link
-                to="/merchant/license"
-                className="text-sm text-primary underline-offset-2 hover:underline"
-              >
-                Don't see the right license? Create one
-              </Link>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="space-y-2 flex-1 min-w-[8rem] max-w-xs">
-              <Label htmlFor="new-listing-price">Price (USD)</Label>
-              <Input
-                id="new-listing-price"
-                inputMode="decimal"
-                value={newPrice}
-                onChange={(e) => setNewPrice(e.target.value)}
-              />
-            </div>
-            <Button
-              type="button"
-              disabled={!canSubmitCreate}
-              onClick={() => void submitNewListing()}
-            >
-              {createBusy
-                ? showBulkIndividualTracks && createIndividualTrackListings
-                  ? "Creating listings…"
-                  : "Creating…"
-                : showBulkIndividualTracks && createIndividualTrackListings
-                  ? "Create album + track listings"
-                  : "Create listing"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {showingListingsDummy ? (
         <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
@@ -702,10 +304,10 @@ export function ListingsPage() {
             preview/production builds.
           </p>
           <Link
-            to="/merchant/upload/tracks"
+            to="/merchant/listings/new"
             className={cn(buttonVariants(), "mt-4 inline-flex")}
           >
-            Upload an item
+            Create new listing
           </Link>
         </div>
       ) : (
@@ -713,15 +315,15 @@ export function ListingsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="text-left p-3 font-medium">Item</th>
-                <th className="text-left p-3 font-medium">Type</th>
-                <th className="text-left p-3 font-medium">Price</th>
-                <th className="text-left p-3 font-medium">Status</th>
+                <SortHeader label="Item" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Created" sortKey="date" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Price" sortKey="price" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
                 <th className="text-right p-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {displayRows.map((row) => (
+              {sortedRows.map((row) => (
                 <tr key={row.uri} className="border-b border-border">
                   <td className="p-3">
                     {isDummyListingRow(row)
@@ -733,8 +335,8 @@ export function ListingsPage() {
                       </Badge>
                     ) : null}
                   </td>
-                  <td className="p-3">
-                    <Badge variant="outline">{row.listing.item.itemType}</Badge>
+                  <td className="p-3 text-muted-foreground">
+                    {isDummyListingRow(row) ? "—" : fmtCreatedAt(row.listing.createdAt)}
                   </td>
                   <td className="p-3">
                     {formatMoney(row.listing.price)}
@@ -749,7 +351,16 @@ export function ListingsPage() {
                     </Badge>
                   </td>
                   <td className="p-3 text-right space-x-2">
-                    {isDummyListingRow(row) ? null : (
+                    {isDummyListingRow(row) ? null : isTerminalListingStatus(
+                        row.listing.status,
+                      ) ? (
+                      <Link
+                        to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(row.listing.item.uri)}`}
+                        className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+                      >
+                        Create new listing
+                      </Link>
+                    ) : (
                       <>
                         <button
                           type="button"
@@ -781,6 +392,18 @@ export function ListingsPage() {
                     >
                       Storefront
                     </Link>
+                    {isDummyListingRow(row) ? null : (
+                      <button
+                        type="button"
+                        className={cn(
+                          buttonVariants({ size: "sm", variant: "ghost" }),
+                          "text-destructive hover:text-destructive",
+                        )}
+                        onClick={() => setDeleteTarget(row)}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -789,30 +412,78 @@ export function ListingsPage() {
         </div>
       )}
       <Sheet open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
-        <SheetContent>
+        <SheetContent className="sm:max-w-sm">
           <SheetHeader>
             <SheetTitle>Edit price</SheetTitle>
           </SheetHeader>
-          <div className="mt-6 space-y-4">
-            <div>
+          <form
+            className="flex flex-col gap-4 px-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void savePrice();
+            }}
+          >
+            <div className="space-y-1.5">
               <Label htmlFor="edit-price">Price (USD)</Label>
               <Input
                 id="edit-price"
                 value={editDollars}
                 onChange={(e) => setEditDollars(e.target.value)}
-                className="mt-1"
+                autoFocus
               />
             </div>
-            <button
-              type="button"
-              className={cn(buttonVariants())}
-              onClick={() => void savePrice()}
-            >
-              Save
-            </button>
-          </div>
+            <div className="flex gap-2">
+              <button type="submit" className={cn(buttonVariants())}>
+                Save
+              </button>
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: "outline" }))}
+                onClick={() => setEditRow(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         </SheetContent>
       </Sheet>
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Delete "{deleteTarget ? (titles[deleteTarget.uri] ?? deleteTarget.uri) : ""}"?
+            </DialogTitle>
+            <DialogDescription>
+              This permanently deletes the listing record. It stops appearing
+              here and on your storefront immediately. Buyers who already
+              purchased through it keep their receipts and downloads --
+              deleting a listing never affects a completed sale.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmDelete()}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting…" : "Delete listing"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

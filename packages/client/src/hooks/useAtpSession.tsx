@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { getAuthRole } from "@/lib/auth";
-import { apiServerOrigin, browserApiUrl } from "@/lib/browserApi";
+import { browserApiUrl } from "@/lib/browserApi";
 import { resolveDidForHandle } from "@/lib/atproto/pdsResolve";
 import { safeReturnPath } from "@/lib/signInReturn";
 
@@ -109,10 +109,6 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const origin = apiServerOrigin();
-    if (!origin) {
-      throw new Error("Set VITE_API_ORIGIN to your API server URL.");
-    }
     const qs = new URLSearchParams({ handle: h });
     const back = safeReturnPath(
       new URLSearchParams(window.location.search).get("returnTo"),
@@ -128,7 +124,10 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
       ? "merchant"
       : "buyer";
     qs.set("role", role);
-    const url = `${origin}/api/atproto/signin?${qs.toString()}`;
+    // Same-origin (Vite /api proxy in DEV). Do not fetch VITE_API_ORIGIN
+    // absolutely — a stale or dead trycloudflare host throws here and used
+    // to surface as "Could not reach your PDS".
+    const url = browserApiUrl(`/api/atproto/signin?${qs.toString()}`);
 
     // The success path here is a redirect to the user's PDS — a real top-level
     // navigation, not something `fetch` can complete (it needs the browser's own
@@ -146,7 +145,7 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
       res = await fetch(url, { redirect: "manual", credentials: "include" });
     } catch {
       throw new Error(
-        "Could not reach your PDS. Check your connection and try again.",
+        "Could not reach the Bazaar API to start sign-in. Open the cloudflared URL (Vite must be on :5173) and try again.",
       );
     }
     if (res.type !== "opaqueredirect" && !res.ok) {

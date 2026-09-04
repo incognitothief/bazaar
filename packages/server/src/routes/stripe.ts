@@ -54,6 +54,13 @@ function fulfillmentRowForCheckoutSession(
 }
 
 async function getRecordJson(uri: string): Promise<Record<string, unknown> | null> {
+  const withCid = await getRecordJsonWithCid(uri);
+  return withCid?.value ?? null;
+}
+
+async function getRecordJsonWithCid(
+  uri: string,
+): Promise<{ value: Record<string, unknown>; cid: string | undefined } | null> {
   try {
     const at = new AtUri(uri);
     const agent = await getAgentForDid(at.hostname);
@@ -62,7 +69,7 @@ async function getRecordJson(uri: string): Promise<Record<string, unknown> | nul
       collection: at.collection,
       rkey: at.rkey,
     });
-    return res.data.value as Record<string, unknown>;
+    return { value: res.data.value as Record<string, unknown>, cid: res.data.cid };
   } catch {
     return null;
   }
@@ -156,16 +163,34 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
         return c.json({ error: "Parent collection listing is not active" }, 400);
       }
     }
-    let item = await getRecordJson(itemUri);
-    if (
-      !item &&
-      devCheckoutStubAllowed() &&
-      isDevStubListingUri(listingUri)
-    ) {
+    let item: Record<string, unknown> | null = null;
+    let itemCid: string | undefined;
+    if (devCheckoutStubAllowed() && isDevStubListingUri(listingUri)) {
       item = buildDevStubItemJson(itemUri);
+    } else {
+      const fetched = await getRecordJsonWithCid(itemUri);
+      item = fetched?.value ?? null;
+      itemCid = fetched?.cid;
     }
     if (!item) {
       return c.json({ error: "Could not resolve item" }, 404);
+    }
+    // Buyer/seller protection: if the listing pinned the item's CID at
+    // listing-creation time (the existing optional itemRef.cid field), the
+    // live-fetched content must still match it. Otherwise the merchant
+    // changed the underlying item between page-load and checkout and the
+    // buyer would be paying against terms they never actually saw.
+    const listingItem = listing.item as { cid?: unknown } | undefined;
+    const pinnedItemCid =
+      typeof listingItem?.cid === "string" ? listingItem.cid : undefined;
+    if (pinnedItemCid && itemCid && pinnedItemCid !== itemCid) {
+      return c.json(
+        {
+          error: "item_changed",
+          detail: "This item changed since the listing was created. Please refresh and try again.",
+        },
+        400,
+      );
     }
     const price = listing.price as { amount?: number; currency?: string } | undefined;
     if (!price?.amount || !price?.currency) {

@@ -25,3 +25,55 @@ export function inventoryObjectKey(
 /** Default master object name inside the item prefix (deterministic for download). */
 export const INVENTORY_MASTER_OBJECT_NAME = "master";
 export const INVENTORY_ARTWORK_OBJECT_NAME = "artwork";
+
+/**
+ * R2 keys for catalog.item/catalog.product uploads -- a separate scheme
+ * from inventoryObjectKey() above, not a migration of it. That function is
+ * recomputed fresh on every legacy download with no DB dependency, so it
+ * can never change format without breaking every past purchase; it stays
+ * exactly as-is forever for catalog.item.digital/catalog.collection.
+ *
+ * These key by the *product's* rkey, not the upload object's own id --
+ * every catalog.item is created as part of some catalog.product (even a
+ * single-item release is a one-item product), so the product's rkey is a
+ * stable grouping key available at upload-registration time: it's minted
+ * up front (TID.nextStr(), same pattern as the legacy itemTid reservation)
+ * for a new product, or taken from the existing product's own URI when
+ * adding items/assets to one already published. See
+ * inventoryUploadSession.productRkey. The product's createRecord call at
+ * publish time passes this same rkey explicitly rather than letting the
+ * PDS assign one, so the R2 folder and the PDS record rkey always match.
+ *
+ * Unlike the legacy scheme, resolving one of these keys back to bytes
+ * always goes through inventoryUploadObject.r2Key (a DB lookup), never
+ * recomputation -- acceptable now that Bazaar is ERP-first everywhere
+ * else too. What this buys back over the flat, UUID-only scheme it
+ * replaced is a bucket you can actually browse: everything for one
+ * product lives under one prefix, split into its items and its
+ * product-level assets (cover art, included assets).
+ */
+export function newProductItemKey(
+  sellerDid: string,
+  productRkey: string,
+  objectId: string,
+  filename: string,
+): string {
+  if (!sellerDid.startsWith("did:")) throw new Error("Invalid seller DID");
+  if (!productRkey) throw new Error("Invalid product rkey");
+  if (!objectId) throw new Error("Invalid object id");
+  const safe = sanitizeInventoryFilename(filename);
+  return `inventory/${sellerDid}/${productRkey}/items/${objectId}/${safe}`;
+}
+
+export function newProductAssetKey(
+  sellerDid: string,
+  productRkey: string,
+  objectId: string,
+  filename: string,
+): string {
+  if (!sellerDid.startsWith("did:")) throw new Error("Invalid seller DID");
+  if (!productRkey) throw new Error("Invalid product rkey");
+  if (!objectId) throw new Error("Invalid object id");
+  const safe = sanitizeInventoryFilename(filename);
+  return `inventory/${sellerDid}/${productRkey}/assets/${objectId}/${safe}`;
+}

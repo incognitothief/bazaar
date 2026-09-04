@@ -28,7 +28,7 @@ function ArtworkLoadingSkeleton({ className }: { className?: string }) {
       <span className="sr-only">Loading artwork</span>
       <div
         className={cn(
-          "flex h-full w-full min-h-0 items-center justify-center bg-muted p-4",
+          "flex aspect-square w-48 max-w-full min-h-0 items-center justify-center bg-muted p-4",
           className,
         )}
         role="status"
@@ -51,7 +51,7 @@ function ArtworkPlaceholder({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "flex h-full w-full min-h-0 items-center justify-center bg-muted p-4",
+        "flex aspect-square w-48 max-w-full min-h-0 items-center justify-center bg-muted p-4",
         className,
       )}
       aria-hidden
@@ -193,7 +193,11 @@ export function ArtworkImage({
 
   if (phase === "ready" && src) {
     return (
-      <img src={src} alt={alt} className={cn("object-cover", className)} />
+      <img
+        src={src}
+        alt={alt}
+        className={cn("block object-cover", className)}
+      />
     );
   }
 

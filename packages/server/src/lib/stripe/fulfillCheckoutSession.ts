@@ -209,6 +209,8 @@ function claimFulfillmentWork(
   checkoutSessionId: string,
   source: FulfillmentSource,
   buyerDidFromCheckout: string | null,
+  itemUri: string,
+  listingUri: string,
 ): ClaimResult {
   const now = new Date();
   const nowMs = now.getTime();
@@ -228,6 +230,8 @@ function claimFulfillmentWork(
             paymentIntentId,
             checkoutSessionId,
             buyerDid: buyerDidFromCheckout,
+            itemUri,
+            listingUri,
             status: "processing",
             attemptCount: 1,
             createdAt: now,
@@ -237,9 +241,18 @@ function claimFulfillmentWork(
         return { action: "run", paymentIntentId };
       }
 
-      if (!existing.buyerDid && buyerDidFromCheckout) {
+      if (
+        (!existing.buyerDid && buyerDidFromCheckout) ||
+        !existing.itemUri ||
+        !existing.listingUri
+      ) {
         tx.update(paymentFulfillment)
-          .set({ buyerDid: buyerDidFromCheckout, updatedAt: now })
+          .set({
+            buyerDid: existing.buyerDid ?? buyerDidFromCheckout,
+            itemUri: existing.itemUri ?? itemUri,
+            listingUri: existing.listingUri ?? listingUri,
+            updatedAt: now,
+          })
           .where(eq(paymentFulfillment.paymentIntentId, paymentIntentId))
           .run();
       }
@@ -435,6 +448,8 @@ export async function fulfillCheckoutSession(opts: {
     session.id,
     source,
     buyerDidHint,
+    itemUri,
+    listingUri,
   );
   if (claim.action === "skip") {
     return claim.reason;
@@ -517,8 +532,7 @@ export async function fulfillCheckoutSession(opts: {
 
   const itemRefRaw = listing.item as Record<string, unknown> | undefined;
   const itemRefUri = itemRefRaw?.uri as string | undefined;
-  const itemRefType = itemRefRaw?.itemType as string | undefined;
-  if (!itemRefRaw || !itemRefUri || !itemRefType) {
+  if (!itemRefRaw || !itemRefUri) {
     console.warn("Listing item ref invalid");
     await markDeadLetter(db, paymentRef, "listing_item_ref_invalid");
     return;
@@ -547,10 +561,7 @@ export async function fulfillCheckoutSession(opts: {
   const privateKeyRaw = process.env.APP_MERCHANT_PRIVATE_KEY;
 
   const ref = itemRefRaw;
-  const receiptItem: Record<string, unknown> = {
-    uri: itemRefUri,
-    itemType: itemRefType,
-  };
+  const receiptItem: Record<string, unknown> = { uri: itemRefUri };
   const itemCid = ref.cid as string | undefined;
   if (typeof itemCid === "string" && itemCid.length > 0) {
     receiptItem.cid = itemCid;

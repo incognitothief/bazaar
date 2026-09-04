@@ -19,9 +19,11 @@ function clientScope(oauthClient: OAuthClient): string {
   return oauthClient.clientMetadata.scope ?? buildOAuthScopeString();
 }
 import type { Db } from "../db";
-import { licenses, meta } from "../db/schema";
+import { catalogItems, catalogProducts, licenses, meta } from "../db/schema";
 
 const LICENSE_TERMS_COLLECTION = "diamonds.whereditgo.bazaar.license.terms";
+const CATALOG_ITEM_COLLECTION = "diamonds.whereditgo.bazaar.catalog.item";
+const CATALOG_PRODUCT_COLLECTION = "diamonds.whereditgo.bazaar.catalog.product";
 
 /**
  * Best-effort write-time capture of license.terms content into the local
@@ -64,6 +66,111 @@ async function captureLicenseTerms(
         checkoutConsentRequired,
       })
       .onConflictDoNothing();
+  } catch {
+    // Best-effort — the PDS write already succeeded.
+  }
+}
+
+/**
+ * Best-effort write-time capture of catalog.item content into catalog_items,
+ * keyed by URI. Unlike license.terms, catalog.item supports putRecord, so
+ * this upserts (a title/description edit must keep the ERP row fresh, not
+ * accumulate stale duplicates) — hooked into both createRecord and
+ * putRecord below. This table is the primary read path for storefront and
+ * merchant item views, so a capture failure is silent but real: the write
+ * still succeeded on the PDS, it just won't show up via ERP-first reads
+ * until the merchant uses "Sync with PDS".
+ */
+/**
+ * objectId links this item back to its R2 upload object (see
+ * lib/r2/inventoryKey.ts's newProductItemKey) -- never on the PDS
+ * record, so like catalogProducts.productType it can only be known at
+ * genuine creation time (passed via opts) and must be preserved, not
+ * overwritten, on every later capture.
+ */
+export async function captureCatalogItem(
+  db: Db,
+  sellerDid: string,
+  record: unknown,
+  uri: string,
+  cid: string,
+  opts?: { objectId?: string },
+): Promise<void> {
+  if (typeof record !== "object" || record === null) return;
+  const r = record as Record<string, unknown>;
+  const title = r.title;
+  if (typeof title !== "string") return;
+  const optionalString = (v: unknown): string | undefined =>
+    typeof v === "string" ? v : undefined;
+  try {
+    const updateSet = {
+      cid,
+      sellerDid,
+      title,
+      category: optionalString(r.category) ?? null,
+      description: optionalString(r.description) ?? null,
+      tags: Array.isArray(r.tags) ? JSON.stringify(r.tags) : null,
+      format: optionalString(r.format) ?? null,
+      fileChecksum: optionalString(r.fileChecksum) ?? null,
+      fileCid: optionalString(r.fileCid) ?? null,
+      supersedes: optionalString(r.supersedes) ?? null,
+      recordCreatedAt: optionalString(r.createdAt) ?? null,
+      updatedAt: new Date(),
+    };
+    await db
+      .insert(catalogItems)
+      .values({ uri, ...updateSet, objectId: opts?.objectId ?? null })
+      .onConflictDoUpdate({ target: catalogItems.uri, set: updateSet });
+  } catch {
+    // Best-effort — the PDS write already succeeded.
+  }
+}
+
+/**
+ * Same upsert-by-URI pattern as captureCatalogItem. productType/
+ * artIncludedInDownload are UI-only, never on the PDS record,
+ * so they can only ever be known at genuine creation time (passed via
+ * opts, from the publish-product draft). Every later capture -- a routine
+ * putRecord edit through the proxy hook, or a manual "Sync with PDS" --
+ * must leave them untouched, which is why they're only present in the
+ * insert values, not the onConflictDoUpdate set.
+ */
+export async function captureCatalogProduct(
+  db: Db,
+  sellerDid: string,
+  record: unknown,
+  uri: string,
+  cid: string,
+  opts?: { productType?: string; artIncludedInDownload?: boolean },
+): Promise<void> {
+  if (typeof record !== "object" || record === null) return;
+  const r = record as Record<string, unknown>;
+  const title = r.title;
+  const items = r.items;
+  if (typeof title !== "string" || !Array.isArray(items)) return;
+  const description = typeof r.description === "string" ? r.description : null;
+  const recordCreatedAt =
+    typeof r.createdAt === "string" ? r.createdAt : null;
+  try {
+    const updateSet = {
+      cid,
+      sellerDid,
+      title,
+      description,
+      tags: Array.isArray(r.tags) ? JSON.stringify(r.tags) : null,
+      items: JSON.stringify(items),
+      recordCreatedAt,
+      updatedAt: new Date(),
+    };
+    await db
+      .insert(catalogProducts)
+      .values({
+        uri,
+        ...updateSet,
+        productType: opts?.productType ?? null,
+        artIncludedInDownload: opts?.artIncludedInDownload ?? false,
+      })
+      .onConflictDoUpdate({ target: catalogProducts.uri, set: updateSet });
   } catch {
     // Best-effort — the PDS write already succeeded.
   }
@@ -305,6 +412,10 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
         res.data.uri,
         res.data.cid,
       );
+    } else if (body.collection === CATALOG_ITEM_COLLECTION) {
+      await captureCatalogItem(db, did, body.record, res.data.uri, res.data.cid);
+    } else if (body.collection === CATALOG_PRODUCT_COLLECTION) {
+      await captureCatalogProduct(db, did, body.record, res.data.uri, res.data.cid);
     }
     return c.json({ uri: res.data.uri, cid: res.data.cid });
   });
@@ -321,14 +432,19 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       record: unknown;
       swapRecord?: string;
     }>();
-    await agent.com.atproto.repo.putRecord({
+    const res = await agent.com.atproto.repo.putRecord({
       repo: did,
       collection: body.collection,
       rkey: body.rkey,
       record: body.record as Record<string, unknown>,
       ...(body.swapRecord ? { swapRecord: body.swapRecord } : {}),
     });
-    return c.json({ ok: true });
+    if (body.collection === CATALOG_ITEM_COLLECTION) {
+      await captureCatalogItem(db, did, body.record, res.data.uri, res.data.cid);
+    } else if (body.collection === CATALOG_PRODUCT_COLLECTION) {
+      await captureCatalogProduct(db, did, body.record, res.data.uri, res.data.cid);
+    }
+    return c.json({ ok: true, uri: res.data.uri, cid: res.data.cid });
   });
 
   r.post("/repo/deleteRecord", async (c) => {

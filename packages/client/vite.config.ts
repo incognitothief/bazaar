@@ -14,6 +14,9 @@ export default defineConfig({
     // success_url uses 127.0.0.1 (see storefrontWebOrigin), which then gets ERR_CONNECTION_REFUSED.
     host: true,
     port: 5173,
+    // cloudflared (`make tunnel`) always targets :5173. Do not silently move —
+    // a leftover Vite on 5173 makes the tunnel serve a stale bundle.
+    strictPort: true,
     // cloudflared quick tunnels use random *.trycloudflare.com Host headers; Vite blocks unknown hosts by default.
     allowedHosts: [".trycloudflare.com"],
     proxy: {

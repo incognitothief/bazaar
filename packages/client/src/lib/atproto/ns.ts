@@ -1,5 +1,7 @@
 /** Record collection NSIDs */
 export const BAZAAR_COLLECTION = {
+  item: "diamonds.whereditgo.bazaar.catalog.item",
+  product: "diamonds.whereditgo.bazaar.catalog.product",
   digitalItem: "diamonds.whereditgo.bazaar.catalog.item.digital",
   physicalItem: "diamonds.whereditgo.bazaar.catalog.item.physical",
   collection: "diamonds.whereditgo.bazaar.catalog.collection",

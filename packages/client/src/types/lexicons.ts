@@ -21,16 +21,16 @@ export type Variant = {
 };
 
 export type BazaarItemType =
+  | "diamonds.whereditgo.bazaar.catalog.item"
+  | "diamonds.whereditgo.bazaar.catalog.product"
   | "diamonds.whereditgo.bazaar.catalog.item.digital"
   | "diamonds.whereditgo.bazaar.catalog.item.physical"
-  | "diamonds.whereditgo.bazaar.catalog.item.bundle"
   | "diamonds.whereditgo.bazaar.catalog.collection";
 
 export type ItemRef = {
   uri: string;
   cid?: string;
   variantSku?: string;
-  itemType: BazaarItemType;
 };
 
 export type Address = {
@@ -165,6 +165,33 @@ export type Collection = {
   genre?: string[];
   upc?: string;
   bazaarPid?: unknown;
+  createdAt: string;
+};
+
+/** diamonds.whereditgo.bazaar.catalog.item — successor to DigitalItem (physical excluded, no fixed itemClass taxonomy). */
+export type BazaarItem = {
+  $type: "diamonds.whereditgo.bazaar.catalog.item";
+  title: string;
+  sellerDid: string;
+  category?: string;
+  description?: string;
+  tags?: string[];
+  /** Absent for non-file (dispensable) items — see catalog.item.json. */
+  format?: string;
+  fileChecksum?: string;
+  fileCid?: string;
+  supersedes?: string;
+  createdAt: string;
+};
+
+/** diamonds.whereditgo.bazaar.catalog.product — the public declaration of a composite of one or more catalog.item records. */
+export type Product = {
+  $type: "diamonds.whereditgo.bazaar.catalog.product";
+  title: string;
+  sellerDid: string;
+  description?: string;
+  tags?: string[];
+  items: ItemRef[];
   createdAt: string;
 };
 
@@ -317,4 +344,19 @@ export type ActorMerchantKeys = {
   syncedAt?: string;
 };
 
-export type CatalogItem = DigitalItem | Collection | PhysicalItem;
+export type CatalogItem = DigitalItem | Collection | PhysicalItem | BazaarItem | Product;
+
+/**
+ * catalog.item/catalog.product renamed artistDid -> sellerDid; the legacy
+ * types (DigitalItem, Collection, PhysicalItem) still use artistDid. Reading
+ * through this everywhere means legacy records keep resolving forever with
+ * no republish required.
+ */
+export function catalogItemSellerDid(item: CatalogItem): string {
+  return "sellerDid" in item ? item.sellerDid : item.artistDid;
+}
+
+/** catalog.item (BazaarItem) has no artworkCid of its own — artwork lives at the product level for the new type. */
+export function catalogItemArtworkCid(item: CatalogItem): string | undefined {
+  return "artworkCid" in item ? item.artworkCid : undefined;
+}

@@ -28,6 +28,7 @@ export function InventoryGrid({
           artistDid={artistDid}
           itemUri={e.uri}
           item={e.item}
+          coverImages={e.coverImages}
           listing={listingsByItemUri[e.uri]!}
           preview={previewItemUri != null && e.uri === previewItemUri}
         />

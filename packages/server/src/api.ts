@@ -44,13 +44,13 @@ export function createApiRouter(db: Db, oauthClient: OAuthClient) {
 
   api.route("/atproto", createAtprotoRouter(db, oauthClient));
   api.route("/stripe", createStripeRouter(db, oauthClient));
-  api.route("/catalog", createCatalogRouter());
+  api.route("/catalog", createCatalogRouter(db));
   api.route("/merchant", createMerchantRouter(db));
   api.route("/identifiers", createIdentifiersRouter(oauthClient));
   api.route("/inventory", createInventoryRouter(db, oauthClient));
   api.route("/inventory-public", createInventoryPublicRouter());
   api.route("/licenses", createLicensesRouter(db));
-  api.route("/download", createDownloadRouter(oauthClient));
+  api.route("/download", createDownloadRouter(db, oauthClient));
 
   api.notFound((c) => c.json({ error: "not_found" }, 404));
 

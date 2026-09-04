@@ -47,6 +47,15 @@ export const inventoryUploadSession = sqliteTable("inventory_upload_session", {
   publishedAt: integer("published_at", { mode: "timestamp" }),
   publishError: text("publish_error"),
   pdsSnapshotJson: text("pds_snapshot_json"),
+  /**
+   * inventoryKind "product" sessions only. Either a fresh TID minted at
+   * session creation (new product -- becomes that catalog.product record's
+   * actual rkey at publish, passed explicitly rather than left to the PDS
+   * to assign) or the rkey of an already-existing product (adding items /
+   * assets to it). Every object uploaded in this session keys its R2
+   * object under this rkey -- see lib/r2/inventoryKey.ts.
+   */
+  productRkey: text("product_rkey"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -74,6 +83,14 @@ export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
   fileCid: text("file_cid"),
   durationMs: integer("duration_ms"),
   error: text("error"),
+  /**
+   * R2 key of a webp derivative for this object, if one was generated
+   * (best-effort, "artwork"-role objects only -- see lib/webpDerivative.ts).
+   * Null means either generation wasn't attempted (legacy upload, non-image
+   * file) or it failed; either way the read path falls back to r2Key.
+   * Never used for the product download package, only storefront display.
+   */
+  webpR2Key: text("webp_r2_key"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -140,6 +157,45 @@ export const licenses = sqliteTable("licenses", {
 });
 
 /**
+ * ERP-first mirror of catalog.item content, keyed by URI (not CID) — unlike
+ * license.terms, catalog.item supports putRecord, so a given URI's row is
+ * upserted on every create/put/sync rather than accumulating one row per
+ * CID. `cid` tracks the current live CID for checkout-time pinning checks.
+ * This table is the primary read path for storefront/merchant item views;
+ * the PDS is consulted at checkout time and via the manual "Sync with PDS"
+ * action, not on every read.
+ */
+export const catalogItems = sqliteTable("catalog_items", {
+  uri: text("uri").primaryKey(),
+  cid: text("cid").notNull(),
+  sellerDid: text("seller_did").notNull(),
+  title: text("title").notNull(),
+  category: text("category"),
+  description: text("description"),
+  /** JSON-serialized string[] -- freeform, seller-authored, no taxonomy. Mirrors catalog.item's own tags field. */
+  tags: text("tags"),
+  format: text("format"),
+  fileChecksum: text("file_checksum"),
+  fileCid: text("file_cid"),
+  supersedes: text("supersedes"),
+  /**
+   * Links back to inventoryUploadObject.id -- the only way to resolve this
+   * item's own R2 file (see lib/r2/inventoryKey.ts's newAssetKey). Not on
+   * the PDS record, so set once at creation (via captureCatalogItem's opts)
+   * and preserved on every later capture, same as catalogProducts.productType.
+   */
+  objectId: text("object_id"),
+  /** The record's own createdAt field, as authored (immutable on the PDS). */
+  recordCreatedAt: text("record_created_at"),
+  capturedAt: integer("captured_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/**
  * Merchant (storefront) signing keys — a boot-rebuilt audit mirror of the environment
  * (`APP_MERCHANT_PRIVATE_KEY` / `_KID` / `_PUBLIC_MULTIBASE` / `_KEY_HISTORY`). Zero authority:
  * `reconcileMerchantKeys()` truncates and repopulates it on every startup. Verification reads
@@ -162,6 +218,75 @@ export const appKeys = sqliteTable("app_keys", {
     .$defaultFn(() => new Date()),
 });
 
+/** ERP-first mirror of catalog.product content. Same upsert-by-URI shape as catalogItems. */
+export const catalogProducts = sqliteTable("catalog_products", {
+  uri: text("uri").primaryKey(),
+  cid: text("cid").notNull(),
+  sellerDid: text("seller_did").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  /** JSON-serialized string[] -- freeform, seller-authored, no taxonomy. Mirrors catalog.item's own tags field. */
+  tags: text("tags"),
+  /** JSON-serialized itemRef[] — the product's declared composition. */
+  items: text("items").notNull(),
+  /**
+   * UI-only classification (e.g. "music", "generic") -- deliberately NOT on
+   * the PDS record. It's not part of what the product publicly *is*, just
+   * how our own onboarding/storefront customize themselves; a buyer
+   * attesting a purchase never needs it. Set once at creation, preserved
+   * (never overwritten) by every later capture -- see captureCatalogProduct.
+   */
+  productType: text("product_type"),
+  /**
+   * Whether cover art (a catalogProductAssets row with role "coverArt")
+   * gets bundled into the buyer's download package. Also ERP-only -- same
+   * reasoning as productType. Everything else in catalogProductAssets is
+   * always included; this is the one asset with a toggle.
+   */
+  artIncludedInDownload: integer("art_included_in_download", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
+  recordCreatedAt: text("record_created_at"),
+  capturedAt: integer("captured_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/**
+ * Permanent link between a catalog.product and an internal-only companion
+ * asset (cover art, liner notes) uploaded via the existing inventory
+ * upload mechanism. Unlike inventoryUploadObject's normal lifecycle
+ * (staging en route to a PDS publish), these objects are never meant to
+ * become their own PDS record -- they aren't essential to the product's
+ * public identity, just internal metadata served from the ERP.
+ */
+export const catalogProductAssets = sqliteTable(
+  "catalog_product_assets",
+  {
+    id: text("id").primaryKey(),
+    productUri: text("product_uri").notNull(),
+    objectId: text("object_id")
+      .notNull()
+      .references(() => inventoryUploadObject.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    /** Display order among assets sharing a role -- e.g. slideshow order for multiple "coverArt" rows. Meaningless for a single asset. */
+    position: integer("position").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => ({
+    productUriIdx: index("idx_catalog_product_assets_product_uri").on(
+      t.productUri,
+    ),
+  }),
+);
+
 export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   paymentIntentId: text("payment_intent_id").primaryKey(),
   checkoutSessionId: text("checkout_session_id"),
@@ -175,6 +300,9 @@ export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   receiptUri: text("receipt_uri"),
   receiptCid: text("receipt_cid"),
   consentUri: text("consent_uri"),
+  /** From the Checkout Session metadata that seeded this row -- lets the Sales page show what was bought without a PDS round trip. */
+  itemUri: text("item_uri"),
+  listingUri: text("listing_uri"),
   payloadSnapshot: text("payload_snapshot"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()

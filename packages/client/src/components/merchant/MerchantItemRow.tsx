@@ -13,6 +13,8 @@ import {
   itemDetailText,
   kindLabel,
   listingStatusBadgeVariant,
+  rowArtworkCid,
+  rowCoverImageUrl,
   storefrontHref,
 } from "./merchantItemDisplay";
 
@@ -37,22 +39,28 @@ export function MerchantItemRow({
   return (
     <div className="flex items-center gap-3 border-b border-border px-2 py-2 last:border-b-0">
       <Link
-        to={editHref(row.uri)}
+        to={editHref(row)}
         className="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <ArtworkImage
-          agent={agent}
-          did={merchantDid}
-          cid={row.item.artworkCid}
-          itemUri={row.uri}
-          alt=""
-          className="h-full w-full"
-        />
+        {row.kind === "product" || row.kind === "item" ? (
+          rowCoverImageUrl(row) ? (
+            <img src={rowCoverImageUrl(row)} alt="" className="h-full w-full object-cover" />
+          ) : null
+        ) : (
+          <ArtworkImage
+            agent={agent}
+            did={merchantDid}
+            cid={rowArtworkCid(row)}
+            itemUri={row.uri}
+            alt=""
+            className="h-full w-full"
+          />
+        )}
       </Link>
 
       <div className="min-w-0 flex-1">
         <Link
-          to={editHref(row.uri)}
+          to={editHref(row)}
           className="block truncate text-sm font-medium hover:underline focus-visible:outline-none"
         >
           {title}
@@ -81,7 +89,7 @@ export function MerchantItemRow({
 
       <div className="flex shrink-0 items-center gap-0.5">
         <Link
-          to={editHref(row.uri)}
+          to={editHref(row)}
           className={cn(buttonVariants({ variant: "ghost", size: "icon-xs" }))}
           title="Edit"
           aria-label="Edit"

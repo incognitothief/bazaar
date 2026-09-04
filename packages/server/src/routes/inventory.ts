@@ -17,6 +17,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db";
 import {
+  catalogProductAssets,
+  catalogProducts,
   inventoryPrefillLog,
   inventoryUploadObject,
   inventoryUploadPart,
@@ -24,18 +26,22 @@ import {
 } from "../db/schema";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { getSessionAgent } from "../lib/atproto/session";
+import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import { cidFromSha256Digest32 } from "../lib/r2/cid";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import {
   INVENTORY_ARTWORK_OBJECT_NAME,
   INVENTORY_MASTER_OBJECT_NAME,
   inventoryObjectKey,
+  newProductAssetKey,
+  newProductItemKey,
 } from "../lib/r2/inventoryKey";
 import {
   isR2AccessDenied,
   r2AccessDeniedHints,
 } from "../lib/r2/diagnostics";
 import { getR2S3Client } from "../lib/r2/s3Client";
+import { generateWebpDerivative } from "../lib/webpDerivative";
 import {
   buildBazaarPid,
   buildBazaarRid,
@@ -63,6 +69,41 @@ function loadR2():
   const cfg = r2ConfigFromEnv();
   if (!cfg.ok) return { ok: false, reason: cfg.reason };
   return { ok: true, cfg, client: getR2S3Client(cfg) };
+}
+
+/**
+ * Best-effort webp derivative, only for "artwork"-role objects in a
+ * "product"-kind session (cover images / the generic included-assets bin --
+ * see newProductAssetKey). Legacy digital/collection artwork is
+ * untouched, same "new types get new capabilities, legacy stays frozen"
+ * pattern as everywhere else in this reshape. Stored as `${r2Key}.webp`,
+ * a sibling object -- never touches the original, and the product
+ * download package always reads r2Key directly, never this.
+ */
+async function maybeGenerateWebpDerivative(
+  r2: { cfg: { bucket: string }; client: ReturnType<typeof getR2S3Client> },
+  obj: { role: string; r2Key: string },
+  sessionInventoryKind: string,
+  buf: Buffer,
+): Promise<string | null> {
+  if (sessionInventoryKind !== "product" || obj.role !== "artwork") return null;
+  const derivative = await generateWebpDerivative(buf);
+  if (!derivative) return null;
+  const webpKey = `${obj.r2Key}.webp`;
+  try {
+    await r2.client.send(
+      new PutObjectCommand({
+        Bucket: r2.cfg.bucket,
+        Key: webpKey,
+        Body: derivative,
+        ContentType: "image/webp",
+      }),
+    );
+    return webpKey;
+  } catch (e) {
+    console.warn("webp derivative upload failed:", e);
+    return null;
+  }
 }
 
 export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
@@ -114,13 +155,46 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
 
     const rawBody = await c.req.json().catch(() => ({}));
-    const body = rawBody as { inventoryKind?: string };
+    const body = rawBody as { inventoryKind?: string; existingProductUri?: string };
+    const inventoryKind = body.inventoryKind ?? "digital";
+
+    // "product" sessions reserve a product rkey up front so every object
+    // uploaded in this session (items + assets) can be R2-keyed under it
+    // from the first byte -- see lib/r2/inventoryKey.ts. Either the rkey
+    // of an already-existing product (adding items/assets to it) or a
+    // freshly minted TID that becomes that new product's actual rkey at
+    // publish time.
+    let productRkey: string | null = null;
+    if (inventoryKind === "product") {
+      if (body.existingProductUri) {
+        const product = db
+          .select()
+          .from(catalogProducts)
+          .where(eq(catalogProducts.uri, body.existingProductUri))
+          .get();
+        if (!product || product.sellerDid !== sess.did) {
+          return c.json({ error: "product_not_found" }, 404);
+        }
+        let at: AtUri;
+        try {
+          at = new AtUri(body.existingProductUri);
+        } catch {
+          return c.json({ error: "invalid_product_uri" }, 400);
+        }
+        if (!at.rkey) return c.json({ error: "invalid_product_uri" }, 400);
+        productRkey = at.rkey;
+      } else {
+        productRkey = TID.nextStr();
+      }
+    }
+
     const id = randomUUID();
     await db.insert(inventoryUploadSession).values({
       id,
       merchantDid: sess.did,
-      inventoryKind: body.inventoryKind ?? "digital",
+      inventoryKind,
       status: "active",
+      productRkey,
     });
     return c.json({ sessionId: id });
   });
@@ -227,6 +301,10 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     }>();
     if (!body.objects?.length) return c.json({ error: "objects_required" }, 400);
 
+    if (session.inventoryKind === "product" && !session.productRkey) {
+      return c.json({ error: "session_missing_product_rkey" }, 500);
+    }
+
     const out: Array<{ objectId: string; rkey: string; r2Key: string; uploadKind: string }> = [];
     let firstMasterRkeyInBatch: string | null = null;
     for (const o of body.objects) {
@@ -237,14 +315,21 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       } else {
         rkey = firstMasterRkeyInBatch ?? (o.rkey?.trim() || TID.nextStr());
       }
-      const nameInKey =
-        o.role === "artwork" ? INVENTORY_ARTWORK_OBJECT_NAME : INVENTORY_MASTER_OBJECT_NAME;
-      const r2Key = inventoryObjectKey(sess.did, rkey, nameInKey);
+      const id = randomUUID();
+      const r2Key =
+        session.inventoryKind === "product"
+          ? o.role === "master"
+            ? newProductItemKey(sess.did, session.productRkey!, id, o.fileName)
+            : newProductAssetKey(sess.did, session.productRkey!, id, o.fileName)
+          : inventoryObjectKey(
+              sess.did,
+              rkey,
+              o.role === "artwork" ? INVENTORY_ARTWORK_OBJECT_NAME : INVENTORY_MASTER_OBJECT_NAME,
+            );
       const uploadKind =
         o.byteSize != null && o.byteSize >= MULTIPART_MIN_BYTES
           ? "multipart"
           : "single_put";
-      const id = randomUUID();
       await db.insert(inventoryUploadObject).values({
         id,
         sessionId,
@@ -356,6 +441,13 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       );
     }
 
+    const webpR2Key = await maybeGenerateWebpDerivative(
+      { cfg, client },
+      { role: obj.role, r2Key: obj.r2Key },
+      session.inventoryKind,
+      buf,
+    );
+
     await db
       .update(inventoryUploadObject)
       .set({
@@ -363,6 +455,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         fileChecksum,
         fileCid,
         contentType: fileFormat,
+        webpR2Key,
         error: null,
         updatedAt: new Date(),
       })
@@ -629,12 +722,20 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         });
       }
 
+      const webpR2Key = await maybeGenerateWebpDerivative(
+        { cfg, client },
+        { role: obj.role, r2Key: obj.r2Key },
+        session.inventoryKind,
+        Buffer.from(bytes),
+      );
+
       await db
         .update(inventoryUploadObject)
         .set({
           status: "completed",
           fileChecksum,
           fileCid,
+          webpR2Key,
           error: null,
           updatedAt: new Date(),
         })
@@ -1159,6 +1260,283 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     return c.json(snapshot);
   });
 
+  /**
+   * Publish path for catalog.item/catalog.product -- parallel to /publish
+   * above, not a replacement for it. Creates one catalog.item per uploaded
+   * item file, then one catalog.product referencing them via itemRef[],
+   * then captures both into the ERP mirror tables directly (server-side PDS
+   * writes here bypass the /repo/createRecord proxy's automatic capture
+   * hook, so this calls captureCatalogItem/captureCatalogProduct itself --
+   * the same functions that hook and the merchant "Sync with PDS" action
+   * use). No rights/composition sub-flow and no license step: catalog.item
+   * has no fields for either, and licensing is chosen only when a listing
+   * is created.
+   */
+  r.post("/sessions/:sessionId/publish-product", async (c) => {
+    const sess = await getSessionAgent(c, oauthClient);
+    if (!sess) return c.json({ error: "Unauthorized" }, 401);
+    const sessionId = c.req.param("sessionId");
+    const [session] = await db
+      .select()
+      .from(inventoryUploadSession)
+      .where(eq(inventoryUploadSession.id, sessionId));
+    if (!session || session.merchantDid !== sess.did)
+      return c.json({ error: "not_found" }, 404);
+    if (session.status !== "active")
+      return c.json({ error: "session_not_active" }, 400);
+    if (!session.productRkey) {
+      return c.json({ error: "session_missing_product_rkey" }, 500);
+    }
+
+    const objects = await db
+      .select()
+      .from(inventoryUploadObject)
+      .where(eq(inventoryUploadObject.sessionId, sessionId));
+    const masters = objects.filter((o) => o.role === "master");
+    for (const m of masters) {
+      if (m.status !== "completed" || !m.fileChecksum || !m.fileCid) {
+        return c.json({ error: "incomplete_uploads", objectId: m.id }, 400);
+      }
+    }
+
+    let draft: PublishProductDraftV1;
+    try {
+      draft = parsePublishProductDraft(session.draftJson);
+    } catch {
+      return c.json({ error: "invalid_draft" }, 400);
+    }
+    if (!draft.product?.title?.trim()) {
+      return c.json({ error: "product_title_required" }, 400);
+    }
+    if (!draft.items?.length) {
+      return c.json({ error: "items_required" }, 400);
+    }
+
+    const artObjs: Array<(typeof objects)[number]> = [];
+    for (const artworkObjectId of draft.product.artworkObjectIds ?? []) {
+      const artObj = objects.find((o) => o.id === artworkObjectId && o.role === "artwork");
+      if (!artObj || artObj.status !== "completed") {
+        return c.json({ error: "invalid_product_artwork", objectId: artworkObjectId }, 400);
+      }
+      artObjs.push(artObj);
+    }
+
+    const includedAssetObjs: Array<{ obj: (typeof objects)[number]; role: string }> = [];
+    for (const asset of draft.product.includedAssets ?? []) {
+      const obj = objects.find((o) => o.id === asset.objectId && o.role === "artwork");
+      if (!obj || obj.status !== "completed") {
+        return c.json({ error: "invalid_included_asset", objectId: asset.objectId }, 400);
+      }
+      includedAssetObjs.push({ obj, role: asset.role?.trim() || obj.fileName });
+    }
+
+    const masterByObjectId = new Map(masters.map((m) => [m.id, m]));
+    const itemType = col("catalog.item");
+    const productType = col("catalog.product");
+
+    const createdItems: Array<{ uri: string; cid: string }> = [];
+    for (const it of draft.items) {
+      const mo = masterByObjectId.get(it.objectId);
+      if (!mo) {
+        return c.json({ error: "unknown_item_object", objectId: it.objectId }, 400);
+      }
+      if (!it.title?.trim()) {
+        return c.json({ error: "item_title_required", objectId: it.objectId }, 400);
+      }
+      const record: Record<string, unknown> = {
+        $type: itemType,
+        title: it.title.trim(),
+        sellerDid: sess.did,
+        fileChecksum: mo.fileChecksum!,
+        fileCid: mo.fileCid!,
+        format: it.format?.trim() || inferFormat(mo.fileName, mo.contentType),
+        createdAt: new Date().toISOString(),
+      };
+      if (it.category?.trim()) record.category = it.category.trim();
+      if (it.tags?.length) record.tags = it.tags;
+
+      const res = await sess.agent.com.atproto.repo.createRecord({
+        repo: sess.did,
+        collection: itemType,
+        record,
+      });
+      await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
+        objectId: mo.id,
+      });
+      if (typeof it.durationMs === "number" && it.durationMs > 0) {
+        await db
+          .update(inventoryUploadObject)
+          .set({ durationMs: Math.round(it.durationMs) })
+          .where(eq(inventoryUploadObject.id, mo.id));
+      }
+      createdItems.push({ uri: res.data.uri, cid: res.data.cid });
+    }
+
+    const productRecord: Record<string, unknown> = {
+      $type: productType,
+      title: draft.product.title.trim(),
+      sellerDid: sess.did,
+      items: createdItems.map((it) => ({ uri: it.uri, cid: it.cid })),
+      createdAt: new Date().toISOString(),
+    };
+    if (draft.product.description?.trim()) {
+      productRecord.description = draft.product.description.trim().slice(0, 4096);
+    }
+    if (draft.product.tags?.length) productRecord.tags = draft.product.tags;
+
+    const productRes = await sess.agent.com.atproto.repo.createRecord({
+      repo: sess.did,
+      collection: productType,
+      rkey: session.productRkey,
+      record: productRecord,
+    });
+    await captureCatalogProduct(
+      db,
+      sess.did,
+      productRecord,
+      productRes.data.uri,
+      productRes.data.cid,
+      {
+        productType: draft.product.productType,
+        artIncludedInDownload: draft.product.artIncludedInDownload,
+      },
+    );
+
+    for (let i = 0; i < artObjs.length; i++) {
+      await db.insert(catalogProductAssets).values({
+        id: randomUUID(),
+        productUri: productRes.data.uri,
+        objectId: artObjs[i].id,
+        role: "coverArt",
+        position: i,
+      });
+    }
+    for (const { obj, role } of includedAssetObjs) {
+      await db.insert(catalogProductAssets).values({
+        id: randomUUID(),
+        productUri: productRes.data.uri,
+        objectId: obj.id,
+        role,
+      });
+    }
+
+    const snapshot = {
+      productUri: productRes.data.uri,
+      productCid: productRes.data.cid,
+      items: createdItems,
+    };
+    await db
+      .update(inventoryUploadSession)
+      .set({
+        status: "completed",
+        publishedAt: new Date(),
+        publishError: null,
+        pdsSnapshotJson: JSON.stringify(snapshot),
+        updatedAt: new Date(),
+      })
+      .where(eq(inventoryUploadSession.id, sessionId));
+
+    return c.json(snapshot);
+  });
+
+  /**
+   * Publish just catalog.item records with no product wrapper -- used when
+   * adding a new item to an *existing* product (the product itself is
+   * updated separately via a normal putRecord once the item exists). Same
+   * validation/capture pattern as publish-product's item loop, factored out
+   * so both endpoints stay in sync rather than duplicating the field logic.
+   */
+  r.post("/sessions/:sessionId/publish-items", async (c) => {
+    const sess = await getSessionAgent(c, oauthClient);
+    if (!sess) return c.json({ error: "Unauthorized" }, 401);
+    const sessionId = c.req.param("sessionId");
+    const [session] = await db
+      .select()
+      .from(inventoryUploadSession)
+      .where(eq(inventoryUploadSession.id, sessionId));
+    if (!session || session.merchantDid !== sess.did)
+      return c.json({ error: "not_found" }, 404);
+    if (session.status !== "active")
+      return c.json({ error: "session_not_active" }, 400);
+
+    const objects = await db
+      .select()
+      .from(inventoryUploadObject)
+      .where(eq(inventoryUploadObject.sessionId, sessionId));
+    const masters = objects.filter((o) => o.role === "master");
+    for (const m of masters) {
+      if (m.status !== "completed" || !m.fileChecksum || !m.fileCid) {
+        return c.json({ error: "incomplete_uploads", objectId: m.id }, 400);
+      }
+    }
+
+    let draft: { items?: PublishProductDraftV1["items"] };
+    try {
+      draft = JSON.parse(session.draftJson ?? "null") as {
+        items?: PublishProductDraftV1["items"];
+      };
+    } catch {
+      return c.json({ error: "invalid_draft" }, 400);
+    }
+    if (!draft.items?.length) {
+      return c.json({ error: "items_required" }, 400);
+    }
+
+    const masterByObjectId = new Map(masters.map((m) => [m.id, m]));
+    const itemType = col("catalog.item");
+
+    const createdItems: Array<{ uri: string; cid: string }> = [];
+    for (const it of draft.items) {
+      const mo = masterByObjectId.get(it.objectId);
+      if (!mo) {
+        return c.json({ error: "unknown_item_object", objectId: it.objectId }, 400);
+      }
+      if (!it.title?.trim()) {
+        return c.json({ error: "item_title_required", objectId: it.objectId }, 400);
+      }
+      const record: Record<string, unknown> = {
+        $type: itemType,
+        title: it.title.trim(),
+        sellerDid: sess.did,
+        fileChecksum: mo.fileChecksum!,
+        fileCid: mo.fileCid!,
+        format: it.format?.trim() || inferFormat(mo.fileName, mo.contentType),
+        createdAt: new Date().toISOString(),
+      };
+      if (it.category?.trim()) record.category = it.category.trim();
+      if (it.tags?.length) record.tags = it.tags;
+
+      const res = await sess.agent.com.atproto.repo.createRecord({
+        repo: sess.did,
+        collection: itemType,
+        record,
+      });
+      await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
+        objectId: mo.id,
+      });
+      if (typeof it.durationMs === "number" && it.durationMs > 0) {
+        await db
+          .update(inventoryUploadObject)
+          .set({ durationMs: Math.round(it.durationMs) })
+          .where(eq(inventoryUploadObject.id, mo.id));
+      }
+      createdItems.push({ uri: res.data.uri, cid: res.data.cid });
+    }
+
+    await db
+      .update(inventoryUploadSession)
+      .set({
+        status: "completed",
+        publishedAt: new Date(),
+        publishError: null,
+        pdsSnapshotJson: JSON.stringify({ items: createdItems }),
+        updatedAt: new Date(),
+      })
+      .where(eq(inventoryUploadSession.id, sessionId));
+
+    return c.json({ items: createdItems });
+  });
+
   return r;
 }
 
@@ -1302,6 +1680,51 @@ function parsePublishDraft(raw: string | null): PublishDraftV1 {
   const d = JSON.parse(raw) as PublishDraftV1;
   if (!d.tracks || !Array.isArray(d.tracks)) throw new Error("tracks");
   return d;
+}
+
+type PublishProductDraftV1 = {
+  product: {
+    title: string;
+    description?: string;
+    tags?: string[];
+    /** One or more cover images, in slideshow order -- single-image types just send one. */
+    artworkObjectIds?: string[];
+    /** UI-only classification (e.g. "music", "generic") -- see captureCatalogProduct. */
+    productType?: string;
+    /** Whether the cover art asset is bundled into the buyer's download package. */
+    artIncludedInDownload?: boolean;
+    /**
+     * The generic included-assets bin (catalogProductAssets) -- companion
+     * files always bundled into the download, distinct from cover art
+     * (which has its own toggle) and from `items` (the public composition).
+     */
+    includedAssets?: Array<{ objectId: string; role: string }>;
+  };
+  items: Array<{
+    objectId: string;
+    title: string;
+    category?: string;
+    tags?: string[];
+    format?: string;
+    /** Parsed client-side from the audio file itself; absent for non-audio items or when parsing failed. */
+    durationMs?: number;
+  }>;
+};
+
+function parsePublishProductDraft(raw: string | null): PublishProductDraftV1 {
+  if (!raw) throw new Error("empty");
+  const d = JSON.parse(raw) as PublishProductDraftV1;
+  if (!d.product || typeof d.product !== "object") throw new Error("product");
+  if (!d.items || !Array.isArray(d.items)) throw new Error("items");
+  return d;
+}
+
+/** Generic, non-audio-specific single-format guess: file extension, falling back to the MIME subtype. */
+function inferFormat(fileName: string, contentType?: string | null): string {
+  const ext = fileName.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (ext) return ext;
+  const subtype = contentType?.split("/")[1];
+  return subtype || "other";
 }
 
 function inferFormats(fileName: string, contentType?: string | null): string[] {
