@@ -175,6 +175,7 @@ export type BazaarItem = {
   sellerDid: string;
   category?: string;
   description?: string;
+  tags?: string[];
   /** Absent for non-file (dispensable) items — see catalog.item.json. */
   format?: string;
   fileChecksum?: string;
