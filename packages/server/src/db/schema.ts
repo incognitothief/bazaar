@@ -172,6 +172,8 @@ export const catalogItems = sqliteTable("catalog_items", {
   title: text("title").notNull(),
   category: text("category"),
   description: text("description"),
+  /** JSON-serialized string[] -- freeform, seller-authored, no taxonomy. Mirrors catalog.item's own tags field. */
+  tags: text("tags"),
   format: text("format"),
   fileChecksum: text("file_checksum"),
   fileCid: text("file_cid"),
@@ -223,6 +225,8 @@ export const catalogProducts = sqliteTable("catalog_products", {
   sellerDid: text("seller_did").notNull(),
   title: text("title").notNull(),
   description: text("description"),
+  /** JSON-serialized string[] -- freeform, seller-authored, no taxonomy. Mirrors catalog.item's own tags field. */
+  tags: text("tags"),
   /** JSON-serialized itemRef[] — the product's declared composition. */
   items: text("items").notNull(),
   /**

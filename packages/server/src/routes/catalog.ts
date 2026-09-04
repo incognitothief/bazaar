@@ -73,7 +73,8 @@ export function createCatalogRouter(db: Db) {
         break;
       }
     }
-    return c.json({ item: { ...row, durationMs, coverImages } });
+    const tags = row.tags ? (JSON.parse(row.tags) as string[]) : null;
+    return c.json({ item: { ...row, tags, durationMs, coverImages } });
   });
 
   r.get("/products", async (c) => {
@@ -86,8 +87,14 @@ export function createCatalogRouter(db: Db) {
       .get();
     if (!row) return c.json({ error: "not_found" }, 404);
     const coverImages = await resolveCoverImages(db, uri);
+    const tags = row.tags ? (JSON.parse(row.tags) as string[]) : null;
     return c.json({
-      product: { ...row, items: JSON.parse(row.items) as unknown, coverImages },
+      product: {
+        ...row,
+        items: JSON.parse(row.items) as unknown,
+        tags,
+        coverImages,
+      },
     });
   });
 

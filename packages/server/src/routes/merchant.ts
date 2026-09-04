@@ -452,7 +452,8 @@ export function createMerchantRouter(db: Db) {
           }
           coverImages = resolved;
         }
-        return { ...row, coverImages };
+        const tags = row.tags ? (JSON.parse(row.tags) as string[]) : null;
+        return { ...row, tags, coverImages };
       }),
     );
     return c.json({ items });
@@ -473,6 +474,7 @@ export function createMerchantRouter(db: Db) {
       rows.map(async (row) => ({
         ...row,
         items: JSON.parse(row.items) as unknown,
+        tags: row.tags ? (JSON.parse(row.tags) as string[]) : null,
         coverImages: await resolveCoverImages(db, row.uri),
       })),
     );
@@ -513,7 +515,11 @@ export function createMerchantRouter(db: Db) {
       return c.json({ error: "sync_failed" }, 502);
     }
     const row = db.select().from(catalogItems).where(eq(catalogItems.uri, uri)).get();
-    return c.json({ item: row });
+    return c.json({
+      item: row
+        ? { ...row, tags: row.tags ? (JSON.parse(row.tags) as string[]) : null }
+        : null,
+    });
   });
 
   /** Store-owner: manual "Sync with PDS" for one catalog.product. Same shape as the item sync above. */
@@ -546,7 +552,13 @@ export function createMerchantRouter(db: Db) {
     }
     const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
     return c.json({
-      product: row ? { ...row, items: JSON.parse(row.items) as unknown } : null,
+      product: row
+        ? {
+            ...row,
+            items: JSON.parse(row.items) as unknown,
+            tags: row.tags ? (JSON.parse(row.tags) as string[]) : null,
+          }
+        : null,
     });
   });
 
@@ -583,7 +595,13 @@ export function createMerchantRouter(db: Db) {
     db.update(catalogProducts).set(set).where(eq(catalogProducts.uri, uri)).run();
     const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
     return c.json({
-      product: row ? { ...row, items: JSON.parse(row.items) as unknown } : null,
+      product: row
+        ? {
+            ...row,
+            items: JSON.parse(row.items) as unknown,
+            tags: row.tags ? (JSON.parse(row.tags) as string[]) : null,
+          }
+        : null,
     });
   });
 

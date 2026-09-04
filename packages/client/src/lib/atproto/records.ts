@@ -704,6 +704,7 @@ export type CatalogItemRow = {
   title: string;
   category: string | null;
   description: string | null;
+  tags: string[] | null;
   format: string | null;
   fileChecksum: string | null;
   fileCid: string | null;
@@ -723,6 +724,7 @@ export type CatalogProductRow = {
   sellerDid: string;
   title: string;
   description: string | null;
+  tags: string[] | null;
   items: Array<{ uri: string; cid?: string; variantSku?: string }>;
   /** UI-only classification (e.g. "music", "generic") -- never on the PDS record. */
   productType: string | null;

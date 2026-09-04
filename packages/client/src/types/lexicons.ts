@@ -190,6 +190,7 @@ export type Product = {
   title: string;
   sellerDid: string;
   description?: string;
+  tags?: string[];
   items: ItemRef[];
   createdAt: string;
 };

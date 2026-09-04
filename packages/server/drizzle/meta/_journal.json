@@ -113,6 +113,13 @@
       "when": 1788553364574,
       "tag": "0015_flashy_invisible_woman",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1788555695835,
+      "tag": "0016_jazzy_monster_badoon",
+      "breakpoints": true
     }
   ]
 }
