@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getCookie } from "hono/cookie";
 import { AtUri } from "@atproto/syntax";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
@@ -683,7 +683,16 @@ export function createMerchantRouter(db: Db) {
     return c.json(await loadProductAssets(productUri));
   });
 
-  /** Store-owner: detach one asset (cover art or included asset) from a product. */
+  /**
+   * Store-owner: detach one asset (cover art or included asset) from a
+   * product. Also reclaims the underlying upload -- deletes the R2 bytes
+   * (and any webp derivative) and the inventoryUploadObject row -- as long
+   * as nothing else still references that object id (another
+   * catalogProductAssets link, or a catalogItems row using it as its own
+   * file). R2 cleanup is best-effort: the link is already gone from the
+   * product regardless of whether the bytes actually get reclaimed, so a
+   * failure here is logged, not surfaced as a request failure.
+   */
   r.post("/catalog/products/assets/remove", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
@@ -699,7 +708,48 @@ export function createMerchantRouter(db: Db) {
       .where(eq(catalogProducts.uri, row.productUri))
       .get();
     if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+
     db.delete(catalogProductAssets).where(eq(catalogProductAssets.id, id)).run();
+
+    const stillLinked =
+      db
+        .select({ id: catalogProductAssets.id })
+        .from(catalogProductAssets)
+        .where(eq(catalogProductAssets.objectId, row.objectId))
+        .get() != null ||
+      db
+        .select({ uri: catalogItems.uri })
+        .from(catalogItems)
+        .where(eq(catalogItems.objectId, row.objectId))
+        .get() != null;
+
+    if (!stillLinked) {
+      const obj = db
+        .select()
+        .from(inventoryUploadObject)
+        .where(eq(inventoryUploadObject.id, row.objectId))
+        .get();
+      if (obj) {
+        const r2 = r2ConfigFromEnv();
+        if (r2.ok) {
+          const client = getR2S3Client(r2);
+          try {
+            await client.send(
+              new DeleteObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }),
+            );
+            if (obj.webpR2Key) {
+              await client.send(
+                new DeleteObjectCommand({ Bucket: r2.bucket, Key: obj.webpR2Key }),
+              );
+            }
+          } catch (e) {
+            console.warn("assets/remove: R2 cleanup failed:", e);
+          }
+        }
+        db.delete(inventoryUploadObject).where(eq(inventoryUploadObject.id, row.objectId)).run();
+      }
+    }
+
     return c.json(await loadProductAssets(row.productUri));
   });
 
@@ -708,7 +758,7 @@ export function createMerchantRouter(db: Db) {
    * incident-response tool, not a buyer-facing route -- no purchase/
    * entitlement check, just "does this item belong to me." Resolves via
    * catalogItems.objectId -> inventoryUploadObject.r2Key, the only way to
-   * find a new-scheme item's file (see newInventoryAssetKey).
+   * find a new-scheme item's file (see newProductItemKey).
    */
   r.get("/catalog/items/download", async (c) => {
     const denied = merchantGuard(c);
