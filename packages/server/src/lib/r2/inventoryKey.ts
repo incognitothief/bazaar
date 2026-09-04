@@ -26,6 +26,22 @@ export function inventoryObjectKey(
 export const INVENTORY_MASTER_OBJECT_NAME = "master";
 export const INVENTORY_ARTWORK_OBJECT_NAME = "artwork";
 
+/** Best-effort file extension for a legacy catalog.item.digital's master object, for a download filename -- the R2 key itself is always the literal "master", never a real filename. */
+export function extensionForDigital(
+  formats: string[] | undefined,
+  fileFormat: string | undefined,
+): string {
+  const f0 = formats?.[0]?.toLowerCase();
+  if (f0 === "flac" || f0 === "mp3" || f0 === "wav") return f0;
+  if (f0 === "other" && fileFormat) {
+    const m = String(fileFormat).toLowerCase();
+    if (m.includes("flac")) return "flac";
+    if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
+    if (m.includes("wav")) return "wav";
+  }
+  return "bin";
+}
+
 /**
  * R2 keys for catalog.item/catalog.product uploads -- a separate scheme
  * from inventoryObjectKey() above, not a migration of it. That function is

@@ -20,3 +20,9 @@ export function isR2AccessDenied(name: string, message: string): boolean {
     m.includes("403")
   );
 }
+
+export function isS3NoSuchKey(e: unknown): boolean {
+  if (typeof e !== "object" || e === null) return false;
+  const o = e as { name?: string; Code?: string };
+  return o.name === "NoSuchKey" || o.Code === "NoSuchKey";
+}

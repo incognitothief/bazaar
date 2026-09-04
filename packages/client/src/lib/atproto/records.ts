@@ -898,6 +898,29 @@ export function catalogProductDownloadUrl(uri: string): string {
 }
 
 /**
+ * Presigned URL for a single legacy catalog.item.digital's master file --
+ * an incident-response tool for the merchant dashboard, not the
+ * buyer-facing download path.
+ */
+export async function getLegacyDigitalDownloadUrl(
+  uri: string,
+): Promise<{ url: string; fileName: string } | null> {
+  const res = await fetch(
+    browserApiUrl(`/api/merchant/catalog/legacy/item-download?uri=${encodeURIComponent(uri)}`),
+    { credentials: "include" },
+  );
+  if (!res.ok) return null;
+  return (await res.json()) as { url: string; fileName: string };
+}
+
+/** URL for a legacy catalog.collection's full zip (same content a buyer's download would have). */
+export function legacyCollectionDownloadUrl(uri: string): string {
+  return browserApiUrl(
+    `/api/merchant/catalog/legacy/collection-download?uri=${encodeURIComponent(uri)}`,
+  );
+}
+
+/**
  * Listings currently pinned to itemUri's CID -- i.e. the ones a save is
  * about to invalidate. A record's post-edit CID isn't knowable ahead of
  * the actual putRecord (it's content-addressed), so the check works off

@@ -1,7 +1,6 @@
 import { AtUri } from "@atproto/syntax";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { zipSync } from "fflate";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db";
@@ -12,13 +11,16 @@ import { getSessionAgent } from "../lib/atproto/session";
 import { appMerchantPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
 import { candidatePemsForKid, getMerchantKeys } from "../lib/merchantKeys";
 import { r2ConfigFromEnv } from "../lib/r2/env";
+import { isS3NoSuchKey } from "../lib/r2/diagnostics";
 import {
+  extensionForDigital,
   INVENTORY_MASTER_OBJECT_NAME,
   inventoryObjectKey,
   sanitizeInventoryFilename,
 } from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import { buildProductZip } from "../lib/productZip";
+import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 
 function lexiconNs(): string {
   return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
@@ -27,9 +29,6 @@ function lexiconNs(): string {
 const COL_RECEIPT = `${lexiconNs()}.purchase.receipt`;
 const COL_PRODUCT = `${lexiconNs()}.catalog.product`;
 const COL_ITEM = `${lexiconNs()}.catalog.item`;
-
-const MAX_COLLECTION_ZIP_TOTAL_BYTES = 250 * 1024 * 1024;
-const MAX_COLLECTION_ZIP_SINGLE_BYTES = 120 * 1024 * 1024;
 
 type ItemRef = {
   uri: string;
@@ -85,12 +84,6 @@ function productContainsItem(db: Db, productUri: string, itemUri: string): boole
   } catch {
     return false;
   }
-}
-
-function isS3NoSuchKey(e: unknown): boolean {
-  if (typeof e !== "object" || e === null) return false;
-  const o = e as { name?: string; Code?: string };
-  return o.name === "NoSuchKey" || o.Code === "NoSuchKey";
 }
 
 function safeVerifyReceiptForBuyer(
@@ -321,111 +314,9 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
 
     if (!entitled) return c.json({ error: "not_entitled" }, 403);
 
-    let colRec;
-    try {
-      const catalogAgent = await getAgentForDid(colAt.hostname);
-      colRec = await catalogAgent.com.atproto.repo.getRecord({
-        repo: colAt.hostname,
-        collection: colAt.collection,
-        rkey: colAt.rkey,
-      });
-    } catch (e) {
-      console.error("download collection-zip: getRecord collection", e);
-      return c.json(
-        { error: "collection_fetch_failed", message: e instanceof Error ? e.message : String(e) },
-        502,
-      );
-    }
-    const val = colRec.data.value as CollectionRecord;
-    if (!val?.items?.length) return c.json({ error: "collection_empty" }, 400);
-
-    const zipEntries: Record<string, Uint8Array> = {};
-    let total = 0;
-    let index = 0;
-
-    for (const member of val.items) {
-      const itemUri = member.uri;
-      if (!itemUri) continue;
-      let digAt: AtUri;
-      try {
-        digAt = new AtUri(itemUri);
-      } catch {
-        continue;
-      }
-      if (!digAt.rkey || !digAt.collection.endsWith(".catalog.item.digital")) continue;
-
-      let dig;
-      try {
-        const memberAgent = await getAgentForDid(digAt.hostname);
-        dig = await memberAgent.com.atproto.repo.getRecord({
-          repo: digAt.hostname,
-          collection: digAt.collection,
-          rkey: digAt.rkey,
-        });
-      } catch (e) {
-        console.warn("download collection-zip: skip member getRecord", itemUri, e);
-        continue;
-      }
-      const digital = dig.data.value as Record<string, unknown>;
-      const title =
-        typeof digital.title === "string" && digital.title.trim()
-          ? digital.title.trim()
-          : digAt.rkey;
-      const formats = digital.formats as string[] | undefined;
-      const ext = extensionForDigital(formats, digital.fileFormat as string | undefined);
-      const safeBase = sanitizeInventoryFilename(title.replace(/\.[^./\\]+$/g, "") || `item_${index}`);
-      const nameInZip = `${String(++index).padStart(2, "0")}_${safeBase}.${ext}`;
-
-      const key = inventoryObjectKey(digAt.hostname, digAt.rkey, INVENTORY_MASTER_OBJECT_NAME);
-      let obj;
-      try {
-        obj = await client.send(
-          new GetObjectCommand({ Bucket: cfg.bucket, Key: key }),
-        );
-      } catch (e) {
-        if (isS3NoSuchKey(e)) {
-          return c.json({ error: "master_not_in_r2", member: nameInZip }, 404);
-        }
-        console.error("download collection-zip: GetObject", key, e);
-        return c.json(
-          {
-            error: "r2_read_failed",
-            member: nameInZip,
-            message: e instanceof Error ? e.message : String(e),
-          },
-          502,
-        );
-      }
-      if (!obj.Body) return c.json({ error: "object_body_missing", key: nameInZip }, 502);
-      const buf = await obj.Body.transformToByteArray();
-      if (buf.byteLength > MAX_COLLECTION_ZIP_SINGLE_BYTES) {
-        return c.json({ error: "member_too_large", path: nameInZip }, 413);
-      }
-      total += buf.byteLength;
-      if (total > MAX_COLLECTION_ZIP_TOTAL_BYTES) {
-        return c.json({ error: "collection_zip_too_large" }, 413);
-      }
-      zipEntries[nameInZip] = new Uint8Array(buf);
-    }
-
-    if (Object.keys(zipEntries).length === 0) {
-      return c.json({ error: "no_downloadable_members" }, 400);
-    }
-
-    const zipped = zipSync(zipEntries, { level: 6 });
-    const titleSafe = sanitizeInventoryFilename(
-      (val.title ?? "collection").replace(/\.[^./\\]+$/g, "") || "collection",
-    );
-    const filename = `${titleSafe}.zip`;
-
-    return new Response(new Uint8Array(zipped), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-        "Cache-Control": "private, no-store",
-      },
-    });
+    const result = await buildLegacyCollectionZip(client, cfg, collectionUriRaw);
+    if (result instanceof Response) return result;
+    return c.json({ error: result.error }, result.status);
   });
 
   /**
@@ -494,21 +385,6 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
   });
 
   return r;
-}
-
-function extensionForDigital(
-  formats: string[] | undefined,
-  fileFormat: string | undefined,
-): string {
-  const f0 = formats?.[0]?.toLowerCase();
-  if (f0 === "flac" || f0 === "mp3" || f0 === "wav") return f0;
-  if (f0 === "other" && fileFormat) {
-    const m = String(fileFormat).toLowerCase();
-    if (m.includes("flac")) return "flac";
-    if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
-    if (m.includes("wav")) return "wav";
-  }
-  return "bin";
 }
 
 /**

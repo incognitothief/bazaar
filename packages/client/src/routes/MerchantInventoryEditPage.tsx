@@ -29,6 +29,8 @@ import {
   putListing,
   putPhysicalItem,
   getCatalogItemDownloadUrl,
+  getLegacyDigitalDownloadUrl,
+  legacyCollectionDownloadUrl,
   syncCatalogItem,
   type CatalogItemRow,
   type ListingRow,
@@ -267,6 +269,7 @@ function DigitalEditForm({
   const [collectionUri, setCollectionUri] = useState(
     initial.collectionUri ?? "",
   );
+  const [downloading, setDownloading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -300,10 +303,36 @@ function DigitalEditForm({
     }
   }
 
+  /** Incident-response tool: get this file directly, not the buyer-facing download path. */
+  async function onDownload() {
+    setDownloading(true);
+    try {
+      const result = await getLegacyDigitalDownloadUrl(uri);
+      if (!result) {
+        toast.error("Could not get a download link for this item.");
+        return;
+      }
+      window.location.href = result.url;
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <form onSubmit={onSubmit} className="w-full min-w-0 max-w-2xl space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Edit digital item</h1>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={downloading}
+          onClick={() => void onDownload()}
+          title="Get this file directly -- for support/incident handoff, not the buyer-facing download"
+        >
+          <Download className="size-4" />
+          {downloading ? "Preparing…" : "Download"}
+        </Button>
         <Link
           to="/merchant/inventory"
           className={cn(
@@ -573,6 +602,14 @@ function CollectionEditForm({
     <form onSubmit={onSubmit} className="w-full min-w-0 max-w-3xl space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Edit collection</h1>
+        <a
+          href={legacyCollectionDownloadUrl(uri)}
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          title="Download package -- the same zip a buyer would receive, for handing off during support/incident triage"
+        >
+          <Download className="size-4" />
+          Download
+        </a>
         <Link
           to="/merchant/inventory"
           className={cn(
