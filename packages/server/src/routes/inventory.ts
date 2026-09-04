@@ -1353,6 +1353,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         createdAt: new Date().toISOString(),
       };
       if (it.category?.trim()) record.category = it.category.trim();
+      if (it.tags?.length) record.tags = it.tags;
 
       const res = await sess.agent.com.atproto.repo.createRecord({
         repo: sess.did,
@@ -1381,6 +1382,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     if (draft.product.description?.trim()) {
       productRecord.description = draft.product.description.trim().slice(0, 4096);
     }
+    if (draft.product.tags?.length) productRecord.tags = draft.product.tags;
 
     const productRes = await sess.agent.com.atproto.repo.createRecord({
       repo: sess.did,
@@ -1502,6 +1504,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         createdAt: new Date().toISOString(),
       };
       if (it.category?.trim()) record.category = it.category.trim();
+      if (it.tags?.length) record.tags = it.tags;
 
       const res = await sess.agent.com.atproto.repo.createRecord({
         repo: sess.did,
@@ -1683,6 +1686,7 @@ type PublishProductDraftV1 = {
   product: {
     title: string;
     description?: string;
+    tags?: string[];
     /** One or more cover images, in slideshow order -- single-image types just send one. */
     artworkObjectIds?: string[];
     /** UI-only classification (e.g. "music", "generic") -- see captureCatalogProduct. */
@@ -1700,6 +1704,7 @@ type PublishProductDraftV1 = {
     objectId: string;
     title: string;
     category?: string;
+    tags?: string[];
     format?: string;
     /** Parsed client-side from the audio file itself; absent for non-audio items or when parsing failed. */
     durationMs?: number;

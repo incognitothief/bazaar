@@ -1176,6 +1176,7 @@ function CatalogItemEditForm({
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
+  const [tagsLine, setTagsLine] = useState("");
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
@@ -1194,6 +1195,7 @@ function CatalogItemEditForm({
     setTitle(r.title);
     setCategory(r.category ?? "");
     setDescription(r.description ?? "");
+    setTagsLine((r.tags ?? []).join(", "));
     setLoading(false);
   }, [uri]);
 
@@ -1205,10 +1207,15 @@ function CatalogItemEditForm({
     if (!row) return;
     setSaving(true);
     try {
+      const tags = tagsLine
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
       await putCatalogItem(agent, uri, {
         title: title.trim(),
         category: category.trim() || undefined,
         description: description.trim() || undefined,
+        tags: tags.length ? tags : undefined,
       });
       for (const listing of archiveTargets) {
         await putListing(agent, listing.uri, {
@@ -1260,6 +1267,7 @@ function CatalogItemEditForm({
       setTitle(row.title);
       setCategory(row.category ?? "");
       setDescription(row.description ?? "");
+      setTagsLine((row.tags ?? []).join(", "));
     }
     setEditing(false);
   }
@@ -1400,6 +1408,15 @@ function CatalogItemEditForm({
               maxLength={4096}
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="ci-tags">Tags (comma-separated)</Label>
+            <Input
+              id="ci-tags"
+              value={tagsLine}
+              onChange={(e) => setTagsLine(e.target.value)}
+              placeholder="e.g. lofi, drum loop, 90bpm"
+            />
+          </div>
 
           <div className="flex items-center gap-3">
             <button type="submit" className={cn(buttonVariants())} disabled={saving}>
@@ -1432,6 +1449,10 @@ function CatalogItemEditForm({
           <p className="text-sm">
             <span className="text-muted-foreground">Format: </span>
             {row.format || "—"}
+          </p>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Tags: </span>
+            {row.tags?.length ? row.tags.join(", ") : "—"}
           </p>
         </div>
       )}

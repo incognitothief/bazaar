@@ -31,6 +31,8 @@ type ItemDraftRow = {
   file: File;
   title: string;
   category: string;
+  /** Comma-separated; parsed into string[] at publish time. */
+  tagsLine: string;
   /** Detected from the file itself (parsed audio metadata, falling back to the extension) -- never merchant-editable, so it always reflects what was actually uploaded. */
   format: string;
   /** Parsed client-side for audio files only; null/undefined when the file isn't audio or metadata parsing failed. */
@@ -122,6 +124,7 @@ export function AddProductPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [tagsLine, setTagsLine] = useState("");
   const [productType, setProductType] = useState<ProductType>(GENERIC_PRODUCT_TYPE);
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(
     () => productTypeConfig(GENERIC_PRODUCT_TYPE).defaultArtIncludedInDownload,
@@ -205,6 +208,7 @@ export function AddProductPage() {
           file: entry.file,
           title: meta?.title?.trim() || titleFromFileName(entry.file.name),
           category: "",
+          tagsLine: "",
           format: meta?.format || formatFromFileName(entry.file.name),
           durationMs: meta?.durationMs,
           objectId: null,
@@ -284,7 +288,10 @@ export function AddProductPage() {
   }, []);
 
   const updateItem = useCallback(
-    (id: string, patch: Partial<Pick<ItemDraftRow, "title" | "category">>) => {
+    (
+      id: string,
+      patch: Partial<Pick<ItemDraftRow, "title" | "category" | "tagsLine">>,
+    ) => {
       setItems((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
     },
     [],
@@ -372,10 +379,18 @@ export function AddProductPage() {
       const artworkObjectIds = coverImages
         .map((img) => img.objectId)
         .filter((id): id is string => !!id);
+      const parseTagsLine = (line: string): string[] | undefined => {
+        const tags = line
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+        return tags.length ? tags : undefined;
+      };
       await saveInventoryDraft(sessionId, {
         product: {
           title: title.trim(),
           description: description.trim() || undefined,
+          tags: parseTagsLine(tagsLine),
           artworkObjectIds,
           productType,
           artIncludedInDownload: artworkObjectIds.length > 0 ? artIncludedInDownload : false,
@@ -388,6 +403,7 @@ export function AddProductPage() {
           objectId: r.objectId,
           title: r.title.trim(),
           category: r.category.trim() || undefined,
+          tags: parseTagsLine(r.tagsLine),
           format: r.format.trim() || undefined,
           durationMs: r.durationMs,
         })),
@@ -406,6 +422,7 @@ export function AddProductPage() {
     sessionId,
     title,
     description,
+    tagsLine,
     coverImages,
     productType,
     artIncludedInDownload,
@@ -490,6 +507,15 @@ export function AddProductPage() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional"
               rows={3}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="product-tags">Tags (comma-separated)</Label>
+            <Input
+              id="product-tags"
+              value={tagsLine}
+              onChange={(e) => setTagsLine(e.target.value)}
+              placeholder="Optional -- e.g. lofi, instrumental, album"
             />
           </div>
           <div className="space-y-1.5">
@@ -659,6 +685,15 @@ export function AddProductPage() {
                         placeholder="Optional"
                       />
                     </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${row.id}-tags`}>Tags (comma-separated)</Label>
+                    <Input
+                      id={`${row.id}-tags`}
+                      value={row.tagsLine}
+                      onChange={(e) => updateItem(row.id, { tagsLine: e.target.value })}
+                      placeholder="Optional"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label>Format</Label>

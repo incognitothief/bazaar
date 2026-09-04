@@ -73,6 +73,7 @@ export function MerchantProductDetailPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [tagsLine, setTagsLine] = useState("");
   const [items, setItems] = useState<ItemRef[]>([]);
   const [productType, setProductType] = useState<string | null>(null);
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(false);
@@ -108,6 +109,7 @@ export function MerchantProductDetailPage() {
     setProduct(p);
     setTitle(p.title);
     setDescription(p.description ?? "");
+    setTagsLine((p.tags ?? []).join(", "));
     setItems(p.items as ItemRef[]);
     setProductType(p.productType);
     setArtIncludedInDownload(p.artIncludedInDownload);
@@ -294,9 +296,14 @@ export function MerchantProductDetailPage() {
     if (!agent || !product) return;
     setSaving(true);
     try {
+      const tags = tagsLine
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
       await putCatalogProduct(agent, uri, {
         title: title.trim(),
         description: description.trim() || undefined,
+        tags: tags.length ? tags : undefined,
         items,
       });
       for (const listing of archiveTargets) {
@@ -351,6 +358,7 @@ export function MerchantProductDetailPage() {
     if (product) {
       setTitle(product.title);
       setDescription(product.description ?? "");
+      setTagsLine((product.tags ?? []).join(", "));
       setItems(product.items as ItemRef[]);
     }
     setEditing(false);
@@ -460,6 +468,15 @@ export function MerchantProductDetailPage() {
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
               maxLength={4096}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="prod-tags">Tags (comma-separated)</Label>
+            <Input
+              id="prod-tags"
+              value={tagsLine}
+              onChange={(e) => setTagsLine(e.target.value)}
+              placeholder="e.g. lofi, instrumental, album"
             />
           </div>
 
@@ -682,6 +699,10 @@ export function MerchantProductDetailPage() {
               </p>
             ) : null}
           </div>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Tags: </span>
+            {product.tags?.length ? product.tags.join(", ") : "—"}
+          </p>
 
           <div className="space-y-1 rounded-lg border border-border p-3 text-sm">
             <p>

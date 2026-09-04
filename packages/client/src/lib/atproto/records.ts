@@ -1167,7 +1167,12 @@ export async function putPhysicalItem(
 export async function putCatalogItem(
   agent: ATPRepoClient,
   uri: string,
-  draft: { title: string; category?: string; description?: string },
+  draft: {
+    title: string;
+    category?: string;
+    description?: string;
+    tags?: string[];
+  },
 ): Promise<{ cid: string }> {
   const did = agent.session?.did;
   if (!did) throw new Error("Not authenticated");
@@ -1192,6 +1197,7 @@ export async function putCatalogItem(
     title: draft.title,
     category: draft.category,
     description: draft.description,
+    tags: draft.tags,
   };
   const res = (await agent.com.atproto.repo.putRecord({
     repo: did,
@@ -1203,11 +1209,16 @@ export async function putCatalogItem(
   return { cid: res.cid };
 }
 
-/** title/description/items are all editable -- items[] is mutable (see catalog.product.json). sellerDid/createdAt are preserved. */
+/** title/description/tags/items are all editable -- items[] is mutable (see catalog.product.json). sellerDid/createdAt are preserved. */
 export async function putCatalogProduct(
   agent: ATPRepoClient,
   uri: string,
-  draft: { title: string; description?: string; items: ItemRef[] },
+  draft: {
+    title: string;
+    description?: string;
+    tags?: string[];
+    items: ItemRef[];
+  },
 ): Promise<{ cid: string }> {
   const did = agent.session?.did;
   if (!did) throw new Error("Not authenticated");
@@ -1234,6 +1245,7 @@ export async function putCatalogProduct(
     ...prev,
     title: draft.title,
     description: draft.description,
+    tags: draft.tags,
     items: draft.items,
   };
   const res = (await agent.com.atproto.repo.putRecord({
