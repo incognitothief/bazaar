@@ -83,7 +83,7 @@ async function captureLicenseTerms(
  */
 /**
  * objectId links this item back to its R2 upload object (see
- * lib/r2/inventoryKey.ts's newInventoryAssetKey) -- never on the PDS
+ * lib/r2/inventoryKey.ts's newProductItemKey) -- never on the PDS
  * record, so like catalogProducts.productType it can only be known at
  * genuine creation time (passed via opts) and must be preserved, not
  * overwritten, on every later capture.

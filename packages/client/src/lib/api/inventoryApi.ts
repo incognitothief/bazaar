@@ -67,12 +67,21 @@ async function invFetch(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
-export async function createInventorySession(inventoryKind = "digital"): Promise<{
+/**
+ * `existingProductUri`: for "product"-kind sessions adding items/assets to
+ * an *already-published* product -- the server keys every R2 object
+ * uploaded in this session under that product's own rkey. Omit for a new
+ * product (the server mints a fresh rkey instead).
+ */
+export async function createInventorySession(
+  inventoryKind = "digital",
+  existingProductUri?: string,
+): Promise<{
   sessionId: string;
 }> {
   const res = await invFetch("/sessions", {
     method: "POST",
-    body: JSON.stringify({ inventoryKind }),
+    body: JSON.stringify({ inventoryKind, existingProductUri }),
   });
   if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{ sessionId: string }>;

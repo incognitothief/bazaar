@@ -150,7 +150,7 @@ export function MerchantProductDetailPage() {
     async (file: File) => {
       setAddingItem(true);
       try {
-        const { sessionId } = await createInventorySession("product");
+        const { sessionId } = await createInventorySession("product", uri);
         const { objects } = await registerInventoryObjects(sessionId, [
           {
             slotId: "new-item",
@@ -187,7 +187,7 @@ export function MerchantProductDetailPage() {
         setAddingItem(false);
       }
     },
-    [],
+    [uri],
   );
 
   /** Cover art and included assets are ERP-only (catalogProductAssets) -- no PDS write, no CID change, so adding/removing one never affects the product's pinned CID or any listing. */
@@ -195,7 +195,7 @@ export function MerchantProductDetailPage() {
     async (file: File) => {
       setUploadingCoverArt(true);
       try {
-        const { sessionId } = await createInventorySession("product");
+        const { sessionId } = await createInventorySession("product", uri);
         const { objects } = await registerInventoryObjects(sessionId, [
           {
             slotId: "cover-art",
@@ -229,7 +229,7 @@ export function MerchantProductDetailPage() {
     async (entries: BatchFileEntry[]) => {
       setUploadingAssetIds((prev) => new Set([...prev, ...entries.map((e) => e.id)]));
       try {
-        const { sessionId } = await createInventorySession("product");
+        const { sessionId } = await createInventorySession("product", uri);
         const { objects } = await registerInventoryObjects(
           sessionId,
           entries.map((entry) => ({

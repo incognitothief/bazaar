@@ -47,6 +47,15 @@ export const inventoryUploadSession = sqliteTable("inventory_upload_session", {
   publishedAt: integer("published_at", { mode: "timestamp" }),
   publishError: text("publish_error"),
   pdsSnapshotJson: text("pds_snapshot_json"),
+  /**
+   * inventoryKind "product" sessions only. Either a fresh TID minted at
+   * session creation (new product -- becomes that catalog.product record's
+   * actual rkey at publish, passed explicitly rather than left to the PDS
+   * to assign) or the rkey of an already-existing product (adding items /
+   * assets to it). Every object uploaded in this session keys its R2
+   * object under this rkey -- see lib/r2/inventoryKey.ts.
+   */
+  productRkey: text("product_rkey"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

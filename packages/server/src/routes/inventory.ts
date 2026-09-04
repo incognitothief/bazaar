@@ -18,6 +18,7 @@ import { Hono } from "hono";
 import type { Db } from "../db";
 import {
   catalogProductAssets,
+  catalogProducts,
   inventoryPrefillLog,
   inventoryUploadObject,
   inventoryUploadPart,
@@ -32,7 +33,8 @@ import {
   INVENTORY_ARTWORK_OBJECT_NAME,
   INVENTORY_MASTER_OBJECT_NAME,
   inventoryObjectKey,
-  newInventoryAssetKey,
+  newProductAssetKey,
+  newProductItemKey,
 } from "../lib/r2/inventoryKey";
 import {
   isR2AccessDenied,
@@ -72,7 +74,7 @@ function loadR2():
 /**
  * Best-effort webp derivative, only for "artwork"-role objects in a
  * "product"-kind session (cover images / the generic included-assets bin --
- * see newInventoryAssetKey). Legacy digital/collection artwork is
+ * see newProductAssetKey). Legacy digital/collection artwork is
  * untouched, same "new types get new capabilities, legacy stays frozen"
  * pattern as everywhere else in this reshape. Stored as `${r2Key}.webp`,
  * a sibling object -- never touches the original, and the product
@@ -153,13 +155,46 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
 
     const rawBody = await c.req.json().catch(() => ({}));
-    const body = rawBody as { inventoryKind?: string };
+    const body = rawBody as { inventoryKind?: string; existingProductUri?: string };
+    const inventoryKind = body.inventoryKind ?? "digital";
+
+    // "product" sessions reserve a product rkey up front so every object
+    // uploaded in this session (items + assets) can be R2-keyed under it
+    // from the first byte -- see lib/r2/inventoryKey.ts. Either the rkey
+    // of an already-existing product (adding items/assets to it) or a
+    // freshly minted TID that becomes that new product's actual rkey at
+    // publish time.
+    let productRkey: string | null = null;
+    if (inventoryKind === "product") {
+      if (body.existingProductUri) {
+        const product = db
+          .select()
+          .from(catalogProducts)
+          .where(eq(catalogProducts.uri, body.existingProductUri))
+          .get();
+        if (!product || product.sellerDid !== sess.did) {
+          return c.json({ error: "product_not_found" }, 404);
+        }
+        let at: AtUri;
+        try {
+          at = new AtUri(body.existingProductUri);
+        } catch {
+          return c.json({ error: "invalid_product_uri" }, 400);
+        }
+        if (!at.rkey) return c.json({ error: "invalid_product_uri" }, 400);
+        productRkey = at.rkey;
+      } else {
+        productRkey = TID.nextStr();
+      }
+    }
+
     const id = randomUUID();
     await db.insert(inventoryUploadSession).values({
       id,
       merchantDid: sess.did,
-      inventoryKind: body.inventoryKind ?? "digital",
+      inventoryKind,
       status: "active",
+      productRkey,
     });
     return c.json({ sessionId: id });
   });
@@ -266,6 +301,10 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     }>();
     if (!body.objects?.length) return c.json({ error: "objects_required" }, 400);
 
+    if (session.inventoryKind === "product" && !session.productRkey) {
+      return c.json({ error: "session_missing_product_rkey" }, 500);
+    }
+
     const out: Array<{ objectId: string; rkey: string; r2Key: string; uploadKind: string }> = [];
     let firstMasterRkeyInBatch: string | null = null;
     for (const o of body.objects) {
@@ -279,7 +318,9 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       const id = randomUUID();
       const r2Key =
         session.inventoryKind === "product"
-          ? newInventoryAssetKey(sess.did, id, o.fileName)
+          ? o.role === "master"
+            ? newProductItemKey(sess.did, session.productRkey!, id, o.fileName)
+            : newProductAssetKey(sess.did, session.productRkey!, id, o.fileName)
           : inventoryObjectKey(
               sess.did,
               rkey,
@@ -1243,6 +1284,9 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ error: "not_found" }, 404);
     if (session.status !== "active")
       return c.json({ error: "session_not_active" }, 400);
+    if (!session.productRkey) {
+      return c.json({ error: "session_missing_product_rkey" }, 500);
+    }
 
     const objects = await db
       .select()
@@ -1341,6 +1385,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     const productRes = await sess.agent.com.atproto.repo.createRecord({
       repo: sess.did,
       collection: productType,
+      rkey: session.productRkey,
       record: productRecord,
     });
     await captureCatalogProduct(
