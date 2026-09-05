@@ -6,6 +6,33 @@ import { catalogItems, catalogProducts, inventoryUploadObject } from "../db/sche
 import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { resolveCoverImages } from "../lib/productAssets";
 
+/** Extensionless format tokens that count as audio for a product's track count. */
+const AUDIO_FORMATS = new Set([
+  "flac",
+  "wav",
+  "wave",
+  "mp3",
+  "aac",
+  "m4a",
+  "ogg",
+  "oga",
+  "opus",
+  "aiff",
+  "aif",
+  "alac",
+  "wma",
+]);
+
+/** A product member is a "track" if its file is audio, by MIME or by format token. */
+function isAudioMember(
+  format: string | null,
+  contentType: string | null | undefined,
+): boolean {
+  if (contentType?.toLowerCase().startsWith("audio/")) return true;
+  const token = format?.trim().toLowerCase().split(/[-_ /]/)[0];
+  return !!token && AUDIO_FORMATS.has(token);
+}
+
 /** Optional public resolver for storefront / API consumers */
 export function createCatalogRouter(db: Db) {
   const r = new Hono();
@@ -113,34 +140,46 @@ export function createCatalogRouter(db: Db) {
     const itemRefs = JSON.parse(row.items) as Array<{ uri: string }>;
 
     /**
-     * Aggregate download size, computed on read so it always reflects the
-     * current item set (ERP-only, never on the PDS record). Sum of the member
-     * items' master-file byte sizes; companion assets are not counted. Null
-     * when no member has a known byte size (all legacy uploads).
+     * Computed on read so they always reflect the current item set (ERP-only,
+     * never on the PDS record):
+     * - totalBytes: sum of member master-file sizes (companion assets excluded);
+     *   null when no member has a known size (all legacy uploads).
+     * - trackCount: how many members are audio -- the storefront card shows this
+     *   for a music release, and items.length for anything else.
      */
     let totalBytes: number | null = null;
+    let trackCount = 0;
     if (itemRefs.length) {
       const itemUris = itemRefs.map((r) => r.uri);
-      const objectIds = (
-        await db
-          .select({ objectId: catalogItems.objectId })
-          .from(catalogItems)
-          .where(inArray(catalogItems.uri, itemUris))
-          .all()
-      )
-        .map((r) => r.objectId)
+      const members = await db
+        .select({
+          objectId: catalogItems.objectId,
+          format: catalogItems.format,
+        })
+        .from(catalogItems)
+        .where(inArray(catalogItems.uri, itemUris))
+        .all();
+      const objectIds = members
+        .map((m) => m.objectId)
         .filter((id): id is string => !!id);
-      if (objectIds.length) {
-        const sizes = await db
-          .select({ byteSize: inventoryUploadObject.byteSize })
-          .from(inventoryUploadObject)
-          .where(inArray(inventoryUploadObject.id, objectIds))
-          .all();
-        for (const s of sizes) {
-          if (typeof s.byteSize === "number") {
-            totalBytes = (totalBytes ?? 0) + s.byteSize;
-          }
+      const objectInfo = objectIds.length
+        ? await db
+            .select({
+              id: inventoryUploadObject.id,
+              byteSize: inventoryUploadObject.byteSize,
+              contentType: inventoryUploadObject.contentType,
+            })
+            .from(inventoryUploadObject)
+            .where(inArray(inventoryUploadObject.id, objectIds))
+            .all()
+        : [];
+      const infoById = new Map(objectInfo.map((o) => [o.id, o]));
+      for (const m of members) {
+        const info = m.objectId ? infoById.get(m.objectId) : undefined;
+        if (typeof info?.byteSize === "number") {
+          totalBytes = (totalBytes ?? 0) + info.byteSize;
         }
+        if (isAudioMember(m.format, info?.contentType)) trackCount += 1;
       }
     }
 
@@ -150,6 +189,7 @@ export function createCatalogRouter(db: Db) {
         items: itemRefs as unknown,
         tags,
         totalBytes,
+        trackCount,
         coverImages,
       },
     });

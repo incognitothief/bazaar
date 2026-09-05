@@ -29,6 +29,8 @@ export function InventoryGrid({
           itemUri={e.uri}
           item={e.item}
           coverImages={e.coverImages}
+          productType={e.productType}
+          trackCount={e.trackCount}
           listing={listingsByItemUri[e.uri]!}
           preview={previewItemUri != null && e.uri === previewItemUri}
         />

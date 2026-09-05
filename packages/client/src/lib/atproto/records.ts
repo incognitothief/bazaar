@@ -743,6 +743,8 @@ export type CatalogProductRow = {
    * when no member has a known byte size.
    */
   totalBytes: number | null;
+  /** How many members are audio files -- the storefront card shows this for a music release. Computed on read. */
+  trackCount: number;
   recordCreatedAt: string | null;
   capturedAt: string;
   updatedAt: string;

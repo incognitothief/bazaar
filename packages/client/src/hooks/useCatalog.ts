@@ -26,6 +26,10 @@ export type CatalogEntry = {
   item: DigitalItem | Collection | PhysicalItem | BazaarItem | Product;
   /** catalog.product only -- ERP-only presigned R2 URLs, never on the PDS record (see resolveCoverImages server-side). */
   coverImages?: Array<{ objectId: string; url: string }>;
+  /** catalog.product only -- ERP-only UI classification ("music", "generic", ...). */
+  productType?: string | null;
+  /** catalog.product only -- audio member count, computed on read. */
+  trackCount?: number;
 };
 
 export type CatalogState = {
@@ -112,6 +116,8 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
           cid: r.cid,
           item: r.item,
           coverImages: productCoverImages[i]?.coverImages,
+          productType: productCoverImages[i]?.productType ?? null,
+          trackCount: productCoverImages[i]?.trackCount,
         })),
       ];
       setListingRows(listings);
