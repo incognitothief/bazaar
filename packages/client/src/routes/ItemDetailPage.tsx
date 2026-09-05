@@ -53,6 +53,7 @@ import { BuyButton } from "@/components/public/BuyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
+import { TagTokens } from "@/components/shared/TagTokens";
 import { productTypeConfig } from "@/lib/productTypes";
 import { contentClassCopy, resolveContentClass } from "@/lib/itemContentClass";
 import {
@@ -169,6 +170,8 @@ export function ItemDetailPage() {
     mediaHeight: number | null;
   } | null>(null);
   const [productType, setProductType] = useState<string | null>(null);
+  /** Aggregate download size for a product, computed on read (ERP-only). */
+  const [productTotalBytes, setProductTotalBytes] = useState<number | null>(null);
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [licenseCid, setLicenseCid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -315,6 +318,7 @@ export function ItemDetailPage() {
           if (!cancelled) {
             setCoverImages(p?.coverImages ?? []);
             setProductType(p?.productType ?? null);
+            setProductTotalBytes(p?.totalBytes ?? null);
             setProductItemMeta(
               Object.fromEntries(
                 v.items.map((ref, i) => {
@@ -338,6 +342,7 @@ export function ItemDetailPage() {
         } else if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.item) {
           setOwnsProduct(false);
           setProductType(null);
+          setProductTotalBytes(null);
           setProductItemMeta({});
           // A single has no cover art of its own -- borrowed from its owning
           // product, resolved server-side (see catalog.ts's GET /items). The
@@ -360,6 +365,7 @@ export function ItemDetailPage() {
           setOwnsProduct(false);
           setCoverImages([]);
           setProductType(null);
+          setProductTotalBytes(null);
           setProductItemMeta({});
           setSingleFileMeta(null);
         }
@@ -905,6 +911,9 @@ export function ItemDetailPage() {
               <FormatBadge format={bazaarItem.format} />
             </div>
           ) : null}
+          {"tags" in item && item.tags?.length ? (
+            <TagTokens tags={item.tags} part="tokens" className="pt-1" />
+          ) : null}
         </div>
       </section>
 
@@ -956,16 +965,17 @@ export function ItemDetailPage() {
                 : "items"}
           </MetadataChip>
         ) : null}
+        {isProduct && productTotalBytes ? (
+          <MetadataChip>{formatBytes(productTotalBytes)}</MetadataChip>
+        ) : null}
         {"genre" in item && item.genre
           ? item.genre.map((g: string) => (
               <MetadataChip key={g}>{g}</MetadataChip>
             ))
           : null}
-        {"tags" in item && item.tags
-          ? item.tags.map((t: string) => (
-              <MetadataChip key={t}>{t}</MetadataChip>
-            ))
-          : null}
+        {"tags" in item && item.tags?.length ? (
+          <TagTokens tags={item.tags} part="plain" />
+        ) : null}
       </section>
 
       {isCollection ? (
