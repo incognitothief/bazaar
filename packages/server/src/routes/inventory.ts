@@ -454,6 +454,9 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         status: "completed",
         fileChecksum,
         fileCid,
+        // Authoritative byte length from the bytes we just hashed -- overrides
+        // the client-declared byteSize set at object registration.
+        byteSize: buf.length,
         contentType: fileFormat,
         webpR2Key,
         error: null,
@@ -735,6 +738,9 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
           status: "completed",
           fileChecksum,
           fileCid,
+          // Authoritative byte length from the assembled object -- overrides the
+          // client-declared byteSize set at object registration.
+          byteSize: bytes.byteLength,
           webpR2Key,
           error: null,
           updatedAt: new Date(),
@@ -1363,12 +1369,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
         objectId: mo.id,
       });
-      if (typeof it.durationMs === "number" && it.durationMs > 0) {
-        await db
-          .update(inventoryUploadObject)
-          .set({ durationMs: Math.round(it.durationMs) })
-          .where(eq(inventoryUploadObject.id, mo.id));
-      }
+      await applyUploadMediaMeta(db, mo.id, it);
       createdItems.push({ uri: res.data.uri, cid: res.data.cid });
     }
 
@@ -1514,12 +1515,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
         objectId: mo.id,
       });
-      if (typeof it.durationMs === "number" && it.durationMs > 0) {
-        await db
-          .update(inventoryUploadObject)
-          .set({ durationMs: Math.round(it.durationMs) })
-          .where(eq(inventoryUploadObject.id, mo.id));
-      }
+      await applyUploadMediaMeta(db, mo.id, it);
       createdItems.push({ uri: res.data.uri, cid: res.data.cid });
     }
 
@@ -1706,10 +1702,41 @@ type PublishProductDraftV1 = {
     category?: string;
     tags?: string[];
     format?: string;
-    /** Parsed client-side from the audio file itself; absent for non-audio items or when parsing failed. */
+    /** Parsed client-side from the audio/video file itself; absent for other types or when parsing failed. */
     durationMs?: number;
+    /** Pixel dimensions parsed client-side for raster images; absent otherwise. */
+    width?: number;
+    height?: number;
   }>;
 };
+
+/**
+ * Persist the client-parsed media metadata (runtime, pixel dimensions) for an
+ * item's master upload object. ERP-only -- never touches the PDS record. A
+ * no-op when the client couldn't parse anything.
+ */
+async function applyUploadMediaMeta(
+  db: Db,
+  objectId: string,
+  meta: { durationMs?: number; width?: number; height?: number },
+): Promise<void> {
+  const set: Partial<{
+    durationMs: number;
+    mediaWidth: number;
+    mediaHeight: number;
+  }> = {};
+  if (typeof meta.durationMs === "number" && meta.durationMs > 0)
+    set.durationMs = Math.round(meta.durationMs);
+  if (typeof meta.width === "number" && meta.width > 0)
+    set.mediaWidth = Math.round(meta.width);
+  if (typeof meta.height === "number" && meta.height > 0)
+    set.mediaHeight = Math.round(meta.height);
+  if (Object.keys(set).length === 0) return;
+  await db
+    .update(inventoryUploadObject)
+    .set(set)
+    .where(eq(inventoryUploadObject.id, objectId));
+}
 
 function parsePublishProductDraft(raw: string | null): PublishProductDraftV1 {
   if (!raw) throw new Error("empty");

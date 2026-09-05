@@ -1,10 +1,37 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
 import { catalogItems, catalogProducts, inventoryUploadObject } from "../db/schema";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { resolveCoverImages } from "../lib/productAssets";
+
+/** Extensionless format tokens that count as audio for a product's track count. */
+const AUDIO_FORMATS = new Set([
+  "flac",
+  "wav",
+  "wave",
+  "mp3",
+  "aac",
+  "m4a",
+  "ogg",
+  "oga",
+  "opus",
+  "aiff",
+  "aif",
+  "alac",
+  "wma",
+]);
+
+/** A product member is a "track" if its file is audio, by MIME or by format token. */
+function isAudioMember(
+  format: string | null,
+  contentType: string | null | undefined,
+): boolean {
+  if (contentType?.toLowerCase().startsWith("audio/")) return true;
+  const token = format?.trim().toLowerCase().split(/[-_ /]/)[0];
+  return !!token && AUDIO_FORMATS.has(token);
+}
 
 /** Optional public resolver for storefront / API consumers */
 export function createCatalogRouter(db: Db) {
@@ -42,16 +69,28 @@ export function createCatalogRouter(db: Db) {
       .where(eq(catalogItems.uri, uri))
       .get();
     if (!row) return c.json({ error: "not_found" }, 404);
-    /** Audio duration lives on the upload object (ERP-only, never on the PDS record) -- same "resolve alongside the ERP row" pattern as a product's coverImages. */
-    const durationMs = row.objectId
-      ? ((
-          await db
-            .select({ durationMs: inventoryUploadObject.durationMs })
-            .from(inventoryUploadObject)
-            .where(eq(inventoryUploadObject.id, row.objectId))
-            .get()
-        )?.durationMs ?? null)
+    /**
+     * Runtime / byte size / pixel dimensions live on the upload object
+     * (ERP-only, never on the PDS record) -- same "resolve alongside the ERP
+     * row" pattern as a product's coverImages. Any of them is null for a file
+     * type it doesn't apply to, or for a legacy upload predating the capture.
+     */
+    const media = row.objectId
+      ? await db
+          .select({
+            durationMs: inventoryUploadObject.durationMs,
+            byteSize: inventoryUploadObject.byteSize,
+            mediaWidth: inventoryUploadObject.mediaWidth,
+            mediaHeight: inventoryUploadObject.mediaHeight,
+          })
+          .from(inventoryUploadObject)
+          .where(eq(inventoryUploadObject.id, row.objectId))
+          .get()
       : null;
+    const durationMs = media?.durationMs ?? null;
+    const byteSize = media?.byteSize ?? null;
+    const mediaWidth = media?.mediaWidth ?? null;
+    const mediaHeight = media?.mediaHeight ?? null;
     /**
      * An item has no cover art of its own -- it lives on the owning
      * product (catalogProductAssets). Find that product by scanning the
@@ -74,7 +113,17 @@ export function createCatalogRouter(db: Db) {
       }
     }
     const tags = row.tags ? (JSON.parse(row.tags) as string[]) : null;
-    return c.json({ item: { ...row, tags, durationMs, coverImages } });
+    return c.json({
+      item: {
+        ...row,
+        tags,
+        durationMs,
+        byteSize,
+        mediaWidth,
+        mediaHeight,
+        coverImages,
+      },
+    });
   });
 
   r.get("/products", async (c) => {
@@ -88,11 +137,59 @@ export function createCatalogRouter(db: Db) {
     if (!row) return c.json({ error: "not_found" }, 404);
     const coverImages = await resolveCoverImages(db, uri);
     const tags = row.tags ? (JSON.parse(row.tags) as string[]) : null;
+    const itemRefs = JSON.parse(row.items) as Array<{ uri: string }>;
+
+    /**
+     * Computed on read so they always reflect the current item set (ERP-only,
+     * never on the PDS record):
+     * - totalBytes: sum of member master-file sizes (companion assets excluded);
+     *   null when no member has a known size (all legacy uploads).
+     * - trackCount: how many members are audio -- the storefront card shows this
+     *   for a music release, and items.length for anything else.
+     */
+    let totalBytes: number | null = null;
+    let trackCount = 0;
+    if (itemRefs.length) {
+      const itemUris = itemRefs.map((r) => r.uri);
+      const members = await db
+        .select({
+          objectId: catalogItems.objectId,
+          format: catalogItems.format,
+        })
+        .from(catalogItems)
+        .where(inArray(catalogItems.uri, itemUris))
+        .all();
+      const objectIds = members
+        .map((m) => m.objectId)
+        .filter((id): id is string => !!id);
+      const objectInfo = objectIds.length
+        ? await db
+            .select({
+              id: inventoryUploadObject.id,
+              byteSize: inventoryUploadObject.byteSize,
+              contentType: inventoryUploadObject.contentType,
+            })
+            .from(inventoryUploadObject)
+            .where(inArray(inventoryUploadObject.id, objectIds))
+            .all()
+        : [];
+      const infoById = new Map(objectInfo.map((o) => [o.id, o]));
+      for (const m of members) {
+        const info = m.objectId ? infoById.get(m.objectId) : undefined;
+        if (typeof info?.byteSize === "number") {
+          totalBytes = (totalBytes ?? 0) + info.byteSize;
+        }
+        if (isAudioMember(m.format, info?.contentType)) trackCount += 1;
+      }
+    }
+
     return c.json({
       product: {
         ...row,
-        items: JSON.parse(row.items) as unknown,
+        items: itemRefs as unknown,
         tags,
+        totalBytes,
+        trackCount,
         coverImages,
       },
     });

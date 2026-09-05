@@ -711,8 +711,13 @@ export type CatalogItemRow = {
   supersedes: string | null;
   /** The owning product's cover images (an item has none of its own) -- see merchant.ts's GET /catalog/items. */
   coverImages: Array<{ objectId: string; url: string }>;
-  /** Audio duration from the upload object (ERP-only), null for non-audio files or legacy uploads with no parsed duration. */
+  /** Audio/video runtime from the upload object (ERP-only), null for other types or legacy uploads with no parsed duration. */
   durationMs: number | null;
+  /** Authoritative file size in bytes from the upload object (ERP-only), null for legacy uploads. */
+  byteSize: number | null;
+  /** Raster image pixel dimensions from the upload object (ERP-only), null for non-image / vector / legacy uploads. */
+  mediaWidth: number | null;
+  mediaHeight: number | null;
   recordCreatedAt: string | null;
   capturedAt: string;
   updatedAt: string;
@@ -732,6 +737,14 @@ export type CatalogProductRow = {
   artIncludedInDownload: boolean;
   /** Presigned URLs, in slideshow order. Any number -- single-image types just have one. */
   coverImages: Array<{ objectId: string; url: string }>;
+  /**
+   * Aggregate download size in bytes, summed across member items' master files
+   * and computed on read so it tracks the current item set (ERP-only). Null
+   * when no member has a known byte size.
+   */
+  totalBytes: number | null;
+  /** How many members are audio files -- the storefront card shows this for a music release. Computed on read. */
+  trackCount: number;
   recordCreatedAt: string | null;
   capturedAt: string;
   updatedAt: string;

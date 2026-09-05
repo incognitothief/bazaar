@@ -82,6 +82,14 @@ export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
   fileChecksum: text("file_checksum"),
   fileCid: text("file_cid"),
   durationMs: integer("duration_ms"),
+  /**
+   * Pixel dimensions for raster image masters, read client-side at upload
+   * (createImageBitmap) and passed through the publish draft -- ERP-only,
+   * never on the PDS record, same lifecycle as durationMs. Null for
+   * non-image files, vector art (no intrinsic px size), or legacy uploads.
+   */
+  mediaWidth: integer("media_width"),
+  mediaHeight: integer("media_height"),
   error: text("error"),
   /**
    * R2 key of a webp derivative for this object, if one was generated

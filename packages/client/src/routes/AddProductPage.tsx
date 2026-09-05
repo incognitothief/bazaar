@@ -11,6 +11,7 @@ import {
   uploadFileToInventoryObject,
 } from "@/lib/api/inventoryApi";
 import { BatchFileDropzone, type BatchFileEntry } from "@/components/shared/BatchFileDropzone";
+import { CategoryField } from "@/components/merchant/CategoryField";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
 import { TagsInput } from "@/components/shared/TagsInput";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,11 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { parseAudioFile } from "@/lib/audio/parse";
+import {
+  contentClassFromFormat,
+  suggestedMacroFromFormat,
+} from "@/lib/itemContentClass";
+import { probeImageSize, probeVideoDuration } from "@/lib/media/probe";
 import {
   GENERIC_PRODUCT_TYPE,
   PRODUCT_TYPE_OPTIONS,
@@ -35,8 +41,11 @@ type ItemDraftRow = {
   tags: string[];
   /** Detected from the file itself (parsed audio metadata, falling back to the extension) -- never merchant-editable, so it always reflects what was actually uploaded. */
   format: string;
-  /** Parsed client-side for audio files only; null/undefined when the file isn't audio or metadata parsing failed. */
+  /** Runtime, parsed client-side for audio/video; absent for other types or when parsing failed. */
   durationMs?: number;
+  /** Pixel dimensions, probed client-side for raster images; absent otherwise. */
+  width?: number;
+  height?: number;
   objectId: string | null;
   status: "pending" | "uploading" | "completed" | "error";
   progress: number;
@@ -199,18 +208,40 @@ export function AddProductPage() {
       if (!id) return;
 
       const metas = await Promise.all(
-        entries.map((entry) => tryParseAudioMeta(entry.file)),
+        entries.map(async (entry) => {
+          const audio = await tryParseAudioMeta(entry.file);
+          const format = audio?.format || formatFromFileName(entry.file.name);
+          const cls = contentClassFromFormat(format);
+          let durationMs = audio?.durationMs;
+          let width: number | undefined;
+          let height: number | undefined;
+          // Browser-side probes for the non-audio types (no deps, no server
+          // load). Silently yield nothing for formats the browser can't decode.
+          if (durationMs == null && cls === "video") {
+            durationMs = (await probeVideoDuration(entry.file)) ?? undefined;
+          }
+          if (cls === "graphic") {
+            const size = await probeImageSize(entry.file);
+            width = size?.width;
+            height = size?.height;
+          }
+          return { audio, format, durationMs, width, height };
+        }),
       );
       const rows: ItemDraftRow[] = entries.map((entry, i) => {
         const meta = metas[i];
         return {
           id: entry.id,
           file: entry.file,
-          title: meta?.title?.trim() || titleFromFileName(entry.file.name),
-          category: "",
+          title: meta.audio?.title?.trim() || titleFromFileName(entry.file.name),
+          // Prefill the macro category from the detected file type; merchant can
+          // clear it (-> generic) or type their own.
+          category: suggestedMacroFromFormat(meta.format) ?? "",
           tags: [],
-          format: meta?.format || formatFromFileName(entry.file.name),
-          durationMs: meta?.durationMs,
+          format: meta.format,
+          durationMs: meta.durationMs,
+          width: meta.width,
+          height: meta.height,
           objectId: null,
           status: "pending",
           progress: 0,
@@ -399,6 +430,8 @@ export function AddProductPage() {
           tags: r.tags.length ? r.tags : undefined,
           format: r.format.trim() || undefined,
           durationMs: r.durationMs,
+          width: r.width,
+          height: r.height,
         })),
       });
       await publishProductSession(sessionId);
@@ -659,25 +692,22 @@ export function AddProductPage() {
                       Remove
                     </Button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label htmlFor={`${row.id}-title`}>Title</Label>
-                      <Input
-                        id={`${row.id}-title`}
-                        value={row.title}
-                        onChange={(e) => updateItem(row.id, { title: e.target.value })}
-                        placeholder="Item title"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor={`${row.id}-category`}>Category</Label>
-                      <Input
-                        id={`${row.id}-category`}
-                        value={row.category}
-                        onChange={(e) => updateItem(row.id, { category: e.target.value })}
-                        placeholder="Optional"
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${row.id}-title`}>Title</Label>
+                    <Input
+                      id={`${row.id}-title`}
+                      value={row.title}
+                      onChange={(e) => updateItem(row.id, { title: e.target.value })}
+                      placeholder="Item title"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${row.id}-category`}>Category</Label>
+                    <CategoryField
+                      id={`${row.id}-category`}
+                      value={row.category}
+                      onChange={(next) => updateItem(row.id, { category: next })}
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor={`${row.id}-tags`}>Tags (optional)</Label>

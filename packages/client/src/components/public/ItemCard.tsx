@@ -3,8 +3,10 @@ import type { Agent } from "@atproto/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { FormatBadge } from "@/components/shared/FormatBadge";
+import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { formatMoney } from "@/lib/format";
+import { productTypeConfig } from "@/lib/productTypes";
 import { catalogItemArtworkCid, type CatalogItem, type Listing } from "@/types/lexicons";
 import { ArtworkImage } from "./ArtworkImage";
 
@@ -14,6 +16,8 @@ export function ItemCard({
   itemUri,
   item,
   coverImages,
+  productType,
+  trackCount,
   listing,
   preview,
 }: {
@@ -23,6 +27,10 @@ export function ItemCard({
   item: CatalogItem;
   /** catalog.product only -- presigned R2 URLs, bypasses the CID-based ArtworkImage path entirely. */
   coverImages?: Array<{ objectId: string; url: string }>;
+  /** catalog.product only -- ERP-only classification ("music", "generic", ...). */
+  productType?: string | null;
+  /** catalog.product only -- audio member count, from GET /products. */
+  trackCount?: number;
   listing: Listing;
   /** Local-only catalog preview (not on PDS). */
   preview?: boolean;
@@ -30,10 +38,23 @@ export function ItemCard({
   const title = item.title;
   const artworkCid = catalogItemArtworkCid(item);
   const coverUrl = coverImages?.[0]?.url;
-  const trackCount =
-    item.$type === "diamonds.whereditgo.bazaar.catalog.collection"
-      ? item.items.filter((i) => i.role === "track").length
-      : undefined;
+
+  // Bottom-right count: a music release counts tracks (audio members), anything
+  // else counts items. Legacy collections count their "track"-role members.
+  const count: { n: number; unit: "track" | "item" } | undefined = (() => {
+    if (item.$type === "diamonds.whereditgo.bazaar.catalog.collection") {
+      return {
+        n: item.items.filter((i) => i.role === "track").length,
+        unit: "track",
+      };
+    }
+    if (item.$type === BAZAAR_COLLECTION.product) {
+      return productTypeConfig(productType).value === "music"
+        ? { n: trackCount ?? 0, unit: "track" }
+        : { n: item.items.length, unit: "item" };
+    }
+    return undefined;
+  })();
   const to = itemPathPretty(catalogItemRkey(itemUri), title);
 
   return (
@@ -77,9 +98,9 @@ export function ItemCard({
           ) : null}
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium">{formatMoney(listing.price)}</span>
-            {trackCount !== undefined ? (
+            {count ? (
               <span className="text-xs text-muted-foreground">
-                {trackCount} {trackCount === 1 ? "track" : "tracks"}
+                {count.n} {count.n === 1 ? count.unit : `${count.unit}s`}
               </span>
             ) : null}
           </div>

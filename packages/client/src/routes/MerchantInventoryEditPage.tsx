@@ -3,6 +3,7 @@ import { ArrowLeft, Download, Pencil, Tag } from "lucide-react";
 import { AtUri } from "@atproto/syntax";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { CategoryField } from "@/components/merchant/CategoryField";
 import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
 import {
   Dialog,
@@ -1424,12 +1425,10 @@ function CatalogItemEditForm({
           </div>
           <div className="space-y-2">
             <Label htmlFor="ci-category">Category</Label>
-            <Input
+            <CategoryField
               id="ci-category"
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="Freeform, e.g. track, ebook, sample pack"
-              maxLength={64}
+              onChange={setCategory}
             />
           </div>
           <div className="space-y-2">

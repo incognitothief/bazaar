@@ -47,6 +47,8 @@ import {
   type ListingRow,
 } from "@/lib/atproto/records";
 import { PRODUCT_TYPE_OPTIONS, productTypeConfig } from "@/lib/productTypes";
+import { contentClassFromFormat } from "@/lib/itemContentClass";
+import { probeImageSize, probeVideoDuration } from "@/lib/media/probe";
 import { cn, moveArrayItem } from "@/lib/utils";
 import type { ItemRef } from "@/types/lexicons";
 
@@ -165,11 +167,31 @@ export function MerchantProductDetailPage() {
         ]);
         const obj = objects[0];
         await uploadFileToInventoryObject(obj.objectId, file, obj.uploadKind);
+
+        // Browser-side media probes (no deps / server load) -- byte size is
+        // captured server-side regardless; audio duration isn't parsed on this
+        // quick-add path, same as before.
+        const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+        const cls = contentClassFromFormat(ext);
+        let durationMs: number | undefined;
+        let width: number | undefined;
+        let height: number | undefined;
+        if (cls === "video") {
+          durationMs = (await probeVideoDuration(file)) ?? undefined;
+        } else if (cls === "graphic") {
+          const size = await probeImageSize(file);
+          width = size?.width;
+          height = size?.height;
+        }
+
         await saveInventoryDraft(sessionId, {
           items: [
             {
               objectId: obj.objectId,
               title: file.name.replace(/\.[^./\\]+$/, ""),
+              durationMs,
+              width,
+              height,
             },
           ],
         });
