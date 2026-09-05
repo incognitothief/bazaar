@@ -171,7 +171,9 @@ export function ItemDetailPage() {
   } | null>(null);
   const [productType, setProductType] = useState<string | null>(null);
   /** Aggregate download size for a product, computed on read (ERP-only). */
-  const [productTotalBytes, setProductTotalBytes] = useState<number | null>(null);
+  const [productTotalBytes, setProductTotalBytes] = useState<number | null>(
+    null,
+  );
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [licenseCid, setLicenseCid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -728,7 +730,8 @@ export function ItemDetailPage() {
     const m = productItemMeta[ref.uri];
     return (
       !m ||
-      resolveContentClass({ category: m.category, format: m.format }) === "audio"
+      resolveContentClass({ category: m.category, format: m.format }) ===
+        "audio"
     );
   };
   const musicTracks = isMusicProduct
@@ -978,20 +981,6 @@ export function ItemDetailPage() {
           ) : (
             <div className="space-y-2 text-muted-foreground">
               <p>Not currently for sale.</p>
-              <p className="text-sm">
-                Publish an active{" "}
-                <code className="text-xs">catalog.listing</code> (with{" "}
-                <code className="text-xs">licenseUri</code> and{" "}
-                <code className="text-xs">licenseGrantCid</code>) on the artist
-                repo, or use{" "}
-                <Link
-                  to="/merchant/upload/tracks"
-                  className="text-primary underline underline-offset-2"
-                >
-                  Upload
-                </Link>{" "}
-                as the merchant.
-              </p>
             </div>
           )}
           {"formats" in item && item.formats?.length ? (
@@ -1117,9 +1106,7 @@ export function ItemDetailPage() {
           {isMusicProduct ? (
             <>
               <ol className="list-none space-y-2 text-sm m-0 p-0">
-                {musicTracks.map((ref, i) =>
-                  renderProductItemRow(ref, i + 1),
-                )}
+                {musicTracks.map((ref, i) => renderProductItemRow(ref, i + 1))}
               </ol>
               {musicAlsoIncluded.length > 0 ? (
                 <div className="space-y-4 pt-4">
