@@ -120,6 +120,13 @@
       "when": 1788555695835,
       "tag": "0016_jazzy_monster_badoon",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1788623049232,
+      "tag": "0017_petite_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }

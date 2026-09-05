@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
@@ -42,16 +42,28 @@ export function createCatalogRouter(db: Db) {
       .where(eq(catalogItems.uri, uri))
       .get();
     if (!row) return c.json({ error: "not_found" }, 404);
-    /** Audio duration lives on the upload object (ERP-only, never on the PDS record) -- same "resolve alongside the ERP row" pattern as a product's coverImages. */
-    const durationMs = row.objectId
-      ? ((
-          await db
-            .select({ durationMs: inventoryUploadObject.durationMs })
-            .from(inventoryUploadObject)
-            .where(eq(inventoryUploadObject.id, row.objectId))
-            .get()
-        )?.durationMs ?? null)
+    /**
+     * Runtime / byte size / pixel dimensions live on the upload object
+     * (ERP-only, never on the PDS record) -- same "resolve alongside the ERP
+     * row" pattern as a product's coverImages. Any of them is null for a file
+     * type it doesn't apply to, or for a legacy upload predating the capture.
+     */
+    const media = row.objectId
+      ? await db
+          .select({
+            durationMs: inventoryUploadObject.durationMs,
+            byteSize: inventoryUploadObject.byteSize,
+            mediaWidth: inventoryUploadObject.mediaWidth,
+            mediaHeight: inventoryUploadObject.mediaHeight,
+          })
+          .from(inventoryUploadObject)
+          .where(eq(inventoryUploadObject.id, row.objectId))
+          .get()
       : null;
+    const durationMs = media?.durationMs ?? null;
+    const byteSize = media?.byteSize ?? null;
+    const mediaWidth = media?.mediaWidth ?? null;
+    const mediaHeight = media?.mediaHeight ?? null;
     /**
      * An item has no cover art of its own -- it lives on the owning
      * product (catalogProductAssets). Find that product by scanning the
@@ -74,7 +86,17 @@ export function createCatalogRouter(db: Db) {
       }
     }
     const tags = row.tags ? (JSON.parse(row.tags) as string[]) : null;
-    return c.json({ item: { ...row, tags, durationMs, coverImages } });
+    return c.json({
+      item: {
+        ...row,
+        tags,
+        durationMs,
+        byteSize,
+        mediaWidth,
+        mediaHeight,
+        coverImages,
+      },
+    });
   });
 
   r.get("/products", async (c) => {
@@ -88,11 +110,46 @@ export function createCatalogRouter(db: Db) {
     if (!row) return c.json({ error: "not_found" }, 404);
     const coverImages = await resolveCoverImages(db, uri);
     const tags = row.tags ? (JSON.parse(row.tags) as string[]) : null;
+    const itemRefs = JSON.parse(row.items) as Array<{ uri: string }>;
+
+    /**
+     * Aggregate download size, computed on read so it always reflects the
+     * current item set (ERP-only, never on the PDS record). Sum of the member
+     * items' master-file byte sizes; companion assets are not counted. Null
+     * when no member has a known byte size (all legacy uploads).
+     */
+    let totalBytes: number | null = null;
+    if (itemRefs.length) {
+      const itemUris = itemRefs.map((r) => r.uri);
+      const objectIds = (
+        await db
+          .select({ objectId: catalogItems.objectId })
+          .from(catalogItems)
+          .where(inArray(catalogItems.uri, itemUris))
+          .all()
+      )
+        .map((r) => r.objectId)
+        .filter((id): id is string => !!id);
+      if (objectIds.length) {
+        const sizes = await db
+          .select({ byteSize: inventoryUploadObject.byteSize })
+          .from(inventoryUploadObject)
+          .where(inArray(inventoryUploadObject.id, objectIds))
+          .all();
+        for (const s of sizes) {
+          if (typeof s.byteSize === "number") {
+            totalBytes = (totalBytes ?? 0) + s.byteSize;
+          }
+        }
+      }
+    }
+
     return c.json({
       product: {
         ...row,
-        items: JSON.parse(row.items) as unknown,
+        items: itemRefs as unknown,
         tags,
+        totalBytes,
         coverImages,
       },
     });

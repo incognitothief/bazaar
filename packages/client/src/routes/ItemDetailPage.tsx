@@ -61,7 +61,7 @@ import {
 } from "@/components/public/TrackList";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import {
   catalogItemArtworkCid,
   catalogItemSellerDid,
@@ -85,6 +85,50 @@ function formatDuration(ms: number): string {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+/** Runtime with an hours segment when long enough, e.g. "3:07" / "1:04:22". */
+function formatRuntime(ms: number): string {
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  if (h === 0) return formatDuration(ms);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+type ProductItemMeta = {
+  title: string;
+  category: string | null;
+  format: string | null;
+  durationMs: number | null;
+  byteSize: number | null;
+  mediaWidth: number | null;
+  mediaHeight: number | null;
+};
+
+/**
+ * The single most relevant captured-metadata value for a compact line-item
+ * display: runtime for audio/video, pixel dimensions for images, file size
+ * otherwise (and as a fallback when the class-specific value wasn't captured).
+ */
+function primaryFileMetaLabel(m: {
+  category?: string | null;
+  format?: string | null;
+  durationMs?: number | null;
+  byteSize?: number | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
+}): string | null {
+  const cls = resolveContentClass({ category: m.category, format: m.format });
+  if ((cls === "audio" || cls === "video") && m.durationMs) {
+    return formatRuntime(m.durationMs);
+  }
+  if (cls === "graphic" && m.mediaWidth && m.mediaHeight) {
+    return `${m.mediaWidth} × ${m.mediaHeight}`;
+  }
+  if (m.byteSize) return formatBytes(m.byteSize);
+  return null;
 }
 
 export function ItemDetailPage() {
@@ -115,8 +159,15 @@ export function ItemDetailPage() {
     Array<{ objectId: string; url: string }>
   >([]);
   const [productItemMeta, setProductItemMeta] = useState<
-    Record<string, { title: string; durationMs: number | null }>
+    Record<string, ProductItemMeta>
   >({});
+  /** ERP-only per-file metadata for a catalog.item single (runtime / size / dimensions), resolved from the item's upload object. */
+  const [singleFileMeta, setSingleFileMeta] = useState<{
+    durationMs: number | null;
+    byteSize: number | null;
+    mediaWidth: number | null;
+    mediaHeight: number | null;
+  } | null>(null);
   const [productType, setProductType] = useState<string | null>(null);
   const [license, setLicense] = useState<LicenseTerms | null>(null);
   const [licenseCid, setLicenseCid] = useState<string | null>(null);
@@ -156,10 +207,7 @@ export function ItemDetailPage() {
         }
         return;
       }
-      let uri = await resolveCatalogItemUriFromRkey(
-        storefrontDid,
-        rkeyParam,
-      );
+      let uri = await resolveCatalogItemUriFromRkey(storefrontDid, rkeyParam);
       if (!uri && catalogDummyEnabled() && rkeyParam === DUMMY_ITEM_RKEY) {
         uri = resolveDummyItemAtUri(storefrontDid);
       }
@@ -253,7 +301,9 @@ export function ItemDetailPage() {
           if (buyerAgent && session?.did) {
             const receipts = await listPurchaseReceiptRows(session.did);
             if (!cancelled) {
-              setOwnsProduct(receipts.some((r) => r.receipt.item.uri === itemUri));
+              setOwnsProduct(
+                receipts.some((r) => r.receipt.item.uri === itemUri),
+              );
             }
           } else if (!cancelled) {
             setOwnsProduct(false);
@@ -267,13 +317,21 @@ export function ItemDetailPage() {
             setProductType(p?.productType ?? null);
             setProductItemMeta(
               Object.fromEntries(
-                v.items.map((ref, i) => [
-                  ref.uri,
-                  {
-                    title: resolvedItems[i]?.title ?? ref.uri,
-                    durationMs: resolvedItems[i]?.durationMs ?? null,
-                  },
-                ]),
+                v.items.map((ref, i) => {
+                  const ri = resolvedItems[i];
+                  return [
+                    ref.uri,
+                    {
+                      title: ri?.title ?? ref.uri,
+                      category: ri?.category ?? null,
+                      format: ri?.format ?? null,
+                      durationMs: ri?.durationMs ?? null,
+                      byteSize: ri?.byteSize ?? null,
+                      mediaWidth: ri?.mediaWidth ?? null,
+                      mediaHeight: ri?.mediaHeight ?? null,
+                    } satisfies ProductItemMeta,
+                  ];
+                }),
               ),
             );
           }
@@ -282,14 +340,28 @@ export function ItemDetailPage() {
           setProductType(null);
           setProductItemMeta({});
           // A single has no cover art of its own -- borrowed from its owning
-          // product, resolved server-side (see catalog.ts's GET /items).
+          // product, resolved server-side (see catalog.ts's GET /items). The
+          // same row carries the ERP-only per-file metadata.
           const r = await getCatalogItem(itemUri);
-          if (!cancelled) setCoverImages(r?.coverImages ?? []);
+          if (!cancelled) {
+            setCoverImages(r?.coverImages ?? []);
+            setSingleFileMeta(
+              r
+                ? {
+                    durationMs: r.durationMs,
+                    byteSize: r.byteSize,
+                    mediaWidth: r.mediaWidth,
+                    mediaHeight: r.mediaHeight,
+                  }
+                : null,
+            );
+          }
         } else if (!cancelled) {
           setOwnsProduct(false);
           setCoverImages([]);
           setProductType(null);
           setProductItemMeta({});
+          setSingleFileMeta(null);
         }
 
         let licUri = listingRow?.licenseUri;
@@ -304,7 +376,9 @@ export function ItemDetailPage() {
         if (licUri) {
           const lt = await getRecordValueWithCid<LicenseTerms>(licUri);
           if (cancelled) return;
-          setLicense(lt?.value ?? (dummyTarget ? buildDummyLicenseTerms() : null));
+          setLicense(
+            lt?.value ?? (dummyTarget ? buildDummyLicenseTerms() : null),
+          );
           setLicenseCid(lt?.cid ?? null);
         } else {
           setLicense(dummyTarget ? buildDummyLicenseTerms() : null);
@@ -412,7 +486,8 @@ export function ItemDetailPage() {
     item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
   const isProduct = item?.$type === BAZAAR_COLLECTION.product;
   const isCatalogItemSingle = item?.$type === BAZAAR_COLLECTION.item;
-  const isMusicProduct = isProduct && productTypeConfig(productType).value === "music";
+  const isMusicProduct =
+    isProduct && productTypeConfig(productType).value === "music";
 
   const purchaseByTrackUri = useMemo(() => {
     const m = new Map<string, { listingUri: string; listing: Listing }>();
@@ -421,7 +496,8 @@ export function ItemDetailPage() {
       const L = row.listing;
       if (L.status !== "active") continue;
       if (L.parentListing !== listingUri) continue;
-      if (new AtUri(L.item.uri).collection !== BAZAAR_COLLECTION.digitalItem) continue;
+      if (new AtUri(L.item.uri).collection !== BAZAAR_COLLECTION.digitalItem)
+        continue;
       m.set(L.item.uri, { listingUri: row.uri, listing: L });
     }
     return m;
@@ -686,7 +762,11 @@ export function ItemDetailPage() {
             className="block overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)] cursor-zoom-in transition-opacity hover:opacity-90"
           >
             {coverUrl ? (
-              <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+              <img
+                src={coverUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
             ) : (
               <ArtworkImage
                 agent={agent}
@@ -772,7 +852,10 @@ export function ItemDetailPage() {
                   You have purchased this item. Your downloads are available
                   below
                 </p>
-              ) : isDigital || isCollection || isProduct || isCatalogItemSingle ? (
+              ) : isDigital ||
+                isCollection ||
+                isProduct ||
+                isCatalogItemSingle ? (
                 <p className="text-sm text-muted-foreground">
                   After purchase, you can{" "}
                   <a
@@ -828,6 +911,21 @@ export function ItemDetailPage() {
       <section className="flex flex-wrap gap-2" aria-label="Metadata">
         {bazaarItem?.category ? (
           <MetadataChip>{bazaarItem.category}</MetadataChip>
+        ) : null}
+        {isCatalogItemSingle && singleFileMeta?.durationMs ? (
+          <MetadataChip>
+            {formatRuntime(singleFileMeta.durationMs)}
+          </MetadataChip>
+        ) : null}
+        {isCatalogItemSingle &&
+        singleFileMeta?.mediaWidth &&
+        singleFileMeta?.mediaHeight ? (
+          <MetadataChip>
+            {singleFileMeta.mediaWidth} × {singleFileMeta.mediaHeight}
+          </MetadataChip>
+        ) : null}
+        {isCatalogItemSingle && singleFileMeta?.byteSize ? (
+          <MetadataChip>{formatBytes(singleFileMeta.byteSize)}</MetadataChip>
         ) : null}
         {"releaseDate" in item && item.releaseDate ? (
           <MetadataChip>
@@ -895,7 +993,11 @@ export function ItemDetailPage() {
       {isProduct && "items" in item ? (
         <section className="space-y-4">
           <h2 className="text-lg font-medium">
-            {ownsProduct ? "Your downloads" : isMusicProduct ? "Tracks" : "Items"}
+            {ownsProduct
+              ? "Your downloads"
+              : isMusicProduct
+                ? "Tracks"
+                : "Items"}
           </h2>
           {ownsProduct ? (
             <Button
@@ -912,10 +1014,11 @@ export function ItemDetailPage() {
             {item.items.map((ref, index) => {
               const purchase = purchaseByProductItemUri.get(ref.uri);
               const meta = productItemMeta[ref.uri];
+              const metaLabel = meta ? primaryFileMetaLabel(meta) : null;
               return (
                 <li
                   key={ref.uri}
-                  className="flex items-center justify-between gap-2 py-1.5"
+                  className="flex items-center justify-between gap-20 py-1.5"
                 >
                   <span className="flex min-w-0 flex-1 items-baseline gap-2">
                     {isMusicProduct ? (
@@ -927,15 +1030,23 @@ export function ItemDetailPage() {
                       className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-sm"
                       style={{
                         maskImage:
-                          "linear-gradient(to right, black 85%, transparent 100%)",
+                          "linear-gradient(to right, black 70%, transparent 100%)",
                         WebkitMaskImage:
-                          "linear-gradient(to right, black 85%, transparent 100%)",
+                          "linear-gradient(to right, black 70%, transparent 100%)",
                       }}
                     >
-                      <span className="font-medium">{meta?.title ?? ref.uri}</span>
-                      {meta?.durationMs != null ? (
-                        <span className="ml-2 text-muted-foreground tabular-nums">
-                          {formatDuration(meta.durationMs)}
+                      <Link
+                        to={itemPathPretty(
+                          catalogItemRkey(ref.uri),
+                          meta?.title ?? ref.uri,
+                        )}
+                        className="font-medium underline-offset-2 hover:underline"
+                      >
+                        {meta?.title ?? ref.uri}
+                      </Link>
+                      {metaLabel ? (
+                        <span className="ml-2 font-mono text-xs text-muted-foreground">
+                          {metaLabel}
                         </span>
                       ) : null}
                     </span>

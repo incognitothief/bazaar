@@ -20,7 +20,11 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { parseAudioFile } from "@/lib/audio/parse";
-import { suggestedMacroFromFormat } from "@/lib/itemContentClass";
+import {
+  contentClassFromFormat,
+  suggestedMacroFromFormat,
+} from "@/lib/itemContentClass";
+import { probeImageSize, probeVideoDuration } from "@/lib/media/probe";
 import {
   GENERIC_PRODUCT_TYPE,
   PRODUCT_TYPE_OPTIONS,
@@ -37,8 +41,11 @@ type ItemDraftRow = {
   tags: string[];
   /** Detected from the file itself (parsed audio metadata, falling back to the extension) -- never merchant-editable, so it always reflects what was actually uploaded. */
   format: string;
-  /** Parsed client-side for audio files only; null/undefined when the file isn't audio or metadata parsing failed. */
+  /** Runtime, parsed client-side for audio/video; absent for other types or when parsing failed. */
   durationMs?: number;
+  /** Pixel dimensions, probed client-side for raster images; absent otherwise. */
+  width?: number;
+  height?: number;
   objectId: string | null;
   status: "pending" | "uploading" | "completed" | "error";
   progress: number;
@@ -201,21 +208,40 @@ export function AddProductPage() {
       if (!id) return;
 
       const metas = await Promise.all(
-        entries.map((entry) => tryParseAudioMeta(entry.file)),
+        entries.map(async (entry) => {
+          const audio = await tryParseAudioMeta(entry.file);
+          const format = audio?.format || formatFromFileName(entry.file.name);
+          const cls = contentClassFromFormat(format);
+          let durationMs = audio?.durationMs;
+          let width: number | undefined;
+          let height: number | undefined;
+          // Browser-side probes for the non-audio types (no deps, no server
+          // load). Silently yield nothing for formats the browser can't decode.
+          if (durationMs == null && cls === "video") {
+            durationMs = (await probeVideoDuration(entry.file)) ?? undefined;
+          }
+          if (cls === "graphic") {
+            const size = await probeImageSize(entry.file);
+            width = size?.width;
+            height = size?.height;
+          }
+          return { audio, format, durationMs, width, height };
+        }),
       );
       const rows: ItemDraftRow[] = entries.map((entry, i) => {
         const meta = metas[i];
-        const format = meta?.format || formatFromFileName(entry.file.name);
         return {
           id: entry.id,
           file: entry.file,
-          title: meta?.title?.trim() || titleFromFileName(entry.file.name),
+          title: meta.audio?.title?.trim() || titleFromFileName(entry.file.name),
           // Prefill the macro category from the detected file type; merchant can
           // clear it (-> generic) or type their own.
-          category: suggestedMacroFromFormat(format) ?? "",
+          category: suggestedMacroFromFormat(meta.format) ?? "",
           tags: [],
-          format,
-          durationMs: meta?.durationMs,
+          format: meta.format,
+          durationMs: meta.durationMs,
+          width: meta.width,
+          height: meta.height,
           objectId: null,
           status: "pending",
           progress: 0,
@@ -404,6 +430,8 @@ export function AddProductPage() {
           tags: r.tags.length ? r.tags : undefined,
           format: r.format.trim() || undefined,
           durationMs: r.durationMs,
+          width: r.width,
+          height: r.height,
         })),
       });
       await publishProductSession(sessionId);
