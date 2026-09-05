@@ -720,6 +720,100 @@ export function ItemDetailPage() {
   const artworkCid = catalogItemArtworkCid(item);
   const hasArtwork = !!coverUrl || !!artworkCid;
 
+  // Music product: audio files are the numbered "Tracks" (in item-list order),
+  // any non-audio member drops to an "Also included" group below. The
+  // catalogProductAssets bonus bin is separate and never listed here.
+  const productItems = isProduct && "items" in item ? item.items : [];
+  const isAudioProductItem = (ref: { uri: string }): boolean => {
+    const m = productItemMeta[ref.uri];
+    return (
+      !m ||
+      resolveContentClass({ category: m.category, format: m.format }) === "audio"
+    );
+  };
+  const musicTracks = isMusicProduct
+    ? productItems.filter(isAudioProductItem)
+    : [];
+  const musicAlsoIncluded = isMusicProduct
+    ? productItems.filter((r) => !isAudioProductItem(r))
+    : [];
+
+  const renderProductItemRow = (
+    ref: { uri: string },
+    marker: number | "bullet" | null,
+  ) => {
+    const purchase = purchaseByProductItemUri.get(ref.uri);
+    const meta = productItemMeta[ref.uri];
+    const metaLabel = meta ? primaryFileMetaLabel(meta) : null;
+    return (
+      <li
+        key={ref.uri}
+        className="flex items-center justify-between gap-20 py-1.5"
+      >
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+          {marker != null ? (
+            <span className="tabular-nums text-muted-foreground shrink-0 w-5 text-right">
+              {marker === "bullet" ? "•" : `${marker}.`}
+            </span>
+          ) : null}
+          <span
+            className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-sm"
+            style={{
+              maskImage:
+                "linear-gradient(to right, black 70%, transparent 100%)",
+              WebkitMaskImage:
+                "linear-gradient(to right, black 70%, transparent 100%)",
+            }}
+          >
+            <Link
+              to={itemPathPretty(
+                catalogItemRkey(ref.uri),
+                meta?.title ?? ref.uri,
+              )}
+              className="font-medium underline-offset-2 hover:underline"
+            >
+              {meta?.title ?? ref.uri}
+            </Link>
+            {metaLabel ? (
+              <span className="ml-2 font-mono text-xs text-muted-foreground">
+                {metaLabel}
+              </span>
+            ) : null}
+          </span>
+        </span>
+        {ownsProduct ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={downloadBusyUri === ref.uri}
+            onClick={() => void downloadDigitalItemUri(ref.uri)}
+          >
+            {downloadBusyUri === ref.uri ? "Preparing…" : "Download"}
+          </Button>
+        ) : purchase ? (
+          <Link
+            to={itemPathPretty(
+              catalogItemRkey(ref.uri),
+              meta?.title ?? ref.uri,
+            )}
+            className={cn(
+              buttonVariants({ size: "sm", variant: "outline" }),
+              "shrink-0",
+            )}
+          >
+            Buy · {formatMoney(purchase.listing.price)}
+          </Link>
+        ) : (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            Not sold separately
+          </span>
+        )}
+      </li>
+    );
+  };
+
   return (
     <article className="space-y-10">
       <Helmet>
@@ -1020,80 +1114,29 @@ export function ItemDetailPage() {
               {zipBusy ? "Preparing…" : "Download all (.zip)"}
             </Button>
           ) : null}
-          <ol className="list-none space-y-2 text-sm m-0 p-0">
-            {item.items.map((ref, index) => {
-              const purchase = purchaseByProductItemUri.get(ref.uri);
-              const meta = productItemMeta[ref.uri];
-              const metaLabel = meta ? primaryFileMetaLabel(meta) : null;
-              return (
-                <li
-                  key={ref.uri}
-                  className="flex items-center justify-between gap-20 py-1.5"
-                >
-                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                    {isMusicProduct ? (
-                      <span className="tabular-nums text-muted-foreground shrink-0 w-5 text-right">
-                        {index + 1}.
-                      </span>
-                    ) : null}
-                    <span
-                      className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-sm"
-                      style={{
-                        maskImage:
-                          "linear-gradient(to right, black 70%, transparent 100%)",
-                        WebkitMaskImage:
-                          "linear-gradient(to right, black 70%, transparent 100%)",
-                      }}
-                    >
-                      <Link
-                        to={itemPathPretty(
-                          catalogItemRkey(ref.uri),
-                          meta?.title ?? ref.uri,
-                        )}
-                        className="font-medium underline-offset-2 hover:underline"
-                      >
-                        {meta?.title ?? ref.uri}
-                      </Link>
-                      {metaLabel ? (
-                        <span className="ml-2 font-mono text-xs text-muted-foreground">
-                          {metaLabel}
-                        </span>
-                      ) : null}
-                    </span>
-                  </span>
-                  {ownsProduct ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      disabled={downloadBusyUri === ref.uri}
-                      onClick={() => void downloadDigitalItemUri(ref.uri)}
-                    >
-                      {downloadBusyUri === ref.uri ? "Preparing…" : "Download"}
-                    </Button>
-                  ) : purchase ? (
-                    <Link
-                      to={itemPathPretty(
-                        catalogItemRkey(ref.uri),
-                        meta?.title ?? ref.uri,
-                      )}
-                      className={cn(
-                        buttonVariants({ size: "sm", variant: "outline" }),
-                        "shrink-0",
-                      )}
-                    >
-                      Buy · {formatMoney(purchase.listing.price)}
-                    </Link>
-                  ) : (
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      Not sold separately
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
+          {isMusicProduct ? (
+            <>
+              <ol className="list-none space-y-2 text-sm m-0 p-0">
+                {musicTracks.map((ref, i) =>
+                  renderProductItemRow(ref, i + 1),
+                )}
+              </ol>
+              {musicAlsoIncluded.length > 0 ? (
+                <div className="space-y-4 pt-4">
+                  <h3 className="text-base font-medium">Also included</h3>
+                  <ul className="list-none space-y-2 text-sm m-0 p-0">
+                    {musicAlsoIncluded.map((ref) =>
+                      renderProductItemRow(ref, "bullet"),
+                    )}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <ol className="list-none space-y-2 text-sm m-0 p-0">
+              {item.items.map((ref) => renderProductItemRow(ref, null))}
+            </ol>
+          )}
         </section>
       ) : null}
 
