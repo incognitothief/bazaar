@@ -54,6 +54,7 @@ import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { productTypeConfig } from "@/lib/productTypes";
+import { contentClassCopy, resolveContentClass } from "@/lib/itemContentClass";
 import {
   CollectionMemberDownloads,
   TrackList,
@@ -65,6 +66,7 @@ import {
   catalogItemArtworkCid,
   catalogItemSellerDid,
   type ActorMerchant,
+  type BazaarItem,
   type CatalogItem,
   type DigitalItem,
   type LicenseTerms,
@@ -513,6 +515,18 @@ export function ItemDetailPage() {
   const authorInitial =
     authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
 
+  // catalog.item single: page shape is inferred from the item's immutable
+  // `format`. Legacy types (digital/collection/physical) keep their frozen
+  // layouts and are deliberately not routed through this.
+  const bazaarItem: BazaarItem | null = isCatalogItemSingle
+    ? (item as BazaarItem)
+    : null;
+  const itemContentClass = resolveContentClass({
+    category: bazaarItem?.category,
+    format: bazaarItem?.format,
+  });
+  const itemClassCopy = contentClassCopy(itemContentClass);
+
   async function downloadDigitalItemUri(targetUri: string) {
     if (!session) {
       toast.error("Sign in to download");
@@ -770,7 +784,9 @@ export function ItemDetailPage() {
                       ? "release"
                       : isProduct
                         ? "product"
-                        : "item"}
+                        : isCatalogItemSingle
+                          ? itemClassCopy.noun
+                          : "item"}
                     .
                   </a>
                 </p>
@@ -801,11 +817,18 @@ export function ItemDetailPage() {
                 <FormatBadge key={f} format={f} />
               ))}
             </div>
+          ) : bazaarItem?.format ? (
+            <div className="flex flex-wrap gap-2">
+              <FormatBadge format={bazaarItem.format} />
+            </div>
           ) : null}
         </div>
       </section>
 
       <section className="flex flex-wrap gap-2" aria-label="Metadata">
+        {bazaarItem?.category ? (
+          <MetadataChip>{bazaarItem.category}</MetadataChip>
+        ) : null}
         {"releaseDate" in item && item.releaseDate ? (
           <MetadataChip>
             Released:{" "}
@@ -955,7 +978,11 @@ export function ItemDetailPage() {
 
       {(isDigital || isCatalogItemSingle) && ownsItem ? (
         <section className="space-y-2">
-          <h2 className="text-lg font-medium">Your download</h2>
+          <h2 className="text-lg font-medium">
+            {isCatalogItemSingle && itemClassCopy.label
+              ? `Your ${itemClassCopy.noun}`
+              : "Your download"}
+          </h2>
           <Button
             type="button"
             variant="outline"

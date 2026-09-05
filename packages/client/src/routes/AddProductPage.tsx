@@ -11,6 +11,7 @@ import {
   uploadFileToInventoryObject,
 } from "@/lib/api/inventoryApi";
 import { BatchFileDropzone, type BatchFileEntry } from "@/components/shared/BatchFileDropzone";
+import { CategoryField } from "@/components/merchant/CategoryField";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
 import { TagsInput } from "@/components/shared/TagsInput";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { parseAudioFile } from "@/lib/audio/parse";
+import { suggestedMacroFromFormat } from "@/lib/itemContentClass";
 import {
   GENERIC_PRODUCT_TYPE,
   PRODUCT_TYPE_OPTIONS,
@@ -203,13 +205,16 @@ export function AddProductPage() {
       );
       const rows: ItemDraftRow[] = entries.map((entry, i) => {
         const meta = metas[i];
+        const format = meta?.format || formatFromFileName(entry.file.name);
         return {
           id: entry.id,
           file: entry.file,
           title: meta?.title?.trim() || titleFromFileName(entry.file.name),
-          category: "",
+          // Prefill the macro category from the detected file type; merchant can
+          // clear it (-> generic) or type their own.
+          category: suggestedMacroFromFormat(format) ?? "",
           tags: [],
-          format: meta?.format || formatFromFileName(entry.file.name),
+          format,
           durationMs: meta?.durationMs,
           objectId: null,
           status: "pending",
@@ -659,25 +664,22 @@ export function AddProductPage() {
                       Remove
                     </Button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label htmlFor={`${row.id}-title`}>Title</Label>
-                      <Input
-                        id={`${row.id}-title`}
-                        value={row.title}
-                        onChange={(e) => updateItem(row.id, { title: e.target.value })}
-                        placeholder="Item title"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor={`${row.id}-category`}>Category</Label>
-                      <Input
-                        id={`${row.id}-category`}
-                        value={row.category}
-                        onChange={(e) => updateItem(row.id, { category: e.target.value })}
-                        placeholder="Optional"
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${row.id}-title`}>Title</Label>
+                    <Input
+                      id={`${row.id}-title`}
+                      value={row.title}
+                      onChange={(e) => updateItem(row.id, { title: e.target.value })}
+                      placeholder="Item title"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${row.id}-category`}>Category</Label>
+                    <CategoryField
+                      id={`${row.id}-category`}
+                      value={row.category}
+                      onChange={(next) => updateItem(row.id, { category: next })}
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor={`${row.id}-tags`}>Tags (optional)</Label>
