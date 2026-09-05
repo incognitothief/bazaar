@@ -1153,26 +1153,26 @@ export function ItemDetailPage() {
         </section>
       ) : null}
 
-      <section>
-        <h2 className="text-lg font-medium mb-2">License</h2>
-        <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
-          {license
-            ? typeof license.licenseText === "string"
+      {license ? (
+        <section>
+          <h2 className="text-lg font-medium mb-2">License</h2>
+          <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
+            {typeof license.licenseText === "string"
               ? license.licenseText
-              : "Legacy license format — see full terms."
-            : "Personal use license. Download and listen for your own enjoyment."}
-        </p>
-        {licenseCid ? (
-          <a
-            href={`/license/${encodeURIComponent(licenseCid)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 inline-block text-sm text-primary underline-offset-2 hover:underline"
-          >
-            View full license →
-          </a>
-        ) : null}
-      </section>
+              : "Legacy license format — see full terms."}
+          </p>
+          {licenseCid ? (
+            <a
+              href={`/license/${encodeURIComponent(licenseCid)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block text-sm text-primary underline-offset-2 hover:underline"
+            >
+              View full license →
+            </a>
+          ) : null}
+        </section>
+      ) : null}
 
       {"isrc" in item && item.isrc ? (
         <section>
