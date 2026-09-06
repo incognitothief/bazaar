@@ -11,14 +11,6 @@ import {
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
 import { TagTokens } from "@/components/shared/TagTokens";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { TagsInput } from "@/components/shared/TagsInput";
 import { Label } from "@/components/ui/label";
@@ -27,8 +19,6 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
   buildItemRefFromUri,
-  createListing,
-  findStaleListingsForItem,
   getCatalogItem,
   getRecordValue,
   getRecordValueWithCid,
@@ -45,7 +35,6 @@ import {
   legacyCollectionDownloadUrl,
   syncCatalogItem,
   type CatalogItemRow,
-  type ListingRow,
 } from "@/lib/atproto/records";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import type { ATPRepoClient } from "@/lib/atproto/session";
@@ -1251,7 +1240,6 @@ function CatalogItemEditForm({
   const [priceUsd, setPriceUsd] = useState("9.99");
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
 
   /** This item's own non-terminal listing (standalone or sold-under-product), if any. */
   const [listing, setListing] = useState<Listing | null>(null);
@@ -1356,7 +1344,13 @@ function CatalogItemEditForm({
    * the (possibly edited) price with the same license and parent. A
    * price-only change patches the existing listing in place.
    */
-  async function doSave(archiveTargets: ListingRow[]) {
+  /**
+   * Save the item record, then patch its listing in place -- same listing
+   * URI, `parentListing` preserved. A metadata edit re-pins the item's
+   * current CID (checkout would otherwise reject it as "item_changed"); a
+   * price edit is applied at the same time.
+   */
+  async function doSave() {
     if (!row) return;
     const cents = priceCents();
     if (listing && cents == null) {
@@ -1365,6 +1359,7 @@ function CatalogItemEditForm({
     }
     setSaving(true);
     try {
+      const repin = paramsChanged();
       await putCatalogItem(agent, uri, {
         title: title.trim(),
         category: category.trim() || undefined,
@@ -1373,42 +1368,21 @@ function CatalogItemEditForm({
       });
 
       let listingTouched = false;
-
-      if (archiveTargets.length > 0) {
-        const src = archiveTargets.find((l) => l.listing.item.uri === uri);
-        for (const l of archiveTargets) {
-          await putListing(agent, l.uri, { ...l.listing, status: "archived" });
-        }
-        if (src && cents != null) {
+      if (listing && listingUri && cents != null) {
+        const priceChanged = cents !== listing.price.amount;
+        if (repin || priceChanged) {
           const freshRef = await buildItemRefFromUri(uri);
-          await createListing(agent, {
-            item: freshRef ?? src.listing.item,
-            price: { amount: cents, currency: src.listing.price.currency },
-            status: "active",
-            licenseUri: src.listing.licenseUri,
-            licenseGrantCid: src.listing.licenseGrantCid,
-            parentListing: src.listing.parentListing,
+          await putListing(agent, listingUri, {
+            ...listing,
+            item: freshRef ?? listing.item,
+            price: { ...listing.price, amount: cents },
           });
           listingTouched = true;
         }
-      } else if (
-        listing &&
-        listingUri &&
-        cents != null &&
-        cents !== listing.price.amount
-      ) {
-        const freshRef = await buildItemRefFromUri(uri);
-        await putListing(agent, listingUri, {
-          ...listing,
-          item: freshRef ?? listing.item,
-          price: { ...listing.price, amount: cents },
-        });
-        listingTouched = true;
       }
 
       await syncCatalogItem(uri);
       toast.success(listingTouched ? "Saved — listing updated" : "Saved");
-      setStaleListings(null);
       await load();
       setEditing(false);
     } catch (err) {
@@ -1430,21 +1404,7 @@ function CatalogItemEditForm({
       toast.error("Invalid price");
       return;
     }
-    if (listing && listingUri && paramsChanged()) {
-      const listings = await listListingRows(row.sellerDid).catch(() => []);
-      const primaryRow = listings.find((r) => r.uri === listingUri);
-      const otherStale = findStaleListingsForItem(
-        listings,
-        row.uri,
-        row.cid,
-      ).filter((s) => s.uri !== listingUri);
-      const targets = primaryRow ? [primaryRow, ...otherStale] : otherStale;
-      if (targets.length > 0) {
-        setStaleListings(targets);
-        return;
-      }
-    }
-    await doSave([]);
+    await doSave();
   }
 
   function cancelEditing() {
@@ -1712,45 +1672,6 @@ function CatalogItemEditForm({
           ) : null}
         </section>
       ) : null}
-
-      <Dialog
-        open={!!staleListings}
-        onOpenChange={(open) => {
-          if (!open) setStaleListings(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Re-list this item?</DialogTitle>
-            <DialogDescription>
-              You changed this item's content, so the current listing (pinned to
-              the previous version) is retired and a fresh one is published at{" "}
-              {priceCents() != null
-                ? formatMoney({ amount: priceCents()!, currency: "USD" })
-                : "the same price"}{" "}
-              with the same license
-              {listing?.parentListing ? " and parent listing" : ""}. Buyers keep
-              every receipt and download; only the old listing's link stops
-              working.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setStaleListings(null)}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void doSave(staleListings ?? [])}
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save & re-list"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -27,14 +27,6 @@ import {
   uploadFileToInventoryObject,
 } from "@/lib/api/inventoryApi";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,8 +37,6 @@ import {
   addCatalogProductAsset,
   buildItemRefFromUri,
   catalogProductDownloadUrl,
-  createListing,
-  findStaleListingsForItem,
   getCatalogItem,
   getCatalogProduct,
   getCatalogProductAssets,
@@ -60,7 +50,6 @@ import {
   type CatalogItemRow,
   type CatalogProductAssets,
   type CatalogProductRow,
-  type ListingRow,
 } from "@/lib/atproto/records";
 import { PRODUCT_TYPE_OPTIONS, productTypeConfig } from "@/lib/productTypes";
 import { contentClassFromFormat } from "@/lib/itemContentClass";
@@ -117,7 +106,6 @@ export function MerchantProductDetailPage() {
   const [saving, setSaving] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
   const [assets, setAssets] = useState<CatalogProductAssets>({
     coverImages: [],
     includedAssets: [],
@@ -446,7 +434,14 @@ export function MerchantProductDetailPage() {
    * fresh one is published at the (possibly edited) price with the same license
    * and parent. A price-only change patches the existing listing in place.
    */
-  async function doSave(archiveTargets: ListingRow[]) {
+  /**
+   * Save the product record, then patch its listing in place -- same listing
+   * URI. A metadata edit changes the product's CID, so the listing's pinned
+   * `item.cid` is re-pinned here (otherwise checkout rejects it as
+   * "item_changed"); a price edit is applied at the same time. Keeping the URI
+   * stable means child listings' `parentListing` never dangles.
+   */
+  async function doSave() {
     if (!agent || !product) return;
     const cents = priceCents();
     if (listing && cents == null) {
@@ -455,6 +450,7 @@ export function MerchantProductDetailPage() {
     }
     setSaving(true);
     try {
+      const repin = paramsChanged();
       await putCatalogProduct(agent, uri, {
         title: title.trim(),
         description: description.trim() || undefined,
@@ -463,48 +459,21 @@ export function MerchantProductDetailPage() {
       });
 
       let listingTouched = false;
-
-      if (archiveTargets.length > 0) {
-        const src =
-          archiveTargets.find(
-            (l) => l.listing.item.uri === uri && !l.listing.parentListing,
-          ) ?? archiveTargets[0];
-        for (const l of archiveTargets) {
-          await putListing(agent, l.uri, {
-            ...l.listing,
-            status: "archived",
-          });
-        }
-        if (src && cents != null) {
+      if (listing && listingUri && cents != null) {
+        const priceChanged = cents !== listing.price.amount;
+        if (repin || priceChanged) {
           const freshRef = await buildItemRefFromUri(uri);
-          await createListing(agent, {
-            item: freshRef ?? src.listing.item,
-            price: { amount: cents, currency: src.listing.price.currency },
-            status: "active",
-            licenseUri: src.listing.licenseUri,
-            licenseGrantCid: src.listing.licenseGrantCid,
-            parentListing: src.listing.parentListing,
+          await putListing(agent, listingUri, {
+            ...listing,
+            item: freshRef ?? listing.item,
+            price: { ...listing.price, amount: cents },
           });
           listingTouched = true;
         }
-      } else if (
-        listing &&
-        listingUri &&
-        cents != null &&
-        cents !== listing.price.amount
-      ) {
-        const freshRef = await buildItemRefFromUri(uri);
-        await putListing(agent, listingUri, {
-          ...listing,
-          item: freshRef ?? listing.item,
-          price: { ...listing.price, amount: cents },
-        });
-        listingTouched = true;
       }
 
       await syncCatalogProduct(uri);
       toast.success(listingTouched ? "Saved — listing updated" : "Saved");
-      setStaleListings(null);
       await load();
       setEditing(false);
     } catch (e) {
@@ -526,33 +495,7 @@ export function MerchantProductDetailPage() {
       toast.error("Invalid price");
       return;
     }
-    // A content change retires the current listing; confirm before re-listing.
-    if (listing && listingUri && paramsChanged()) {
-      const listings = await listListingRows(product.sellerDid).catch(() => []);
-      const primaryRow = listings.find((r) => r.uri === listingUri);
-      const otherStale = findStaleListingsForItem(
-        listings,
-        product.uri,
-        product.cid,
-      ).filter((s) => s.uri !== listingUri);
-      const parents = primaryRow ? [primaryRow, ...otherStale] : otherStale;
-      // Cascade: any non-terminal listing that hangs off a parent being
-      // retired goes with it -- no orphans. Standalone listings (no
-      // parentListing) are never touched here.
-      const parentUris = new Set(parents.map((p) => p.uri));
-      const cascadeChildren = listings.filter(
-        (r) =>
-          !!r.listing.parentListing &&
-          parentUris.has(r.listing.parentListing) &&
-          !isTerminalStatus(r.listing.status),
-      );
-      const targets = [...parents, ...cascadeChildren];
-      if (targets.length > 0) {
-        setStaleListings(targets);
-        return;
-      }
-    }
-    await doSave([]);
+    await doSave();
   }
 
   function cancelEditing() {
@@ -1101,54 +1044,6 @@ export function MerchantProductDetailPage() {
           </div>
         </section>
       ) : null}
-
-      <Dialog
-        open={!!staleListings}
-        onOpenChange={(open) => {
-          if (!open) setStaleListings(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Re-list this product?</DialogTitle>
-            <DialogDescription>
-              You changed this product's content, so the current listing (pinned
-              to the previous version) is retired and a fresh one is published
-              at{" "}
-              {priceCents() != null
-                ? formatMoney({ amount: priceCents()!, currency: "USD" })
-                : "the same price"}{" "}
-              with the same license
-              {listing?.parentListing ? " and parent listing" : ""}.
-              {(() => {
-                const kids = (staleListings ?? []).filter(
-                  (l) => !!l.listing.parentListing,
-                ).length;
-                return kids > 0
-                  ? ` Its ${kids} linked item listing${kids === 1 ? "" : "s"} will be retired too — re-add them afterward if you still sell them individually.`
-                  : "";
-              })()}{" "}
-              Buyers keep every receipt and download; only the old listing's link
-              stops working.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setStaleListings(null)}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void doSave(staleListings ?? [])}
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save & re-list"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
