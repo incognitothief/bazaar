@@ -14,12 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Segmented } from "@/components/shared/Segmented";
 import {
   createLicenseTerms,
   incrementLicenseVersion,
@@ -44,6 +39,7 @@ export function LicensePage() {
   );
   const [retiring, setRetiring] = useState(false);
   const [revivingCid, setRevivingCid] = useState<string | null>(null);
+  const [tab, setTab] = useState<"editor" | "my-licenses">("editor");
 
   const refreshLicenses = useCallback(async () => {
     if (!agent || !session?.did) return;
@@ -122,20 +118,25 @@ export function LicensePage() {
         </p>
       </div>
 
-      <Tabs defaultValue="editor">
-        <TabsList>
-          <TabsTrigger value="editor">License editor</TabsTrigger>
-          <TabsTrigger value="my-licenses">My licenses</TabsTrigger>
-        </TabsList>
+      <Segmented
+        label="License view"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "editor", label: "License editor" },
+          { value: "my-licenses", label: "My licenses" },
+        ]}
+      />
 
-        <TabsContent value="editor" className="pt-4">
+      {tab === "editor" ? (
+        <div className="pt-4">
           <LicenseFormFull
             agent={agent}
             onLicensesChanged={() => void refreshLicenses()}
           />
-        </TabsContent>
-
-        <TabsContent value="my-licenses" className="pt-4">
+        </div>
+      ) : (
+        <div className="pt-4">
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : rows.length === 0 ? (
@@ -249,8 +250,8 @@ export function LicensePage() {
               </table>
             </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
 
       <Dialog
         open={!!retireTarget}
