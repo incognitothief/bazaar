@@ -163,8 +163,8 @@ export function MerchantTransactionsPage() {
       </div>
 
       {!loading && !err ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border border-border p-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="col-span-2 rounded-lg border border-border p-4 sm:col-span-1">
             <p className="text-sm text-muted-foreground">Total sales</p>
             <p className="text-2xl font-semibold">{stats.total}</p>
           </div>
