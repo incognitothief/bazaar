@@ -92,6 +92,11 @@ function ListSkeleton() {
   );
 }
 
+/**
+ * A 2+ option pill where the *whole* control is one tap target — each click
+ * advances to the next option (wrapping). Looks identical to a classic
+ * segmented control; just far easier to hit on mobile than aiming at one half.
+ */
 function Segmented<T extends string>({
   label,
   value,
@@ -103,27 +108,35 @@ function Segmented<T extends string>({
   options: { value: T; label: string }[];
   onChange: (next: T) => void;
 }) {
+  const idx = Math.max(
+    0,
+    options.findIndex((o) => o.value === value),
+  );
+  const nextOption = options[(idx + 1) % options.length];
   return (
-    <div
-      role="group"
-      aria-label={label}
-      className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5 text-sm"
+    <button
+      type="button"
+      aria-label={
+        nextOption
+          ? `${label}: ${options[idx]?.label ?? value} — tap for ${nextOption.label}`
+          : label
+      }
+      className="group inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5 text-sm"
+      onClick={() => nextOption && onChange(nextOption.value)}
     >
       {options.map((o) => (
-        <button
+        <span
           key={o.value}
-          type="button"
-          aria-pressed={value === o.value}
+          aria-hidden="true"
           className={cn(
-            "rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground",
+            "rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors group-hover:text-foreground",
             value === o.value && "bg-background text-foreground shadow-sm",
           )}
-          onClick={() => onChange(o.value)}
         >
           {o.label}
-        </button>
+        </span>
       ))}
-    </div>
+    </button>
   );
 }
 
