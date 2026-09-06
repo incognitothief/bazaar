@@ -168,9 +168,7 @@ export function MerchantInventoryPage() {
 
   const openCreateListing = useCallback(
     (row: MerchantItemRowData) => {
-      navigate(
-        `/merchant/listings/new?uri=${encodeURIComponent(row.uri)}`,
-      );
+      navigate(`/merchant/listings/new?uri=${encodeURIComponent(row.uri)}`);
     },
     [navigate],
   );
@@ -241,12 +239,7 @@ export function MerchantInventoryPage() {
       const lr = listingRowByItemUri[row.uri];
       const isOurGrain = row.kind === "item" || row.kind === "product";
       return {
-        relationship: relationshipFor(
-          row,
-          lr,
-          productUriByItemUri,
-          titleByUri,
-        ),
+        relationship: relationshipFor(row, lr, productUriByItemUri, titleByUri),
         canCreateListing: isOurGrain && !hasNonTerminalListing(lr),
         onCreateListing: () => openCreateListing(row),
         onDeleteListing: () => {
@@ -331,8 +324,7 @@ export function MerchantInventoryPage() {
       <div>
         <h1 className="text-2xl font-semibold">Inventory</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Every product and item you've uploaded. Create, price, pause, or
-          retire a listing from its row.
+          Manage your products, listings and inventory.
         </p>
       </div>
 
@@ -367,10 +359,7 @@ export function MerchantInventoryPage() {
           {!loading && itemRows.length > 0 ? (
             <InventoryViewToggle value={view} onChange={handleViewChange} />
           ) : null}
-          <Link
-            to="/merchant/inventory/new"
-            className={cn(buttonVariants())}
-          >
+          <Link to="/merchant/inventory/new" className={cn(buttonVariants())}>
             + Add a product
           </Link>
         </div>
@@ -477,7 +466,8 @@ export function MerchantInventoryPage() {
           <DialogHeader>
             <DialogTitle>
               Delete listing for "
-              {deleteRow ? (titleByUri[deleteRow.listing.item.uri] ?? "") : ""}"?
+              {deleteRow ? (titleByUri[deleteRow.listing.item.uri] ?? "") : ""}
+              "?
             </DialogTitle>
             <DialogDescription>
               This removes the listing record. It stops appearing here and on

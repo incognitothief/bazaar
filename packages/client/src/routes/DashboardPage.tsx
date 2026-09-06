@@ -33,8 +33,7 @@ const quickActions: {
   {
     to: "/merchant/inventory",
     label: "Inventory",
-    description:
-      "Publish new work, then price, list, pause, or retire it — products and items, all in one place.",
+    description: "Publish products, manage listings and inventory.",
     icon: Boxes,
   },
   {
@@ -54,9 +53,7 @@ const quickActions: {
 export function DashboardPage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
-  const [items, setItems] = useState<
-    { uri: string; item: DigitalItem }[]
-  >([]);
+  const [items, setItems] = useState<{ uri: string; item: DigitalItem }[]>([]);
   const [listingCount, setListingCount] = useState(0);
   const [totalSales, setTotalSales] = useState(0);
   const [stripeConnected, setStripeConnected] = useState(false);
@@ -84,9 +81,12 @@ export function DashboardPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const r = await fetch(browserApiUrl("/api/merchant/payment-fulfillments"), {
-          credentials: "include",
-        });
+        const r = await fetch(
+          browserApiUrl("/api/merchant/payment-fulfillments"),
+          {
+            credentials: "include",
+          },
+        );
         if (!r.ok) return;
         const j = (await r.json()) as { rows?: PaymentFulfillmentRow[] };
         const rows = Array.isArray(j.rows) ? j.rows : [];
@@ -106,7 +106,9 @@ export function DashboardPage() {
         listLicenseTerms(session.did),
       ]);
       setItems(rows.map((r) => ({ uri: r.uri, item: r.item })));
-      setListingCount(listings.filter((l) => l.listing.status === "active").length);
+      setListingCount(
+        listings.filter((l) => l.listing.status === "active").length,
+      );
       setHasLicense(licenses.length > 0);
     })();
   }, [agent, session]);
