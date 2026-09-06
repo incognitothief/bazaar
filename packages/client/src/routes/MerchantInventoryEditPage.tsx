@@ -1221,6 +1221,24 @@ function CatalogItemEditForm({
   uri: string;
   agent: ATPRepoClient;
 }) {
+  const [searchParams] = useSearchParams();
+  /** `?from=<productAtUri>` set on links from the product page -- return there instead of the inventory list. */
+  const from = useMemo(() => {
+    const raw = searchParams.get("from");
+    if (!raw) return null;
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }, [searchParams]);
+  const cameFromProduct =
+    !!from && from.includes("/diamonds.whereditgo.bazaar.catalog.product/");
+  const backHref = cameFromProduct
+    ? `/merchant/inventory/products?uri=${encodeURIComponent(from)}`
+    : "/merchant/inventory";
+  const backLabel = cameFromProduct ? "Back to product" : "Back to inventory";
+
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [row, setRow] = useState<CatalogItemRow | null>(null);
@@ -1523,11 +1541,11 @@ function CatalogItemEditForm({
     <div className="w-full min-w-0 max-w-5xl space-y-8">
       <div className="flex items-center justify-between gap-4">
         <Link
-          to="/merchant/inventory"
+          to={backHref}
           className="inline-flex items-center gap-1.5 pt-4 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back to inventory
+          {backLabel}
         </Link>
         {editing ? (
           <div className="flex items-center gap-2">
@@ -1606,9 +1624,7 @@ function CatalogItemEditForm({
             <p className="text-2xl font-medium">{formatMoney(listing.price)}</p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              {parentProductTitle
-                ? `Not sold separately — part of ${parentProductTitle}`
-                : "Not listed"}
+              {parentProductTitle ? "Not sold separately" : "Not listed"}
             </p>
           )}
 
@@ -1688,9 +1704,7 @@ function CatalogItemEditForm({
           <h2 className="text-lg font-medium">License</h2>
           {licenseInherited ? (
             <p className="text-xs text-muted-foreground">
-              Inherited from{" "}
-              {parentProductTitle ? `${parentProductTitle}'s` : "the product"}{" "}
-              listing — this item has no listing of its own.
+              Inherited from {parentProductTitle ?? "the product"} listing
             </p>
           ) : null}
           <p className="whitespace-pre-wrap text-sm text-muted-foreground">

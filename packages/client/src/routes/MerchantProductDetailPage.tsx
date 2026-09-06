@@ -644,7 +644,9 @@ export function MerchantProductDetailPage() {
     const info = itemsByUri[ref.uri];
     const metaLabel = itemMetaLabel(info);
     const childListing = childListingByUri[ref.uri];
-    const editHref = `/merchant/inventory/edit?uri=${encodeURIComponent(ref.uri)}`;
+    const editHref = `/merchant/inventory/edit?uri=${encodeURIComponent(
+      ref.uri,
+    )}&from=${encodeURIComponent(uri)}`;
     return (
       <li
         key={ref.uri}
