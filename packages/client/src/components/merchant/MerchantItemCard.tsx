@@ -120,7 +120,7 @@ export function MerchantItemCard({
               "text-sm font-medium",
               listing &&
                 listing.status !== "active" &&
-                "text-muted-foreground/60",
+                "text-muted-foreground opacity-70",
             )}
           >
             {listing ? formatMoney(listing.price) : "—"}

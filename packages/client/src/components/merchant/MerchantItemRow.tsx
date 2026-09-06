@@ -148,7 +148,9 @@ export function MerchantItemRow({
       <div
         className={cn(
           "hidden w-20 shrink-0 text-right text-sm tabular-nums sm:block",
-          listing && listing.status !== "active" && "text-muted-foreground/60",
+          listing &&
+            listing.status !== "active" &&
+            "text-muted-foreground opacity-70",
         )}
       >
         {listing ? formatMoney(listing.price) : "—"}
