@@ -217,12 +217,30 @@ export function MerchantInventoryPage() {
     [agent, listingRows, applyListingUpdates],
   );
 
+  /** Child listings that hang off `deleteRow` -- deleted alongside it so none are orphaned. */
+  const deleteRowChildren = useMemo(
+    () =>
+      deleteRow
+        ? listingRows.filter(
+            (r) => r.listing.parentListing === deleteRow.uri,
+          )
+        : [],
+    [deleteRow, listingRows],
+  );
+
   const confirmDelete = useCallback(async () => {
     if (!agent || !deleteRow) return;
     setDeleting(true);
     try {
+      for (const child of deleteRowChildren) {
+        await deleteListing(agent, child.uri);
+      }
       await deleteListing(agent, deleteRow.uri);
-      toast.success("Listing deleted");
+      toast.success(
+        deleteRowChildren.length > 0
+          ? `Listing deleted with ${deleteRowChildren.length} linked item listing${deleteRowChildren.length === 1 ? "" : "s"}`
+          : "Listing deleted",
+      );
       setDeleteRow(null);
       await refetch();
     } catch (e) {
@@ -232,7 +250,7 @@ export function MerchantInventoryPage() {
     } finally {
       setDeleting(false);
     }
-  }, [agent, deleteRow, refetch]);
+  }, [agent, deleteRow, deleteRowChildren, refetch]);
 
   const buildActions = useCallback(
     (row: MerchantItemRowData): MerchantRowActions => {
@@ -474,6 +492,14 @@ export function MerchantInventoryPage() {
               your storefront immediately. Buyers who already purchased through
               it keep their receipts and downloads — deleting a listing never
               affects a completed sale.
+              {deleteRowChildren.length > 0 ? (
+                <>
+                  {" "}
+                  Its {deleteRowChildren.length} linked item listing
+                  {deleteRowChildren.length === 1 ? "" : "s"} will be deleted too,
+                  so none are left orphaned.
+                </>
+              ) : null}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

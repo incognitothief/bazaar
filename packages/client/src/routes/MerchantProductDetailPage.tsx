@@ -535,7 +535,18 @@ export function MerchantProductDetailPage() {
         product.uri,
         product.cid,
       ).filter((s) => s.uri !== listingUri);
-      const targets = primaryRow ? [primaryRow, ...otherStale] : otherStale;
+      const parents = primaryRow ? [primaryRow, ...otherStale] : otherStale;
+      // Cascade: any non-terminal listing that hangs off a parent being
+      // retired goes with it -- no orphans. Standalone listings (no
+      // parentListing) are never touched here.
+      const parentUris = new Set(parents.map((p) => p.uri));
+      const cascadeChildren = listings.filter(
+        (r) =>
+          !!r.listing.parentListing &&
+          parentUris.has(r.listing.parentListing) &&
+          !isTerminalStatus(r.listing.status),
+      );
+      const targets = [...parents, ...cascadeChildren];
       if (targets.length > 0) {
         setStaleListings(targets);
         return;
@@ -1108,9 +1119,17 @@ export function MerchantProductDetailPage() {
                 ? formatMoney({ amount: priceCents()!, currency: "USD" })
                 : "the same price"}{" "}
               with the same license
-              {listing?.parentListing ? " and parent listing" : ""}. Buyers keep
-              every receipt and download; only the old listing's link stops
-              working.
+              {listing?.parentListing ? " and parent listing" : ""}.
+              {(() => {
+                const kids = (staleListings ?? []).filter(
+                  (l) => !!l.listing.parentListing,
+                ).length;
+                return kids > 0
+                  ? ` Its ${kids} linked item listing${kids === 1 ? "" : "s"} will be retired too — re-add them afterward if you still sell them individually.`
+                  : "";
+              })()}{" "}
+              Buyers keep every receipt and download; only the old listing's link
+              stops working.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
