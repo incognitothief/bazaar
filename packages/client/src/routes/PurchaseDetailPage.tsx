@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
@@ -9,6 +10,7 @@ import { CopyButton } from "@/components/shared/CopyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
+import { TagTokens } from "@/components/shared/TagTokens";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -333,9 +335,10 @@ export function PurchaseDetailPage() {
         ) : null}
         <Link
           to="/dashboard"
-          className="inline-block text-sm text-muted-foreground underline underline-offset-4"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
-          ← Purchases
+          <ArrowLeft className="size-4" />
+          Purchases
         </Link>
       </div>
     );
@@ -384,9 +387,10 @@ export function PurchaseDetailPage() {
         </div>
         <Link
           to="/dashboard"
-          className="inline-block text-sm text-muted-foreground underline underline-offset-4"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
-          ← Purchases
+          <ArrowLeft className="size-4" />
+          Purchases
         </Link>
       </div>
     );
@@ -407,9 +411,10 @@ export function PurchaseDetailPage() {
       <div>
         <Link
           to="/dashboard"
-          className="text-sm text-muted-foreground underline underline-offset-4"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
-          ← Purchases
+          <ArrowLeft className="size-4" />
+          Purchases
         </Link>
       </div>
 
@@ -490,6 +495,10 @@ export function PurchaseDetailPage() {
         </div>
       ) : null}
 
+      {"tags" in item && item.tags?.length ? (
+        <TagTokens tags={item.tags} part="tokens" />
+      ) : null}
+
       <section className="flex flex-wrap gap-2" aria-label="Metadata">
         {"releaseDate" in item && item.releaseDate ? (
           <MetadataChip>
@@ -505,6 +514,9 @@ export function PurchaseDetailPage() {
         {"genre" in item
           ? item.genre?.map((g) => <MetadataChip key={g}>{g}</MetadataChip>)
           : null}
+        {"tags" in item && item.tags?.length ? (
+          <TagTokens tags={item.tags} part="plain" />
+        ) : null}
       </section>
 
       {"description" in item && item.description ? (

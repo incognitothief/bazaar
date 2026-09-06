@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { AtUri } from "@atproto/syntax";
+import { ArrowLeft } from "lucide-react";
 import { Helmet } from "react-helmet-async";
-import { Link, Navigate, useParams } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { toast } from "sonner";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
@@ -137,6 +144,11 @@ export function ItemDetailPage() {
     rkey: string;
     slug?: string;
   }>();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  /** `?from=<rkey>` set on member links from a product/collection page -- the
+   * back button then returns there instead of doing a plain history pop. */
+  const fromRkey = searchParams.get("from")?.trim() || null;
   const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
   const legacySegment = !!rkeyParam && isLegacyItemPathSegment(rkeyParam);
 
@@ -748,6 +760,12 @@ export function ItemDetailPage() {
     const purchase = purchaseByProductItemUri.get(ref.uri);
     const meta = productItemMeta[ref.uri];
     const metaLabel = meta ? primaryFileMetaLabel(meta) : null;
+    // Carry the current product's rkey so the member's page can offer a
+    // "Back" link that returns here.
+    const memberHref = `${itemPathPretty(
+      catalogItemRkey(ref.uri),
+      meta?.title ?? ref.uri,
+    )}?from=${encodeURIComponent(pageRkey)}`;
     return (
       <li
         key={ref.uri}
@@ -769,10 +787,7 @@ export function ItemDetailPage() {
             }}
           >
             <Link
-              to={itemPathPretty(
-                catalogItemRkey(ref.uri),
-                meta?.title ?? ref.uri,
-              )}
+              to={memberHref}
               className="font-medium underline-offset-2 hover:underline"
             >
               {meta?.title ?? ref.uri}
@@ -797,10 +812,7 @@ export function ItemDetailPage() {
           </Button>
         ) : purchase ? (
           <Link
-            to={itemPathPretty(
-              catalogItemRkey(ref.uri),
-              meta?.title ?? ref.uri,
-            )}
+            to={memberHref}
             className={cn(
               buttonVariants({ size: "sm", variant: "outline" }),
               "shrink-0",
@@ -855,6 +867,27 @@ export function ItemDetailPage() {
           <code className="text-xs">catalog.listing</code> /{" "}
           <code className="text-xs">license.terms</code> records.
         </p>
+      ) : null}
+      {fromRkey || (typeof window !== "undefined" && window.history.length > 1) ? (
+        <button
+          type="button"
+          onClick={() => {
+            // Prefer a real history pop: when the visitor clicked through from
+            // a product/collection page it's the entry right behind them, so
+            // popping avoids stacking a duplicate (product <-> item ping-pong).
+            // Fall back to a forward navigation only for a cold deep link that
+            // still carries ?from.
+            if (typeof window !== "undefined" && window.history.length > 1) {
+              navigate(-1);
+            } else if (fromRkey) {
+              navigate(itemPathCanonical(fromRkey));
+            }
+          }}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground [&+section]:!mt-3"
+        >
+          <ArrowLeft className="size-4" />
+          Back
+        </button>
       ) : null}
       <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
         {hasArtwork ? (
