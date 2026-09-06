@@ -1576,18 +1576,6 @@ function CatalogItemEditForm({
               </div>
             )}
           </div>
-          {editing ? (
-            <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              File identity — format, checksum, CID — is immutable. Replace the
-              asset through a re-upload to change it.
-              {row.format ? (
-                <>
-                  {" "}
-                  Format: <span className="font-medium">{row.format}</span>.
-                </>
-              ) : null}
-            </p>
-          ) : null}
         </div>
 
         <div className="space-y-4">
