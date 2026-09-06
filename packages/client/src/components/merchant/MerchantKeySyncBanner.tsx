@@ -41,28 +41,30 @@ export function MerchantKeySyncBanner() {
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1">
-        <p className="leading-5">
-          Your storefront signing keys changed.{" "}
-          <span className="text-amber-700/70 dark:text-amber-200/60">
-            ({counts})
-          </span>
-        </p>
-        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-          <button
-            type="button"
-            onClick={() => void sync()}
-            disabled={syncing}
-            className={`font-medium text-amber-800 hover:text-amber-900 dark:text-amber-200 ${link}`}
-          >
-            {syncing ? "Publishing…" : "Publish to PDS"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setDismissed(true)}
-            className={`text-amber-700/80 hover:text-amber-900 dark:text-amber-200/70 ${link}`}
-          >
-            Dismiss
-          </button>
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+          <p className="leading-5">
+            Your storefront signing keys changed.{" "}
+            <span className="text-amber-700/70 dark:text-amber-200/60">
+              ({counts})
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 sm:ml-auto sm:shrink-0">
+            <button
+              type="button"
+              onClick={() => void sync()}
+              disabled={syncing}
+              className={`font-medium text-amber-800 hover:text-amber-900 dark:text-amber-200 ${link}`}
+            >
+              {syncing ? "Publishing…" : "Publish to PDS"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDismissed(true)}
+              className={`text-amber-700/80 hover:text-amber-900 dark:text-amber-200/70 ${link}`}
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
         {error ? (
           <p className="mt-1 text-xs text-destructive">
