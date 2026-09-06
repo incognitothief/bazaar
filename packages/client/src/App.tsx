@@ -21,7 +21,6 @@ import { AddProductPage } from "@/routes/AddProductPage";
 import { MerchantProductDetailPage } from "@/routes/MerchantProductDetailPage";
 import { UploadTracksPage } from "@/routes/UploadTracksPage";
 import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
-import { ListingsPage } from "@/routes/ListingsPage";
 import { CreateListingPage } from "@/routes/CreateListingPage";
 import { LicensePage } from "@/routes/LicensePage";
 import { SettingsPage } from "@/routes/SettingsPage";
@@ -68,7 +67,10 @@ const router = createBrowserRouter([
       },
       { path: "upload/tracks", element: <UploadTracksPage /> },
       { path: "upload/physical", element: <UploadPhysicalPage /> },
-      { path: "listings", element: <ListingsPage /> },
+      {
+        path: "listings",
+        element: <Navigate to="/merchant/inventory" replace />,
+      },
       { path: "listings/new", element: <CreateListingPage /> },
       { path: "license", element: <LicensePage /> },
       { path: "settings", element: <SettingsPage /> },

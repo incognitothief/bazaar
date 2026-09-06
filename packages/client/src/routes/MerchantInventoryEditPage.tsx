@@ -23,6 +23,7 @@ import {
   findStaleListingsForItem,
   getCatalogItem,
   getRecordValue,
+  isTerminalListingStatus,
   listListingRows,
   putCatalogItem,
   putCollection,
@@ -1219,6 +1220,7 @@ function CatalogItemEditForm({
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
+  const [hasListing, setHasListing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1235,6 +1237,14 @@ function CatalogItemEditForm({
     setCategory(r.category ?? "");
     setDescription(r.description ?? "");
     setTags(r.tags ?? []);
+    const listings = await listListingRows(r.sellerDid).catch(() => []);
+    setHasListing(
+      listings.some(
+        (l) =>
+          l.listing.item.uri === uri &&
+          !isTerminalListingStatus(l.listing.status),
+      ),
+    );
     setLoading(false);
   }, [uri]);
 
@@ -1266,7 +1276,7 @@ function CatalogItemEditForm({
             label: "Create listing",
             onClick: () =>
               navigate(
-                `/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`,
+                `/merchant/listings/new?uri=${encodeURIComponent(uri)}`,
               ),
           },
         });
@@ -1381,14 +1391,30 @@ function CatalogItemEditForm({
             <Download className="size-4" />
           </Button>
           {!editing ? (
-            <Link
-              to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
-              className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
-              aria-label="Create listing"
-              title="Create listing"
-            >
-              <Tag className="size-4" />
-            </Link>
+            hasListing ? (
+              <span title="Listing already created" className="inline-flex">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  disabled
+                  aria-label="Create listing — listing already created"
+                >
+                  <Tag className="size-4" />
+                </Button>
+              </span>
+            ) : (
+              <Link
+                to={`/merchant/listings/new?uri=${encodeURIComponent(uri)}`}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "icon-sm" }),
+                )}
+                aria-label="Create listing"
+                title="Create listing"
+              >
+                <Tag className="size-4" />
+              </Link>
+            )
           ) : null}
           <Link
             to="/merchant/inventory"

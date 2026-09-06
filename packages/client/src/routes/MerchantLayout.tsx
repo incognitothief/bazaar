@@ -10,7 +10,6 @@ import { getAuthRole } from "@/lib/auth";
 
 const mainNav: { to: string; label: string }[] = [
   { to: "/merchant/inventory", label: "Inventory" },
-  { to: "/merchant/listings", label: "Listings" },
   { to: "/merchant/license", label: "Licenses" },
   { to: "/merchant/settings", label: "Settings" },
 ];

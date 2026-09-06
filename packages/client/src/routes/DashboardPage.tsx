@@ -5,7 +5,6 @@ import {
   FileText,
   Receipt,
   Settings as SettingsIcon,
-  Tag,
 } from "lucide-react";
 import { OnboardingChecklist } from "@/components/merchant/OnboardingChecklist";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -35,15 +34,8 @@ const quickActions: {
     to: "/merchant/inventory",
     label: "Inventory",
     description:
-      "Add and manage the products and items you sell — this is where you publish new work.",
+      "Publish new work, then price, list, pause, or retire it — products and items, all in one place.",
     icon: Boxes,
-  },
-  {
-    to: "/merchant/listings",
-    label: "Listings",
-    description:
-      "Set prices and licenses, then put items and products up for sale on your storefront.",
-    icon: Tag,
   },
   {
     to: "/merchant/license",
