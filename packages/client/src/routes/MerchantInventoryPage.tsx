@@ -130,7 +130,8 @@ function Segmented<T extends string>({
           aria-hidden="true"
           className={cn(
             "rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors group-hover:text-foreground",
-            value === o.value && "bg-background text-foreground shadow-sm",
+            value === o.value &&
+              "bg-primary font-semibold text-primary-foreground shadow-sm group-hover:text-primary-foreground",
           )}
         >
           {o.label}
