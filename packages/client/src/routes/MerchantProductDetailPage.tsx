@@ -5,10 +5,7 @@ import {
   ChevronUp,
   Download,
   Pencil,
-  Settings,
   Tag,
-  X,
-  type LucideIcon,
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -41,6 +38,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DetailToolbar, type ToolAction } from "@/components/merchant/detailTools";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
@@ -65,11 +63,8 @@ import {
   type ListingRow,
 } from "@/lib/atproto/records";
 import { PRODUCT_TYPE_OPTIONS, productTypeConfig } from "@/lib/productTypes";
-import {
-  contentClassCopy,
-  contentClassFromFormat,
-  resolveContentClass,
-} from "@/lib/itemContentClass";
+import { contentClassFromFormat } from "@/lib/itemContentClass";
+import { itemMetaLabel, isAudioMeta } from "@/lib/itemMetaLabel";
 import { formatMoney } from "@/lib/format";
 import { probeImageSize, probeVideoDuration } from "@/lib/media/probe";
 import { cn, formatBytes, moveArrayItem } from "@/lib/utils";
@@ -79,169 +74,6 @@ const titleFromFileName = (name: string) => name.replace(/\.[^./\\]+$/, "");
 
 function isTerminalStatus(s: Listing["status"]): boolean {
   return s === "archived" || s === "superseded";
-}
-
-function fmtRuntime(ms: number): string {
-  const total = Math.round(ms / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-    : `${m}:${String(s).padStart(2, "0")}`;
-}
-
-/**
- * Compact line-item label, same priority the storefront uses: runtime for
- * audio/video, pixel size for images, file size otherwise — then the preset
- * content-class label (Audio / Document / Bundle / …) as a last resort.
- * Never the raw file extension.
- */
-function itemMetaLabel(it: CatalogItemRow | undefined): string | null {
-  if (!it) return null;
-  const cls = resolveContentClass({ category: it.category, format: it.format });
-  if ((cls === "audio" || cls === "video") && it.durationMs) {
-    return fmtRuntime(it.durationMs);
-  }
-  if (cls === "graphic" && it.mediaWidth && it.mediaHeight) {
-    return `${it.mediaWidth} × ${it.mediaHeight}`;
-  }
-  if (it.byteSize) return formatBytes(it.byteSize);
-  return contentClassCopy(cls).label;
-}
-
-function isAudioMeta(it: CatalogItemRow | undefined): boolean {
-  return (
-    !it ||
-    resolveContentClass({ category: it.category, format: it.format }) ===
-      "audio"
-  );
-}
-
-type ToolAction = {
-  key: string;
-  Icon: LucideIcon;
-  label: string;
-  /** internal route */
-  href?: string;
-  /** plain <a> (file download) */
-  externalHref?: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  disabledHint?: string;
-};
-
-/** One control in the desktop 2x2 icon grid. */
-function DesktopToolButton({ action }: { action: ToolAction }) {
-  const linkCls = cn(buttonVariants({ variant: "outline", size: "icon-sm" }));
-  const icon = <action.Icon className="size-4" />;
-  if (action.disabled) {
-    return (
-      <span title={action.disabledHint} className="inline-flex">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-sm"
-          disabled
-          aria-label={action.label}
-        >
-          {icon}
-        </Button>
-      </span>
-    );
-  }
-  if (action.externalHref) {
-    return (
-      <a
-        href={action.externalHref}
-        className={linkCls}
-        aria-label={action.label}
-        title={action.label}
-      >
-        {icon}
-      </a>
-    );
-  }
-  if (action.href) {
-    return (
-      <Link
-        to={action.href}
-        className={linkCls}
-        aria-label={action.label}
-        title={action.label}
-      >
-        {icon}
-      </Link>
-    );
-  }
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="icon-sm"
-      aria-label={action.label}
-      title={action.label}
-      onClick={action.onClick}
-    >
-      {icon}
-    </Button>
-  );
-}
-
-/** One chunky button on the mobile "remote control" dialog. */
-function RemoteTile({
-  action,
-  onDone,
-}: {
-  action: ToolAction;
-  onDone: () => void;
-}) {
-  const cls =
-    "flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-border bg-muted/40 p-3 text-center text-xs font-medium shadow-sm transition-transform hover:bg-muted active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40";
-  const inner = (
-    <>
-      <action.Icon className="size-6" />
-      <span>{action.label}</span>
-    </>
-  );
-  if (action.disabled) {
-    return (
-      <button
-        type="button"
-        disabled
-        className={cls}
-        title={action.disabledHint}
-      >
-        {inner}
-      </button>
-    );
-  }
-  if (action.externalHref) {
-    return (
-      <a href={action.externalHref} className={cls} onClick={onDone}>
-        {inner}
-      </a>
-    );
-  }
-  if (action.href) {
-    return (
-      <Link to={action.href} className={cls} onClick={onDone}>
-        {inner}
-      </Link>
-    );
-  }
-  return (
-    <button
-      type="button"
-      className={cls}
-      onClick={() => {
-        onDone();
-        action.onClick?.();
-      }}
-    >
-      {inner}
-    </button>
-  );
 }
 
 export function MerchantProductDetailPage() {
@@ -282,7 +114,6 @@ export function MerchantProductDetailPage() {
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(false);
 
   const [editing, setEditing] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -795,28 +626,6 @@ export function MerchantProductDetailPage() {
       : []),
   ];
 
-  const toolControls = (
-    <>
-      {/* Desktop: icon grid */}
-      <div className="hidden shrink-0 grid-cols-2 gap-1 sm:grid">
-        {toolActions.map((a) => (
-          <DesktopToolButton key={a.key} action={a} />
-        ))}
-      </div>
-      {/* Mobile: one gear opens the remote-control dialog */}
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="size-14 shrink-0 sm:hidden"
-        aria-label="Product controls"
-        onClick={() => setToolsOpen(true)}
-      >
-        <Settings className="size-7" />
-      </Button>
-    </>
-  );
-
   // Music product: audio members are the numbered "Tracks"; any non-audio
   // member drops to "Also included". Bonus files (catalogProductAssets) are
   // never listed here -- same split the storefront uses.
@@ -1024,7 +833,7 @@ export function MerchantProductDetailPage() {
             ) : (
               <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
             )}
-            {toolControls}
+            <DetailToolbar actions={toolActions} panelTitle="Product controls" />
           </div>
 
           {editing && listing ? (
@@ -1279,30 +1088,6 @@ export function MerchantProductDetailPage() {
           </div>
         </section>
       ) : null}
-
-      {/* Mobile: remote-control panel for the tool grid */}
-      <Dialog
-        open={toolsOpen}
-        onOpenChange={(open) => setToolsOpen(open)}
-      >
-        <DialogContent className="max-w-[20rem]" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Product controls</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              ...toolActions,
-              { key: "close", Icon: X, label: "Close" } satisfies ToolAction,
-            ].map((a) => (
-              <RemoteTile
-                key={a.key}
-                action={a}
-                onDone={() => setToolsOpen(false)}
-              />
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={!!staleListings}
