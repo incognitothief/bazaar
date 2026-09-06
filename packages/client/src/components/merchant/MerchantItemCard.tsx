@@ -115,7 +115,14 @@ export function MerchantItemCard({
           {itemDetailText(row)}
         </p>
         <div className="flex items-center justify-between gap-2 pt-0.5">
-          <span className="text-sm font-medium">
+          <span
+            className={cn(
+              "text-sm font-medium",
+              listing &&
+                listing.status !== "active" &&
+                "text-muted-foreground/60",
+            )}
+          >
             {listing ? formatMoney(listing.price) : "—"}
           </span>
           <div className="flex items-center gap-0.5">
