@@ -56,29 +56,34 @@ function StatFilterBox({
   value,
   active,
   onClick,
+  className,
+  title,
 }: {
   label: string;
   value: number;
   active: boolean;
   onClick: () => void;
+  className?: string;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      title={active ? `Clear the ${label} filter` : `Filter to ${label}`}
+      title={title ?? (active ? `Clear the ${label} filter` : `Filter to ${label}`)}
       className={cn(
         "relative rounded-lg border p-4 text-left transition-colors hover:bg-muted/40",
         active ? "border-primary ring-1 ring-primary/30" : "border-border",
+        className,
       )}
     >
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className="text-2xl font-semibold">{value}</p>
       <Filter
         className={cn(
-          "absolute bottom-2 right-2 size-3.5",
-          active ? "text-primary" : "text-muted-foreground/40",
+          "absolute bottom-2 right-2 size-3.5 text-muted-foreground",
+          active ? "text-primary opacity-100" : "opacity-40",
         )}
         aria-hidden="true"
       />
@@ -310,10 +315,18 @@ export function MerchantTransactionsPage() {
 
       {!loading && !err ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <div className="col-span-2 rounded-lg border border-border p-4 sm:col-span-1">
-            <p className="text-sm text-muted-foreground">Total sales</p>
-            <p className="text-2xl font-semibold">{stats.total}</p>
-          </div>
+          <StatFilterBox
+            label="Total sales"
+            value={stats.total}
+            active={win === "all"}
+            onClick={() => setWin("all")}
+            className="col-span-2 sm:col-span-1"
+            title={
+              win === "all"
+                ? "Showing all time"
+                : "Clear the time-window filter"
+            }
+          />
           <StatFilterBox
             label="Last 7 days"
             value={stats.lastWeek}
