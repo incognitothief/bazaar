@@ -1,663 +1,431 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
-import {
-  fetchLatestInventoryPrefill,
-  type InventoryPrefillPayload,
-} from "@/lib/api/inventoryApi";
+import { fetchLatestInventoryPrefill } from "@/lib/api/inventoryApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   buildItemRefFromUri,
   createListing,
-  getRecordValue,
   isTerminalListingStatus,
   listCatalogItemRows,
   listCatalogProductRows,
-  listCollectionRows,
-  listDigitalItemRows,
   listLicensesWithStatus,
   listListingRows,
-  type CatalogProductRow,
   type LicenseListRow,
   type ListingRow,
 } from "@/lib/atproto/records";
 import { collectionFromAtUri } from "@/lib/atUri";
 import { cn } from "@/lib/utils";
-import type { CatalogItem } from "@/types/lexicons";
-import { toast } from "sonner";
 
-type CatalogPick = {
-  uri: string;
-  title: string;
-  kind: "digital" | "collection" | "item" | "product";
-};
-
-function catalogItemKindFromAtUri(uri: string): CatalogPick["kind"] {
-  if (uri.includes(`${BAZAAR_COLLECTION.collection}/`)) return "collection";
-  if (uri.includes(`${BAZAAR_COLLECTION.product}/`)) return "product";
-  if (uri.includes(`${BAZAAR_COLLECTION.item}/`)) return "item";
-  return "digital";
-}
-
-const CATALOG_PICK_LABEL: Record<CatalogPick["kind"], string> = {
-  digital: "Digital",
-  collection: "Collection",
-  item: "Item",
-  product: "Product",
-};
+type EntityKind = "item" | "product" | "other";
+type ParentChoice = "part-of-product" | "separately";
 
 export function CreateListingPage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [rows, setRows] = useState<ListingRow[]>([]);
-  const [titles, setTitles] = useState<Record<string, string>>({});
-  const [catalogOptions, setCatalogOptions] = useState<CatalogPick[]>([]);
-  const [productRows, setProductRows] = useState<CatalogProductRow[]>([]);
+
+  const uriParam = useMemo(() => {
+    const raw = searchParams.get("uri")?.trim() ?? "";
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }, [searchParams]);
+  const source = searchParams.get("source");
+
+  const [loading, setLoading] = useState(true);
+  const [entity, setEntity] = useState<{
+    uri: string;
+    title: string;
+    kind: EntityKind;
+  } | null>(null);
+  const [listingRows, setListingRows] = useState<ListingRow[]>([]);
+  const [productUriByItemUri, setProductUriByItemUri] = useState<
+    Map<string, string>
+  >(new Map());
+  const [titleByUri, setTitleByUri] = useState<Record<string, string>>({});
   const [licenseRows, setLicenseRows] = useState<LicenseListRow[]>([]);
-  const [newItemUri, setNewItemUri] = useState("");
-  const [newTitle, setNewTitle] = useState("");
-  const [newPrice, setNewPrice] = useState("9.99");
-  const [newLicenseUri, setNewLicenseUri] = useState("");
-  const [newLicenseCid, setNewLicenseCid] = useState("");
-  const [newParentListingUri, setNewParentListingUri] = useState("");
-  const [createBusy, setCreateBusy] = useState(false);
-  /** From latest inventory publish — tracks marked “allow individual purchase” on upload. */
-  const [prefillCollectionUri, setPrefillCollectionUri] = useState<string | null>(
-    null,
-  );
-  const [prefillIndividualTrackUris, setPrefillIndividualTrackUris] = useState<
-    string[]
-  >([]);
-  const [createIndividualTrackListings, setCreateIndividualTrackListings] =
-    useState(false);
-  const [individualTracksPriceUsd, setIndividualTracksPriceUsd] =
-    useState("1.99");
 
-  const refreshCatalogAndListings = useCallback(async () => {
-    if (!agent || !session) return;
-    const [list, digital, collections, items, products, licenses] =
-      await Promise.all([
-        listListingRows(session.did),
-        listDigitalItemRows(session.did),
-        listCollectionRows(session.did),
-        listCatalogItemRows(),
-        listCatalogProductRows(),
-        listLicensesWithStatus(session.did),
-      ]);
-    setRows(list);
-    setProductRows(products);
-    const t: Record<string, string> = {};
-    for (const r of list) {
-      const item = await getRecordValue<CatalogItem>(r.listing.item.uri);
-      t[r.uri] = item?.title ?? r.listing.item.uri;
-    }
-    setTitles(t);
-    setLicenseRows(licenses.filter((l) => !l.retired));
-    const listed = new Set(list.map((r) => r.listing.item.uri));
-    const opts: CatalogPick[] = [
-      ...digital
-        .filter((r) => !listed.has(r.uri))
-        .map((r) => ({
-          uri: r.uri,
-          title: r.item.title,
-          kind: "digital" as const,
-        })),
-      ...collections
-        .filter((r) => !listed.has(r.uri))
-        .map((r) => ({
-          uri: r.uri,
-          title: r.item.title,
-          kind: "collection" as const,
-        })),
-      ...items
-        .filter((r) => !listed.has(r.uri))
-        .map((r) => ({ uri: r.uri, title: r.title, kind: "item" as const })),
-      ...products
-        .filter((r) => !listed.has(r.uri))
-        .map((r) => ({ uri: r.uri, title: r.title, kind: "product" as const })),
-    ];
-    opts.sort((a, b) => a.title.localeCompare(b.title));
-    setCatalogOptions(opts);
-  }, [agent, session]);
+  const [licenseUri, setLicenseUri] = useState("");
+  const [licenseCid, setLicenseCid] = useState("");
+  const [priceUsd, setPriceUsd] = useState("9.99");
+  const [parentChoice, setParentChoice] = useState<ParentChoice>("separately");
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    void refreshCatalogAndListings();
-  }, [refreshCatalogAndListings]);
-
-  const applyInventoryPrefill = useCallback((p: InventoryPrefillPayload) => {
-    setNewItemUri(p.primaryItemUri);
-    setNewLicenseUri(
-      typeof p.licenseUri === "string" ? p.licenseUri : "",
-    );
-    setNewLicenseCid(
-      typeof p.licenseGrantCid === "string" ? p.licenseGrantCid : "",
-    );
-    setNewPrice(typeof p.priceUsd === "string" ? p.priceUsd : "9.99");
-    setPrefillCollectionUri(p.primaryItemUri);
-    const uris = Array.isArray(p.individualPurchaseTrackUris)
-      ? p.individualPurchaseTrackUris.filter(
-          (u): u is string => typeof u === "string" && u.length > 0,
-        )
-      : [];
-    setPrefillIndividualTrackUris(uris);
-    setCreateIndividualTrackListings(false);
-  }, []);
-
-  /** Load latest inventory publish into the form when the page is shown, unless a specific item was linked in. */
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!agent || !session?.did) return;
-    const q = new URLSearchParams(location.search);
-    if (q.get("source") === "upload" || q.get("prefillItemUri")) return;
-    let cancelled = false;
-    void fetchLatestInventoryPrefill()
-      .then((data) => {
-        if (cancelled || !data.prefill?.primaryItemUri) return;
-        applyInventoryPrefill(data.prefill);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agent, session?.did, applyInventoryPrefill]);
-
-  useEffect(() => {
-    if (!agent || !session) return;
-    const q = new URLSearchParams(location.search);
-    const sourceUpload = q.get("source") === "upload";
-    const legacyItem = q.get("prefillItemUri");
-    if (!sourceUpload && !legacyItem) return;
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        if (sourceUpload) {
-          const data = await fetchLatestInventoryPrefill();
-          if (cancelled) return;
-          const p = data.prefill;
-          if (p && typeof p.primaryItemUri === "string") {
-            applyInventoryPrefill(p);
-            return;
-          }
+    setLoading(true);
+    try {
+      let targetUri = uriParam;
+      let prefill: {
+        licenseUri?: string;
+        licenseGrantCid?: string;
+        priceUsd?: string;
+      } | null = null;
+      if (!targetUri && source === "upload") {
+        const { prefill: p } = await fetchLatestInventoryPrefill().catch(() => ({
+          prefill: null,
+        }));
+        if (p?.primaryItemUri) {
+          targetUri = p.primaryItemUri;
+          prefill = p;
         }
-        if (legacyItem) {
-          setNewItemUri(legacyItem);
-          setPrefillCollectionUri(null);
-          setPrefillIndividualTrackUris([]);
-          const licenseUri = q.get("licenseUri");
-          const licenseGrantCid = q.get("licenseGrantCid");
-          const priceUsd = q.get("priceUsd");
-          if (licenseUri && licenseGrantCid) {
-            setNewLicenseUri(licenseUri);
-            setNewLicenseCid(licenseGrantCid);
-          }
-          if (priceUsd) setNewPrice(priceUsd);
-        }
-      } catch {
-        if (!cancelled && legacyItem) {
-          setNewItemUri(legacyItem);
-          setPrefillCollectionUri(null);
-          setPrefillIndividualTrackUris([]);
-        }
-      } finally {
-        if (!cancelled) navigate("/merchant/listings/new", { replace: true });
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [location.search, agent, session, navigate, applyInventoryPrefill]);
+      if (!targetUri) {
+        setEntity(null);
+        setLoading(false);
+        return;
+      }
+
+      const [rows, productRows, itemRows, licenses] = await Promise.all([
+        listListingRows(session.did).catch(() => []),
+        listCatalogProductRows().catch(() => []),
+        listCatalogItemRows().catch(() => []),
+        listLicensesWithStatus(session.did).catch(() => []),
+      ]);
+
+      const pbi = new Map<string, string>();
+      const tb: Record<string, string> = {};
+      for (const p of productRows) {
+        tb[p.uri] = p.title;
+        for (const ref of p.items) pbi.set(ref.uri, p.uri);
+      }
+      for (const it of itemRows) tb[it.uri] = it.title;
+
+      const coll = collectionFromAtUri(targetUri);
+      const kind: EntityKind =
+        coll === BAZAAR_COLLECTION.product
+          ? "product"
+          : coll === BAZAAR_COLLECTION.item
+            ? "item"
+            : "other";
+
+      setEntity({ uri: targetUri, title: tb[targetUri] ?? targetUri, kind });
+      setListingRows(rows);
+      setProductUriByItemUri(pbi);
+      setTitleByUri(tb);
+      setLicenseRows(licenses.filter((l) => !l.retired));
+
+      if (prefill) {
+        setLicenseUri(prefill.licenseUri ?? "");
+        setLicenseCid(prefill.licenseGrantCid ?? "");
+        if (prefill.priceUsd) setPriceUsd(prefill.priceUsd);
+      }
+      setParentChoice(pbi.get(targetUri) ? "part-of-product" : "separately");
+    } finally {
+      setLoading(false);
+    }
+  }, [agent, session?.did, uriParam, source]);
 
   useEffect(() => {
-    if (!agent || !newItemUri) {
-      setNewTitle("");
-      return;
-    }
-    let cancelled = false;
-    void getRecordValue<CatalogItem>(newItemUri).then((item) => {
-      if (!cancelled) setNewTitle(item?.title ?? "");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [agent, newItemUri]);
+    void load();
+  }, [load]);
 
-  const selectCatalogOptions = useMemo(() => {
-    if (
-      newItemUri &&
-      !catalogOptions.some((o) => o.uri === newItemUri)
-    ) {
-      return [
-        {
-          uri: newItemUri,
-          title: newTitle || "(from link)",
-          kind: catalogItemKindFromAtUri(newItemUri),
-        },
-        ...catalogOptions,
-      ];
-    }
-    return catalogOptions;
-  }, [catalogOptions, newItemUri, newTitle]);
+  const parentProductUri =
+    entity?.kind === "item" ? productUriByItemUri.get(entity.uri) : undefined;
 
-  const collectionListingOptions = useMemo(
-    () =>
-      rows.filter(
-        (r) => collectionFromAtUri(r.listing.item.uri) === BAZAAR_COLLECTION.collection,
-      ),
-    [rows],
-  );
-
-  const productListingOptions = useMemo(
-    () =>
-      rows.filter(
-        (r) => collectionFromAtUri(r.listing.item.uri) === BAZAAR_COLLECTION.product,
-      ),
-    [rows],
-  );
-
-  const newItemKind = useMemo(() => {
-    const o = selectCatalogOptions.find((x) => x.uri === newItemUri);
-    return o?.kind;
-  }, [selectCatalogOptions, newItemUri]);
-
-  /** Item -> its containing product's catalog.product URI. An item is only ever created via exactly one product, so this is unambiguous. */
-  const productUriByItemUri = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of productRows) {
-      for (const ref of p.items) m.set(ref.uri, p.uri);
-    }
-    return m;
-  }, [productRows]);
-
-  /** Default the parent picker to the item's actual containing product's listing (if it has one) -- there's no ambiguity to ask the merchant to resolve, unlike legacy digital tracks which may not belong to any collection at all. */
-  useEffect(() => {
-    if (newItemKind !== "item") return;
-    const productUri = productUriByItemUri.get(newItemUri);
-    const productListing = productUri
-      ? rows.find(
-          (r) =>
-            collectionFromAtUri(r.listing.item.uri) === BAZAAR_COLLECTION.product &&
-            r.listing.item.uri === productUri,
-        )
-      : undefined;
-    setNewParentListingUri(productListing?.uri ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newItemKind, newItemUri]);
-
-  /** A single track/item can be sold under a parent collection/product listing -- same cascade-pause mechanics either way, just a different parent record type. */
-  const parentListingOptions =
-    newItemKind === "digital"
-      ? collectionListingOptions
-      : newItemKind === "item"
-        ? productListingOptions
-        : [];
-  const showParentListingPicker =
-    newItemKind === "digital" || newItemKind === "item";
-
-  const showBulkIndividualTracks =
-    newItemKind === "collection" &&
-    prefillCollectionUri != null &&
-    newItemUri === prefillCollectionUri &&
-    prefillIndividualTrackUris.length > 0;
-
-  async function submitNewListing() {
-    if (!agent || !session) return;
-    if (!newItemUri.trim()) {
-      toast.error("Choose a catalog item");
-      return;
-    }
-    if (!newLicenseUri || !newLicenseCid) {
-      toast.error("Choose a license");
-      return;
-    }
-    const existingListing = rows.find(
+  const parentProductListing = useMemo(() => {
+    if (!parentProductUri) return undefined;
+    return listingRows.find(
       (r) =>
-        r.listing.item.uri === newItemUri &&
+        r.listing.item.uri === parentProductUri &&
+        !r.listing.parentListing &&
         !isTerminalListingStatus(r.listing.status),
     );
-    if (existingListing) {
-      toast.error("This item already has a listing", {
-        description: `It's currently "${existingListing.listing.status}". Delete it from the Listings page first, or edit its price directly instead of creating a duplicate.`,
-      });
-      return;
-    }
-    const dollars = parseFloat(newPrice);
-    if (!Number.isFinite(dollars) || dollars < 0) {
-      toast.error("Invalid price");
-      return;
-    }
+  }, [listingRows, parentProductUri]);
 
-    const doBulkTracks =
-      showBulkIndividualTracks && createIndividualTrackListings;
-    let trackCents = 0;
-    if (doBulkTracks) {
-      const td = parseFloat(individualTracksPriceUsd);
-      if (!Number.isFinite(td) || td < 0) {
-        toast.error("Invalid individual track price");
-        return;
-      }
-      trackCents = Math.round(td * 100);
-    }
+  const canSellUnderProduct = Boolean(parentProductUri && parentProductListing);
 
-    setCreateBusy(true);
+  const existingListing = useMemo(() => {
+    if (!entity) return undefined;
+    return listingRows.find(
+      (r) =>
+        r.listing.item.uri === entity.uri &&
+        !isTerminalListingStatus(r.listing.status),
+    );
+  }, [listingRows, entity]);
+
+  useEffect(() => {
+    if (!canSellUnderProduct && parentChoice === "part-of-product") {
+      setParentChoice("separately");
+    }
+  }, [canSellUnderProduct, parentChoice]);
+
+  const priceValid = useMemo(() => {
+    const n = parseFloat(priceUsd);
+    return Number.isFinite(n) && n >= 0;
+  }, [priceUsd]);
+
+  const canSubmit =
+    !!entity &&
+    !busy &&
+    !existingListing &&
+    priceValid &&
+    Boolean(licenseUri && licenseCid);
+
+  async function submit() {
+    if (!entity || !agent || !canSubmit) return;
+    setBusy(true);
     try {
-      const itemRef = await buildItemRefFromUri(newItemUri);
+      const itemRef = await buildItemRefFromUri(entity.uri);
       if (!itemRef?.cid) {
-        toast.error("Could not load catalog item");
+        toast.error("Could not load this inventory record");
         return;
       }
-      const cents = Math.round(dollars * 100);
-      const parentForPrimary = showParentListingPicker
-        ? newParentListingUri.trim() || undefined
-        : undefined;
+      const cents = Math.round(parseFloat(priceUsd) * 100);
+      const parentListing =
+        entity.kind === "item" &&
+        parentChoice === "part-of-product" &&
+        parentProductListing
+          ? parentProductListing.uri
+          : undefined;
 
-      const { uri: createdListingUri } = await createListing(agent, {
+      await createListing(agent, {
         item: itemRef,
         price: { amount: cents, currency: "USD" },
         status: "active",
-        licenseUri: newLicenseUri,
-        licenseGrantCid: newLicenseCid,
-        parentListing: parentForPrimary,
+        licenseUri,
+        licenseGrantCid: licenseCid,
+        parentListing,
       });
-
-      let createdTrackCount = 0;
-      if (doBulkTracks && createdListingUri) {
-        const listedUris = new Set(
-          rows
-            .filter((r) => !isTerminalListingStatus(r.listing.status))
-            .map((r) => r.listing.item.uri),
-        );
-        listedUris.add(newItemUri);
-        for (const trackUri of prefillIndividualTrackUris) {
-          if (listedUris.has(trackUri)) continue;
-          const tRef = await buildItemRefFromUri(trackUri);
-          if (!tRef?.cid) continue;
-          await createListing(agent, {
-            item: tRef,
-            price: { amount: trackCents, currency: "USD" },
-            status: "active",
-            licenseUri: newLicenseUri,
-            licenseGrantCid: newLicenseCid,
-            parentListing: createdListingUri,
-          });
-          createdTrackCount += 1;
-          listedUris.add(trackUri);
-        }
-      }
-
-      if (doBulkTracks) {
-        if (createdTrackCount > 0) {
-          toast.success(
-            `Created collection listing and ${createdTrackCount} track listing(s).`,
-          );
-        } else {
-          toast.success(
-            "Collection listing created. No new track listings (already listed or items missing).",
-          );
-        }
-      } else {
-        toast.success("Listing created");
-      }
-      navigate("/merchant/listings");
+      toast.success("Listing created");
+      // Back to the page the merchant came from (its product / item page),
+      // falling back to the inventory list for other grains.
+      const back =
+        entity.kind === "product"
+          ? `/merchant/inventory/products?uri=${encodeURIComponent(entity.uri)}`
+          : entity.kind === "item"
+            ? `/merchant/inventory/edit?uri=${encodeURIComponent(entity.uri)}`
+            : "/merchant/inventory";
+      navigate(back);
     } catch (e) {
       toast.error("Could not create listing", {
         description: e instanceof Error ? e.message : undefined,
       });
     } finally {
-      setCreateBusy(false);
-    }
-  }
-
-  async function applyLatestPublishPrefill() {
-    try {
-      const data = await fetchLatestInventoryPrefill();
-      const p = data.prefill;
-      if (!p || typeof p.primaryItemUri !== "string") {
-        toast.message("No inventory publish prefill found yet.");
-        return;
-      }
-      applyInventoryPrefill(p);
-      toast.success("Form filled from your latest publish.");
-    } catch (e) {
-      toast.error("Could not load prefill", {
-        description: e instanceof Error ? e.message : undefined,
-      });
+      setBusy(false);
     }
   }
 
   if (!session || !agent) return null;
 
-  const canSubmitCreate =
-    Boolean(newItemUri.trim() && newLicenseUri && newLicenseCid) &&
-    !createBusy &&
-    !(
-      showBulkIndividualTracks &&
-      createIndividualTrackListings &&
-      (!Number.isFinite(parseFloat(individualTracksPriceUsd)) ||
-        parseFloat(individualTracksPriceUsd) < 0)
-    );
+  const backLink = (
+    <Link
+      to="/merchant/inventory"
+      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+    >
+      <ArrowLeft className="size-4" />
+      Inventory
+    </Link>
+  );
 
-  return (
-    <div className="w-full min-w-0 max-w-2xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">New listing</h1>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void applyLatestPublishPrefill()}
-          >
-            Prefill from latest publish
-          </Button>
-          <Link
-            to="/merchant/listings"
-            className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
-          >
-            Cancel
-          </Link>
+  if (loading) {
+    return (
+      <div className="w-full min-w-0 max-w-xl space-y-6">
+        {backLink}
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
+
+  if (!entity) {
+    return (
+      <div className="w-full min-w-0 max-w-xl space-y-6">
+        {backLink}
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Couldn't find an inventory item to list. Open one from Inventory and
+          use its Create listing action.
         </div>
       </div>
+    );
+  }
 
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Listing details</CardTitle>
-          <CardDescription>
-            Pick a catalog item that is not already listed, choose license terms, set
-            a price, then publish the listing to your PDS.{" "}
-            <Link
-              to="/merchant/inventory"
-              className="text-foreground underline underline-offset-2"
-            >
-              Inventory
-            </Link>{" "}
-            shows everything in your repo;{" "}
-            <Link
-              to="/merchant/upload/tracks"
-              className="text-foreground underline underline-offset-2"
-            >
-              Upload
-            </Link>{" "}
-            adds new tracks.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="space-y-2">
-            <Label htmlFor="new-listing-item">Catalog item</Label>
-            <select
-              id="new-listing-item"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={newItemUri}
-              onChange={(e) => setNewItemUri(e.target.value)}
-            >
-              <option value="">Select item…</option>
-              {selectCatalogOptions.map((o) => (
-                <option key={o.uri} value={o.uri}>
-                  {o.title} ({CATALOG_PICK_LABEL[o.kind]})
-                </option>
-              ))}
-            </select>
-            {newItemUri ? (
-              <p className="text-xs text-muted-foreground break-all">{newItemUri}</p>
-            ) : null}
-          </div>
+  return (
+    <div className="w-full min-w-0 max-w-xl space-y-6">
+      {backLink}
+      <h1 className="text-2xl font-semibold">Create listing</h1>
 
-          {showBulkIndividualTracks ? (
-            <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-4">
-              <p className="text-sm font-medium">
-                Individual tracks ({prefillIndividualTrackUris.length})
-              </p>
-              <p className="text-xs text-muted-foreground">
-                These tracks were marked for individual sale when you published the
-                collection. Create the collection listing first, then optionally add
-                matching track listings with the same license.
-              </p>
-              <label className="flex items-start gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-input"
-                  checked={createIndividualTrackListings}
-                  onChange={(e) =>
-                    setCreateIndividualTrackListings(e.target.checked)
-                  }
-                />
-                <span>
-                  Create listings for individual sale tracks
-                  <span className="block text-xs text-muted-foreground font-normal mt-1">
-                    Each track gets an active listing with{" "}
-                    <code className="text-[11px]">parentListing</code> set to this
-                    album listing.
-                  </span>
-                </span>
-              </label>
-              {createIndividualTrackListings ? (
-                <div className="space-y-2 max-w-xs">
-                  <Label htmlFor="individual-tracks-price">
-                    Price for each track (USD)
-                  </Label>
-                  <Input
-                    id="individual-tracks-price"
-                    inputMode="decimal"
-                    value={individualTracksPriceUsd}
-                    onChange={(e) => setIndividualTracksPriceUsd(e.target.value)}
+      {existingListing ? (
+        <Card>
+          <CardContent className="py-6 text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{entity.title}</span>{" "}
+            already has a listing (currently {existingListing.listing.status}). An
+            entity keeps a single listing for its whole life — edit or reactivate
+            that one from its inventory row instead of creating another.
+            <div className="mt-4">
+              <Link
+                to="/merchant/inventory"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+              >
+                Back to inventory
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg">{entity.title}</CardTitle>
+            <CardDescription>
+              {entity.kind === "product"
+                ? "Listing the whole product. Its items are covered unless you also list one separately."
+                : "Choose how it's sold, pick license terms, and set a price."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {entity.kind === "item" && parentProductUri ? (
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">
+                  How is this item sold?
+                </legend>
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm",
+                    !canSellUnderProduct && "cursor-not-allowed opacity-50",
+                    parentChoice === "part-of-product" &&
+                      canSellUnderProduct &&
+                      "bg-muted/40 ring-2 ring-ring",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="parent-choice"
+                    className="mt-1"
+                    disabled={!canSellUnderProduct}
+                    checked={parentChoice === "part-of-product"}
+                    onChange={() => setParentChoice("part-of-product")}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Same price applied to all {prefillIndividualTrackUris.length}{" "}
-                    track(s). Album price is set above.
-                  </p>
+                  <span>
+                    <span className="font-medium">
+                      Sell as part of{" "}
+                      {titleByUri[parentProductUri] ?? "its product"}
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      {canSellUnderProduct
+                        ? "The listing follows the product listing — pausing the product pauses this one."
+                        : `List ${titleByUri[parentProductUri] ?? "the product"} first to sell this item under it.`}
+                    </span>
+                  </span>
+                </label>
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm",
+                    parentChoice === "separately" && "bg-muted/40 ring-2 ring-ring",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="parent-choice"
+                    className="mt-1"
+                    checked={parentChoice === "separately"}
+                    onChange={() => setParentChoice("separately")}
+                  />
+                  <span>
+                    <span className="font-medium">Sell separately</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      A standalone listing, independent of any product it also
+                      ships inside.
+                    </span>
+                  </span>
+                </label>
+              </fieldset>
+            ) : null}
+
+            <div className="space-y-2">
+              <Label>License</Label>
+              {licenseRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No licenses yet.{" "}
+                  <Link
+                    to="/merchant/license"
+                    className="underline underline-offset-2"
+                  >
+                    Create one
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <div className="grid max-h-44 gap-2 overflow-y-auto sm:grid-cols-2">
+                  {licenseRows.map((row) => {
+                    const picked =
+                      licenseUri === row.uri && licenseCid === row.cid;
+                    return (
+                      <button
+                        key={row.uri}
+                        type="button"
+                        onClick={() => {
+                          setLicenseUri(row.uri);
+                          setLicenseCid(row.cid);
+                        }}
+                        className={cn(
+                          "rounded-lg border p-3 text-left text-sm transition-colors",
+                          picked && "bg-muted/40 ring-2 ring-ring",
+                        )}
+                      >
+                        <span className="font-medium">{row.title}</span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {row.version}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
+              )}
+              {licenseRows.length > 0 ? (
+                <Link
+                  to="/merchant/license"
+                  className="text-sm text-primary underline-offset-2 hover:underline"
+                >
+                  Don't see the right license? Create one
+                </Link>
               ) : null}
             </div>
-          ) : null}
 
-          {showParentListingPicker ? (
             <div className="space-y-2">
-              <Label htmlFor="new-parent-listing">
-                {newItemKind === "digital"
-                  ? "Parent collection listing"
-                  : "Parent product listing"}
-              </Label>
-              <select
-                id="new-parent-listing"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                value={newParentListingUri}
-                onChange={(e) => setNewParentListingUri(e.target.value)}
-              >
-                <option value="">None (list as a standalone single)</option>
-                {parentListingOptions.map((r) => (
-                  <option key={r.uri} value={r.uri}>
-                    {titles[r.uri] ?? r.listing.item.uri}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                {newItemKind === "digital"
-                  ? "Set when selling a track as a single under an album listing. Pausing the album listing pauses linked track listings."
-                  : "Set when selling an item as a single under a product listing. Pausing the product listing pauses linked item listings."}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <Label>License</Label>
-            {licenseRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No licenses yet.{" "}
-                <Link to="/merchant/license" className="underline underline-offset-2">
-                  Create one
-                </Link>
-                .
-              </p>
-            ) : (
-              <div className="grid gap-2 max-h-40 overflow-y-auto sm:grid-cols-2">
-                {licenseRows.map((row) => {
-                  const picked =
-                    newLicenseUri === row.uri && newLicenseCid === row.cid;
-                  return (
-                    <button
-                      key={row.uri}
-                      type="button"
-                      onClick={() => {
-                        setNewLicenseUri(row.uri);
-                        setNewLicenseCid(row.cid);
-                      }}
-                      className={cn(
-                        "rounded-lg border p-3 text-left text-sm transition-colors",
-                        picked && "ring-2 ring-ring bg-muted/40",
-                      )}
-                    >
-                      <span className="font-medium">{row.title}</span>
-                      <span className="block text-xs text-muted-foreground mt-1">
-                        {row.version}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {licenseRows.length > 0 ? (
-              <Link
-                to="/merchant/license"
-                className="text-sm text-primary underline-offset-2 hover:underline"
-              >
-                Don't see the right license? Create one
-              </Link>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="space-y-2 flex-1 min-w-[8rem] max-w-xs">
-              <Label htmlFor="new-listing-price">Price (USD)</Label>
+              <Label htmlFor="create-listing-price">Price (USD)</Label>
               <Input
-                id="new-listing-price"
+                id="create-listing-price"
                 inputMode="decimal"
-                value={newPrice}
-                onChange={(e) => setNewPrice(e.target.value)}
+                value={priceUsd}
+                onChange={(e) => setPriceUsd(e.target.value)}
+                className="max-w-[10rem]"
               />
             </div>
-            <Button
-              type="button"
-              disabled={!canSubmitCreate}
-              onClick={() => void submitNewListing()}
-            >
-              {createBusy
-                ? showBulkIndividualTracks && createIndividualTrackListings
-                  ? "Creating listings…"
-                  : "Creating…"
-                : showBulkIndividualTracks && createIndividualTrackListings
-                  ? "Create album + track listings"
-                  : "Create listing"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                disabled={!canSubmit}
+                onClick={() => void submit()}
+              >
+                {busy ? "Creating…" : "Create listing"}
+              </Button>
+              <Link
+                to="/merchant/inventory"
+                className={cn(buttonVariants({ variant: "ghost" }))}
+              >
+                Cancel
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
