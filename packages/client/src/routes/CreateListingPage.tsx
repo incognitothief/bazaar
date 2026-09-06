@@ -68,6 +68,18 @@ export function CreateListingPage() {
   const [parentChoice, setParentChoice] = useState<ParentChoice>("separately");
   const [busy, setBusy] = useState(false);
 
+  /** Product-only: batch-create listings for the product's member items. */
+  const [productItems, setProductItems] = useState<
+    { uri: string; title: string }[]
+  >([]);
+  const [batchEnabled, setBatchEnabled] = useState(false);
+  const [bulkItemPrice, setBulkItemPrice] = useState("1.99");
+  const [itemSelected, setItemSelected] = useState<Record<string, boolean>>({});
+  /** Per-row price overrides; a row not in here follows `bulkItemPrice`. */
+  const [itemPriceOverride, setItemPriceOverride] = useState<
+    Record<string, string>
+  >({});
+
   const load = useCallback(async () => {
     if (!agent || !session?.did) return;
     setLoading(true);
@@ -122,6 +134,18 @@ export function CreateListingPage() {
       setTitleByUri(tb);
       setLicenseRows(licenses.filter((l) => !l.retired));
 
+      if (kind === "product") {
+        const p = productRows.find((x) => x.uri === targetUri);
+        setProductItems(
+          (p?.items ?? []).map((ref) => ({
+            uri: ref.uri,
+            title: tb[ref.uri] ?? ref.uri,
+          })),
+        );
+      } else {
+        setProductItems([]);
+      }
+
       if (prefill) {
         setLicenseUri(prefill.licenseUri ?? "");
         setLicenseCid(prefill.licenseGrantCid ?? "");
@@ -172,11 +196,43 @@ export function CreateListingPage() {
     return Number.isFinite(n) && n >= 0;
   }, [priceUsd]);
 
+  const childHasListing = useCallback(
+    (itemUri: string) =>
+      listingRows.some(
+        (r) =>
+          r.listing.item.uri === itemUri &&
+          !isTerminalListingStatus(r.listing.status),
+      ),
+    [listingRows],
+  );
+
+  /** A row is included in the batch unless already listed or explicitly deselected. */
+  const rowIncluded = useCallback(
+    (itemUri: string) =>
+      !childHasListing(itemUri) && (itemSelected[itemUri] ?? true),
+    [childHasListing, itemSelected],
+  );
+
+  const priceForRow = useCallback(
+    (itemUri: string) => itemPriceOverride[itemUri] ?? bulkItemPrice,
+    [itemPriceOverride, bulkItemPrice],
+  );
+
+  const batchValid = useMemo(() => {
+    if (!batchEnabled) return true;
+    return productItems.every((it) => {
+      if (!rowIncluded(it.uri)) return true;
+      const n = parseFloat(priceForRow(it.uri));
+      return Number.isFinite(n) && n >= 0;
+    });
+  }, [batchEnabled, productItems, rowIncluded, priceForRow]);
+
   const canSubmit =
     !!entity &&
     !busy &&
     !existingListing &&
     priceValid &&
+    batchValid &&
     Boolean(licenseUri && licenseCid);
 
   async function submit() {
@@ -196,7 +252,7 @@ export function CreateListingPage() {
           ? parentProductListing.uri
           : undefined;
 
-      await createListing(agent, {
+      const { uri: createdListingUri } = await createListing(agent, {
         item: itemRef,
         price: { amount: cents, currency: "USD" },
         status: "active",
@@ -204,7 +260,39 @@ export function CreateListingPage() {
         licenseGrantCid: licenseCid,
         parentListing,
       });
-      toast.success("Listing created");
+
+      let childCreated = 0;
+      let childSkipped = 0;
+      if (entity.kind === "product" && batchEnabled) {
+        for (const it of productItems) {
+          if (!rowIncluded(it.uri)) continue;
+          const n = parseFloat(priceForRow(it.uri));
+          if (!Number.isFinite(n) || n < 0) {
+            childSkipped += 1;
+            continue;
+          }
+          const ref = await buildItemRefFromUri(it.uri);
+          if (!ref?.cid) {
+            childSkipped += 1;
+            continue;
+          }
+          await createListing(agent, {
+            item: ref,
+            price: { amount: Math.round(n * 100), currency: "USD" },
+            status: "active",
+            licenseUri,
+            licenseGrantCid: licenseCid,
+            parentListing: createdListingUri,
+          });
+          childCreated += 1;
+        }
+      }
+
+      toast.success(
+        childCreated > 0
+          ? `Product listing created with ${childCreated} item listing${childCreated === 1 ? "" : "s"}${childSkipped > 0 ? ` (${childSkipped} skipped)` : ""}.`
+          : "Listing created",
+      );
       // Back to the page the merchant came from (its product / item page),
       // falling back to the inventory list for other grains.
       const back =
@@ -398,7 +486,9 @@ export function CreateListingPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="create-listing-price">Price (USD)</Label>
+              <Label htmlFor="create-listing-price">
+                {entity.kind === "product" ? "Product price (USD)" : "Price (USD)"}
+              </Label>
               <Input
                 id="create-listing-price"
                 inputMode="decimal"
@@ -408,13 +498,102 @@ export function CreateListingPage() {
               />
             </div>
 
+            {entity.kind === "product" && productItems.length > 0 ? (
+              <div className="space-y-3">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    className="size-4"
+                    checked={batchEnabled}
+                    onChange={(e) => setBatchEnabled(e.target.checked)}
+                  />
+                  Create individual listings for items
+                </label>
+
+                {batchEnabled ? (
+                  <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="bulk-item-price">
+                        Price for each item (USD)
+                      </Label>
+                      <Input
+                        id="bulk-item-price"
+                        inputMode="decimal"
+                        value={bulkItemPrice}
+                        onChange={(e) => setBulkItemPrice(e.target.value)}
+                        className="max-w-[10rem]"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Applied to every selected item. Edit a row to override it —
+                        that won't change this field.
+                      </p>
+                    </div>
+
+                    <ul className="m-0 list-none space-y-1.5 p-0">
+                      {productItems.map((it) => {
+                        const already = childHasListing(it.uri);
+                        const selected = already
+                          ? false
+                          : (itemSelected[it.uri] ?? true);
+                        return (
+                          <li
+                            key={it.uri}
+                            className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              className="size-4 shrink-0"
+                              disabled={already}
+                              checked={selected}
+                              onChange={(e) =>
+                                setItemSelected((p) => ({
+                                  ...p,
+                                  [it.uri]: e.target.checked,
+                                }))
+                              }
+                            />
+                            <span className="min-w-0 flex-1 truncate">
+                              {it.title}
+                            </span>
+                            {already ? (
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                Already listed
+                              </span>
+                            ) : (
+                              <Input
+                                inputMode="decimal"
+                                aria-label={`Price for ${it.title}`}
+                                value={itemPriceOverride[it.uri] ?? bulkItemPrice}
+                                onChange={(e) =>
+                                  setItemPriceOverride((p) => ({
+                                    ...p,
+                                    [it.uri]: e.target.value,
+                                  }))
+                                }
+                                disabled={!selected}
+                                className="h-8 w-24 shrink-0"
+                              />
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="flex gap-2">
               <Button
                 type="button"
                 disabled={!canSubmit}
                 onClick={() => void submit()}
               >
-                {busy ? "Creating…" : "Create listing"}
+                {busy
+                  ? "Creating…"
+                  : entity.kind === "product" && batchEnabled
+                    ? "Create listings"
+                    : "Create listing"}
               </Button>
               <Link
                 to="/merchant/inventory"
