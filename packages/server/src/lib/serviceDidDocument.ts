@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildServiceDidDocument, getMerchantKeys } from "./merchantKeys";
+import { buildServiceDidDocument, getStorefrontKeys } from "./storefrontKeys";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -33,8 +33,9 @@ function documentCandidates(): string[] {
 /**
  * Base `@context` for the served DID document. Read from `did-document.template.json` so an
  * operator can add context entries without a code change; the storefront DID id itself comes
- * from `APP_DID` (see `merchantDid()`), and the key arrays + the hosted `keyHistory` context URL
- * are assembled in code. See `docs/adr/0013-key-rotation-and-did-document-v2.md`.
+ * from `STOREFRONT_DID` (see `storefrontDid()`), and the key arrays + the hosted `keyHistory`
+ * context URL are assembled in code. See `docs/adr/0013-key-rotation-and-did-document-v2.md`
+ * and `docs/adr/0015-storefront-merchant-terminology-split.md`.
  */
 function loadContextBase(): unknown[] {
   for (const path of documentCandidates()) {
@@ -47,10 +48,10 @@ function loadContextBase(): unknown[] {
 
 /** Assemble the DID document served at `/.well-known/did.json` from env + the context base. */
 export function loadServiceDidDocument(): Record<string, unknown> {
-  const keys = getMerchantKeys();
+  const keys = getStorefrontKeys();
   if (!keys.current && process.env.NODE_ENV !== "test") {
     console.warn(
-      "service DID: APP_MERCHANT_PRIVATE_KEY / APP_MERCHANT_KID unset — " +
+      "service DID: STOREFRONT_PRIVATE_KEY / STOREFRONT_KID unset — " +
         "/.well-known/did.json will have no verificationMethod / assertionMethod.",
     );
   }

@@ -13,7 +13,7 @@ import { meta, paymentFulfillment } from "../../db/schema";
 import type { OAuthClient } from "../atproto/oauth";
 import { getAgentForDid } from "../atproto/resolvePds";
 import {
-  appMerchantKidFromEnv,
+  storefrontKidFromEnv,
   signConsentPayload,
   signReceiptPayload,
 } from "../atproto/sign";
@@ -558,8 +558,8 @@ export async function fulfillCheckoutSession(opts: {
   ) {
     item = buildDevStubItemJson(itemUri);
   }
-  const issuerScope =
-    (item?.artistDid as string | undefined) ?? process.env.ARTIST_DID ?? "";
+  const merchantDid =
+    (item?.sellerDid as string | undefined) ?? process.env.MERCHANT_DID ?? "";
 
   // Frozen download entitlement -- captured now, folded into appSig, and
   // written onto the receipt so later product edits can't move it.
@@ -568,8 +568,8 @@ export async function fulfillCheckoutSession(opts: {
     ? entitlementDigest(grantedItems)
     : undefined;
 
-  const appDid = process.env.APP_DID ?? "";
-  const privateKeyRaw = process.env.APP_MERCHANT_PRIVATE_KEY;
+  const storefrontDid = process.env.STOREFRONT_DID ?? "";
+  const privateKeyRaw = process.env.STOREFRONT_PRIVATE_KEY;
 
   const ref = itemRefRaw;
   const receiptItem: Record<string, unknown> = { uri: itemRefUri };
@@ -603,7 +603,7 @@ export async function fulfillCheckoutSession(opts: {
     }
   }
 
-  const receiptKidEnv = appMerchantKidFromEnv();
+  const receiptKidEnv = storefrontKidFromEnv();
   const receiptKid =
     appSigReceipt && receiptKidEnv ? receiptKidEnv : undefined;
 
@@ -622,8 +622,8 @@ export async function fulfillCheckoutSession(opts: {
     licenseGrantCid,
     buyerDid,
     ...(grantedItems ? { grantedItems } : {}),
-    appDid,
-    issuerScope,
+    storefrontDid,
+    merchantDid,
     appSig: appSigReceipt,
     purchasedAt,
     ...(receiptKid ? { kid: receiptKid } : {}),
@@ -638,7 +638,7 @@ export async function fulfillCheckoutSession(opts: {
     paymentRef,
     purchasedAt,
     appSig: appSigReceipt,
-    issuerScope,
+    merchantDid,
     amountTotal: session.amount_total,
     currency: session.currency,
     pdsError: null,
@@ -656,8 +656,8 @@ export async function fulfillCheckoutSession(opts: {
     return;
   }
 
-  if (!appDid) {
-    receiptPayload.pdsError = "APP_DID not configured";
+  if (!storefrontDid) {
+    receiptPayload.pdsError = "STOREFRONT_DID not configured";
     await persistReceiptMeta(db, paymentRef, receiptPayload);
     await markDeadLetter(db, paymentRef, receiptPayload.pdsError as string);
     return;
@@ -665,7 +665,7 @@ export async function fulfillCheckoutSession(opts: {
 
   if (!appSigReceipt) {
     receiptPayload.pdsError =
-      "APP_MERCHANT_PRIVATE_KEY missing or receipt signing failed";
+      "STOREFRONT_PRIVATE_KEY missing or receipt signing failed";
     await persistReceiptMeta(db, paymentRef, receiptPayload);
     await markDeadLetter(db, paymentRef, receiptPayload.pdsError as string);
     return;
@@ -766,7 +766,7 @@ export async function fulfillCheckoutSession(opts: {
     }
   }
 
-  const consentKidEnv = appMerchantKidFromEnv();
+  const consentKidEnv = storefrontKidFromEnv();
   const consentKid = consentSig && consentKidEnv ? consentKidEnv : undefined;
 
   const consentRecord: Record<string, unknown> = {

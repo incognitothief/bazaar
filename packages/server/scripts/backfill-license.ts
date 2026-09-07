@@ -14,15 +14,15 @@
  * MERCHANT DID COMES FROM THE ENVIRONMENT, NEVER FROM AN ARGUMENT.
  * Every other authenticated route in this app (merchantGuard in
  * merchant.ts) determines "who is the merchant on this deployment" from
- * process.env.ARTIST_DID -- this script does the same, and refuses to
+ * process.env.MERCHANT_DID -- this script does the same, and refuses to
  * run if it's unset. If you pass a full at:// URI whose DID doesn't
- * match ARTIST_DID, the script aborts loudly instead of writing a row
+ * match MERCHANT_DID, the script aborts loudly instead of writing a row
  * under the wrong merchant. This isn't a hypothetical: an earlier
  * version took a bare DID as a copy-pasted argument, and running an
  * example command copied from one environment (with that environment's
  * DID baked into it) against a *different* environment (staging vs.
  * production) silently captured a row under the wrong merchant_did --
- * mechanically "successful," semantically wrong. Reading ARTIST_DID from
+ * mechanically "successful," semantically wrong. Reading MERCHANT_DID from
  * the environment the script is actually running in makes that class of
  * mistake structurally impossible instead of relying on the operator to
  * notice.
@@ -38,11 +38,11 @@
  * (0007_licenses.sql) has been deployed -- the table doesn't exist until
  * then.
  *
- * Usage (rkey only -- the normal case, DID always comes from ARTIST_DID):
+ * Usage (rkey only -- the normal case, DID always comes from MERCHANT_DID):
  *   bun run backfill-license.ts <rkey>
  *
  * Usage (full at:// URI -- also accepted, but its DID must match
- * ARTIST_DID or the script refuses to proceed):
+ * MERCHANT_DID or the script refuses to proceed):
  *   bun run backfill-license.ts <at-uri>
  *
  * DATABASE_PATH defaults to ./data/app.db if unset, matching the app's
@@ -73,7 +73,7 @@ function parseRkeyOrAtUri(
   if (did !== merchantDid) {
     throw new Error(
       `Refusing to proceed: the URI's DID (${did}) does not match this ` +
-        `deployment's ARTIST_DID (${merchantDid}). Running an example or ` +
+        `deployment's MERCHANT_DID (${merchantDid}). Running an example or ` +
         `copy-pasted URI from a different environment against this one ` +
         `would capture a row under the wrong merchant. If you actually ` +
         `mean to backfill a record on this deployment, pass just the ` +
@@ -118,19 +118,19 @@ async function main() {
   const arg = process.argv[2];
   if (!arg) {
     console.error(
-      "Usage: bun run backfill-license.ts <rkey>  (or a full at:// URI matching this deployment's ARTIST_DID)",
+      "Usage: bun run backfill-license.ts <rkey>  (or a full at:// URI matching this deployment's MERCHANT_DID)",
     );
     process.exit(1);
   }
 
-  const merchantDid = process.env.ARTIST_DID?.trim();
+  const merchantDid = process.env.MERCHANT_DID?.trim();
   if (!merchantDid?.startsWith("did:")) {
     throw new Error(
-      "ARTIST_DID is not set in this environment -- refusing to guess which merchant this is. " +
+      "MERCHANT_DID is not set in this environment -- refusing to guess which merchant this is. " +
         "Same requirement as merchantGuard() in routes/merchant.ts.",
     );
   }
-  console.log(`Merchant (from ARTIST_DID): ${merchantDid}`);
+  console.log(`Merchant (from MERCHANT_DID): ${merchantDid}`);
 
   const { did, collection, rkey } = parseRkeyOrAtUri(arg, merchantDid);
 

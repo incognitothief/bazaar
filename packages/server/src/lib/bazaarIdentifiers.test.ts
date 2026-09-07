@@ -8,8 +8,8 @@ describe("bazaarIdentifiers", () => {
       namedCurve: "prime256v1",
     });
     const pem = privateKey.export({ type: "pkcs8", format: "pem" }) as string;
-    const prev = process.env.APP_MERCHANT_PRIVATE_KEY;
-    process.env.APP_MERCHANT_PRIVATE_KEY = pem;
+    const prev = process.env.STOREFRONT_PRIVATE_KEY;
+    process.env.STOREFRONT_PRIVATE_KEY = pem;
     try {
       const out = buildBazaarRid({
         artistDid: "did:plc:test",
@@ -20,8 +20,8 @@ describe("bazaarIdentifiers", () => {
       expect(out.id.startsWith("bazaar:rid:")).toBe(true);
       expect(out.sig.length).toBeGreaterThan(10);
     } finally {
-      if (prev === undefined) delete process.env.APP_MERCHANT_PRIVATE_KEY;
-      else process.env.APP_MERCHANT_PRIVATE_KEY = prev;
+      if (prev === undefined) delete process.env.STOREFRONT_PRIVATE_KEY;
+      else process.env.STOREFRONT_PRIVATE_KEY = prev;
     }
   });
 });

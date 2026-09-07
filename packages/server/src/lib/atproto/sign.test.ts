@@ -5,8 +5,8 @@ import {
 } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import {
-  appMerchantKidFromEnv,
-  normalizeAppMerchantPrivateKey,
+  storefrontKidFromEnv,
+  normalizeStorefrontPrivateKey,
   signConsentPayload,
   signReceiptPayload,
   verifyConsentPayload,
@@ -29,26 +29,26 @@ function p256Pems() {
   };
 }
 
-describe("appMerchantKidFromEnv", () => {
+describe("storefrontKidFromEnv", () => {
   test("returns null when unset", () => {
-    const prev = process.env.APP_MERCHANT_KID;
-    delete process.env.APP_MERCHANT_KID;
+    const prev = process.env.STOREFRONT_KID;
+    delete process.env.STOREFRONT_KID;
     try {
-      expect(appMerchantKidFromEnv()).toBeNull();
+      expect(storefrontKidFromEnv()).toBeNull();
     } finally {
-      if (prev === undefined) delete process.env.APP_MERCHANT_KID;
-      else process.env.APP_MERCHANT_KID = prev;
+      if (prev === undefined) delete process.env.STOREFRONT_KID;
+      else process.env.STOREFRONT_KID = prev;
     }
   });
 
   test("returns trimmed value when set", () => {
-    const prev = process.env.APP_MERCHANT_KID;
-    process.env.APP_MERCHANT_KID = "  merchant-key-2026-08-29  ";
+    const prev = process.env.STOREFRONT_KID;
+    process.env.STOREFRONT_KID = "  storefront-key-2026-08-29  ";
     try {
-      expect(appMerchantKidFromEnv()).toBe("merchant-key-2026-08-29");
+      expect(storefrontKidFromEnv()).toBe("storefront-key-2026-08-29");
     } finally {
-      if (prev === undefined) delete process.env.APP_MERCHANT_KID;
-      else process.env.APP_MERCHANT_KID = prev;
+      if (prev === undefined) delete process.env.STOREFRONT_KID;
+      else process.env.STOREFRONT_KID = prev;
     }
   });
 });
@@ -147,7 +147,7 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
       type: "spki",
       format: "pem",
     }) as string;
-    expect(normalizeAppMerchantPrivateKey(oneLine)).toContain("\n");
+    expect(normalizeStorefrontPrivateKey(oneLine)).toContain("\n");
 
     const appSig = signReceiptPayload({ ...params, privateKeyPem: oneLine });
     expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
@@ -177,7 +177,7 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
       cryptoSign(
         "sha256",
         Buffer.from(message, "utf8"),
-        createPrivateKey(normalizeAppMerchantPrivateKey(privateKeyPem)),
+        createPrivateKey(normalizeStorefrontPrivateKey(privateKeyPem)),
       ),
     ).toString("base64url");
 
@@ -211,7 +211,7 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
         params.listingCid,
         params.buyerDid,
       ].join(":");
-      const sk = createPrivateKey(normalizeAppMerchantPrivateKey(privateKeyPem));
+      const sk = createPrivateKey(normalizeStorefrontPrivateKey(privateKeyPem));
       const legacySig = Buffer.from(
         cryptoSign(null, Buffer.from(message, "utf8"), sk),
       ).toString("base64url");

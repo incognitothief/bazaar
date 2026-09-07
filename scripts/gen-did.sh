@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generates scripts/service-{private,public}.pem and prints multibase, APP_MERCHANT_KID, and did-document snippets.
+# Generates scripts/service-{private,public}.pem and prints multibase, STOREFRONT_KID, and did-document snippets.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

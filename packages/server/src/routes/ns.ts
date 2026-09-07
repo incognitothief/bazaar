@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { keyHistoryContextDocument } from "../lib/merchantKeys";
+import { keyHistoryContextDocument } from "../lib/storefrontKeys";
 
 /**
  * Hosted JSON-LD contexts for Bazaar DID vocabulary.

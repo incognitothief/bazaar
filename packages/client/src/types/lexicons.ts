@@ -247,8 +247,8 @@ export type PurchaseReceipt = {
    * product's items[] do not change it.
    */
   grantedItems?: string[];
-  appDid: string;
-  issuerScope: string;
+  storefrontDid: string;
+  merchantDid: string;
   appSig: string;
   purchasedAt: string;
   note?: string;
@@ -336,11 +336,11 @@ export type ActorMerchant = {
 
 /**
  * Merchant-side mirror of one non-current storefront key (a keyHistory entry of the
- * appDid DID document). rkey = the bare kid fragment. See ADR 0013 / ADR 0014.
+ * storefrontDid DID document). rkey = the bare kid fragment. See ADR 0013 / ADR 0014 / ADR 0015.
  */
-export type ActorMerchantKeys = {
-  $type: "diamonds.whereditgo.bazaar.actor.merchantKeys";
-  appDid: string;
+export type ActorStorefrontKeys = {
+  $type: "diamonds.whereditgo.bazaar.actor.storefrontKeys";
+  storefrontDid: string;
   id: string;
   type: "Multikey";
   controller?: string;

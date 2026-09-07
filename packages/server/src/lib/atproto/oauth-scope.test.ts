@@ -37,11 +37,11 @@ describe("oauth-scope", () => {
     );
   });
 
-  test("merchant scope includes actor.merchantKeys create/update/delete", () => {
+  test("merchant scope includes actor.storefrontKeys create/update/delete", () => {
     const s = buildOAuthScopeString();
     for (const action of ["create", "update", "delete"]) {
       expect(s).toContain(
-        `repo:diamonds.whereditgo.bazaar.actor.merchantKeys?action=${action}`,
+        `repo:diamonds.whereditgo.bazaar.actor.storefrontKeys?action=${action}`,
       );
     }
   });

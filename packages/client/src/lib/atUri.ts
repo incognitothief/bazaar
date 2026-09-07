@@ -23,11 +23,11 @@ export function repoDidFromAtUri(uri: string): string | null {
 
 /**
  * Which DID to query for `catalog.listing` when viewing an item: the item’s
- * repo (authoritative), else `VITE_ARTIST_DID`.
+ * repo (authoritative), else `VITE_MERCHANT_DID`.
  */
-export function resolveStorefrontArtistDid(itemUri: string): string {
+export function resolveListingMerchantDid(itemUri: string): string {
   const fromUri = repoDidFromAtUri(itemUri);
   if (fromUri) return fromUri;
-  const env = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
+  const env = import.meta.env.VITE_MERCHANT_DID?.trim() ?? "";
   return env.startsWith("did:") ? env : "";
 }

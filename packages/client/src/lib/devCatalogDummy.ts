@@ -15,16 +15,16 @@ export function catalogDummyEnabled(): boolean {
 }
 
 /**
- * Item AT-URI for storefront / item-detail dummy: env override, else `VITE_ARTIST_DID`, else `primaryDid`.
- * `primaryDid` is `VITE_ARTIST_DID` on the storefront, or the signed-in merchant DID on Listings.
+ * Item AT-URI for storefront / item-detail dummy: env override, else `VITE_MERCHANT_DID`, else `primaryDid`.
+ * `primaryDid` is `VITE_MERCHANT_DID` on the storefront, or the signed-in merchant DID on Listings.
  */
 export function resolveDummyItemAtUri(primaryDid: string | undefined): string | null {
   if (!primaryDid?.startsWith("did:")) return null;
   const explicit = import.meta.env.VITE_DEV_DUMMY_ITEM_URI?.trim();
   if (explicit?.startsWith("at://")) return explicit;
-  const artist = import.meta.env.VITE_ARTIST_DID?.trim();
-  if (artist?.startsWith("did:")) {
-    return `at://${artist}/diamonds.whereditgo.bazaar.catalog.item.digital/${DUMMY_ITEM_RKEY}`;
+  const merchant = import.meta.env.VITE_MERCHANT_DID?.trim();
+  if (merchant?.startsWith("did:")) {
+    return `at://${merchant}/diamonds.whereditgo.bazaar.catalog.item.digital/${DUMMY_ITEM_RKEY}`;
   }
   return `at://${primaryDid}/diamonds.whereditgo.bazaar.catalog.item.digital/${DUMMY_ITEM_RKEY}`;
 }

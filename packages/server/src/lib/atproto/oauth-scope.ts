@@ -41,9 +41,9 @@ export function bazaarRepoOAuthScopes(): string[] {
     repoAction(col(ns, "purchase.consent"), "create"),
     repoAction(col(ns, "actor.merchant"), "create"),
     repoAction(col(ns, "actor.merchant"), "update"),
-    repoAction(col(ns, "actor.merchantKeys"), "create"),
-    repoAction(col(ns, "actor.merchantKeys"), "update"),
-    repoAction(col(ns, "actor.merchantKeys"), "delete"),
+    repoAction(col(ns, "actor.storefrontKeys"), "create"),
+    repoAction(col(ns, "actor.storefrontKeys"), "update"),
+    repoAction(col(ns, "actor.storefrontKeys"), "delete"),
   ];
 }
 

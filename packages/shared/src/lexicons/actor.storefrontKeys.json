@@ -1,29 +1,29 @@
 {
   "lexicon": 1,
-  "id": "diamonds.whereditgo.bazaar.actor.merchantKeys",
+  "id": "diamonds.whereditgo.bazaar.actor.storefrontKeys",
   "defs": {
     "main": {
       "type": "record",
-      "description": "Merchant-side mirror of one non-current storefront signing key (a keyHistory entry of the appDid DID document). One record per retired or revoked key, rkey = the bare kid fragment (e.g. merchant-key-2026-04-17). Written to the merchant's own PDS so a verifier can check the merchant's historical purchase records without a separate /.well-known/did.json fetch. The DID document is authoritative: if a mirror record disagrees with the live document, the document wins. Bazaar prompts the merchant to (re)synchronize this collection from the merchant panel after a key rotation.",
+      "description": "Merchant-side mirror of one non-current storefront signing key (a keyHistory entry of the storefrontDid DID document). One record per retired or revoked key, rkey = the bare kid fragment (e.g. storefront-key-2026-04-17). Written to the merchant's own PDS so a verifier can check the merchant's historical purchase records without a separate /.well-known/did.json fetch. The DID document is authoritative: if a mirror record disagrees with the live document, the document wins. Bazaar prompts the merchant to (re)synchronize this collection from the merchant panel after a key rotation.",
       "key": "any",
       "record": {
         "type": "object",
         "required": [
-          "appDid",
+          "storefrontDid",
           "id",
           "type",
           "publicKeyMultibase",
           "supersededBy"
         ],
         "properties": {
-          "appDid": {
+          "storefrontDid": {
             "type": "string",
             "format": "did",
             "description": "The Bazaar storefront DID (a did:web) this key belongs to."
           },
           "id": {
             "type": "string",
-            "description": "Full DID URL of the key, e.g. did:web:bazaar.whereditgo.diamonds#merchant-key-2026-04-17. The fragment equals this record's rkey."
+            "description": "Full DID URL of the key, e.g. did:web:bazaar.whereditgo.diamonds#storefront-key-2026-04-17. The fragment equals this record's rkey."
           },
           "type": {
             "type": "string",
@@ -32,7 +32,7 @@
           "controller": {
             "type": "string",
             "format": "did",
-            "description": "The storefront DID that controls this key (equals appDid)."
+            "description": "The storefront DID that controls this key (equals storefrontDid)."
           },
           "publicKeyMultibase": {
             "type": "string",

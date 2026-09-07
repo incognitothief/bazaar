@@ -26,8 +26,8 @@ function devMockSignInEnabled(): boolean {
   );
 }
 
-function artistDid(): string {
-  const d = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
+function merchantDid(): string {
+  const d = import.meta.env.VITE_MERCHANT_DID?.trim() ?? "";
   return d.startsWith("did:") ? d : "";
 }
 
@@ -90,9 +90,9 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
     if (!h) return;
 
     if (devMockSignInEnabled()) {
-      if (!artistDid()) {
+      if (!merchantDid()) {
         throw new Error(
-          "Mock sign-in needs VITE_ARTIST_DID set to your store owner did:…",
+          "Mock sign-in needs VITE_MERCHANT_DID set to your store owner did:…",
         );
       }
       // Protocol-level resolution (DNS TXT / well-known, bidirectionally verified)

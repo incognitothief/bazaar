@@ -1,5 +1,5 @@
 import { createHash, createPrivateKey, sign } from "node:crypto";
-import { normalizeAppMerchantPrivateKey } from "./atproto/sign";
+import { normalizeStorefrontPrivateKey } from "./atproto/sign";
 
 /**
  * DEPRECATED: the self-issued `bazaarRid` / `bazaarWid` / `bazaarPid` identifier scheme is
@@ -16,11 +16,11 @@ export type BazaarIdentifierSigned = {
 };
 
 function appPrivateKey() {
-  const pem = process.env.APP_MERCHANT_PRIVATE_KEY?.trim();
+  const pem = process.env.STOREFRONT_PRIVATE_KEY?.trim();
   if (!pem) {
-    throw new Error("APP_MERCHANT_PRIVATE_KEY not configured");
+    throw new Error("STOREFRONT_PRIVATE_KEY not configured");
   }
-  return createPrivateKey(normalizeAppMerchantPrivateKey(pem));
+  return createPrivateKey(normalizeStorefrontPrivateKey(pem));
 }
 
 /** RFC 4648 base32 alphabet, lowercase, no padding — over raw digest bytes. */
@@ -168,5 +168,5 @@ export function buildBazaarPid(params: {
 }
 
 export function identifiersSigningConfigured(): boolean {
-  return !!process.env.APP_MERCHANT_PRIVATE_KEY?.trim();
+  return !!process.env.STOREFRONT_PRIVATE_KEY?.trim();
 }

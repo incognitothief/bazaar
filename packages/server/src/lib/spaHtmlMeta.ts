@@ -56,20 +56,20 @@ function slugifyItemTitle(title: string): string {
   return s.slice(0, 80) || "item";
 }
 
-async function getStorefrontOg(artistDid: string): Promise<{
+async function getStorefrontOg(merchantDid: string): Promise<{
   title: string;
   description: string;
 }> {
   const DEFAULT_TITLE = "Storefront";
   const DEFAULT_DESC =
     "Music and releases from the artist catalog. Only items with an active listing are shown.";
-  if (!artistDid.startsWith("did:")) {
+  if (!merchantDid.startsWith("did:")) {
     return { title: DEFAULT_TITLE, description: DEFAULT_DESC };
   }
   try {
-    const agent = await getAgentForDid(artistDid);
+    const agent = await getAgentForDid(merchantDid);
     const res = await agent.com.atproto.repo.listRecords({
-      repo: artistDid,
+      repo: merchantDid,
       collection: `${lexiconNs()}.actor.merchant`,
       limit: 1,
     });
@@ -154,11 +154,11 @@ function buildMetaBlock(opts: {
  */
 export async function buildSpaHeadFragment(pathname: string): Promise<string> {
   const origin = getPublicWebOrigin();
-  const artistDid = process.env.ARTIST_DID?.trim() ?? "";
+  const merchantDid = process.env.MERCHANT_DID?.trim() ?? "";
   const defImg = defaultOgImageUrl();
 
   if (pathname === "/" || pathname === "") {
-    const { title, description } = await getStorefrontOg(artistDid);
+    const { title, description } = await getStorefrontOg(merchantDid);
     const pageTitle = `${title} · ${siteName()}`;
     const canonicalUrl = `${origin}/`;
     return buildMetaBlock({
@@ -193,7 +193,7 @@ export async function buildSpaHeadFragment(pathname: string): Promise<string> {
         ogImage: defImg,
       });
     }
-    if (!artistDid.startsWith("did:")) {
+    if (!merchantDid.startsWith("did:")) {
       return buildMetaBlock({
         title: siteName(),
         description: "Catalog item",
@@ -202,7 +202,7 @@ export async function buildSpaHeadFragment(pathname: string): Promise<string> {
         ogImage: defImg,
       });
     }
-    const itemUri = await resolveCatalogItemUriFromRkey(artistDid, rkey);
+    const itemUri = await resolveCatalogItemUriFromRkey(merchantDid, rkey);
     if (!itemUri) {
       return buildMetaBlock({
         title: `Item · ${siteName()}`,

@@ -202,7 +202,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
       listingUri,
       itemUri,
       listingCid,
-      appDid: process.env.APP_DID ?? "",
+      storefrontDid: process.env.STOREFRONT_DID ?? "",
       buyerDid: body?.buyerDid ?? "",
     };
     if (!stripe) {

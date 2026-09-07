@@ -22,7 +22,7 @@
 #   FLY_API_TOKEN — deploy token for the Fly org that owns the app in fly.toml / fly.stg.toml (`fly tokens create deploy`).
 #   VITE_* — passed as Docker build-args (see Fly deploy step).
 #
-# On each Fly app, set runtime secret ARTIST_DID (server) to the store owner did — same value as VITE_ARTIST_DID in the client build.
+# On each Fly app, set runtime secret MERCHANT_DID (server) to the store owner did — same value as VITE_MERCHANT_DID in the client build.
 
 name: Deploy
 
@@ -96,10 +96,10 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
-          VITE_APP_DID: ${{ secrets.VITE_APP_DID }}
+          VITE_STOREFRONT_DID: ${{ secrets.VITE_STOREFRONT_DID }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_LEXICON_NAMESPACE: ${{ secrets.VITE_LEXICON_NAMESPACE }}
-          VITE_ARTIST_DID: ${{ secrets.VITE_ARTIST_DID }}
+          VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
@@ -110,10 +110,10 @@ jobs:
 
           flyctl deploy --remote-only \
             --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
-            --build-arg VITE_APP_DID="${VITE_APP_DID:-}" \
+            --build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
             --build-arg VITE_LEXICON_NAMESPACE="${VITE_LEXICON_NAMESPACE:-}" \
-            --build-arg VITE_ARTIST_DID="${VITE_ARTIST_DID:-}" \
+            --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
             --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"
 
   deploy-staging:
@@ -178,10 +178,10 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
-          VITE_APP_DID: ${{ secrets.VITE_APP_DID }}
+          VITE_STOREFRONT_DID: ${{ secrets.VITE_STOREFRONT_DID }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_LEXICON_NAMESPACE: ${{ secrets.VITE_LEXICON_NAMESPACE }}
-          VITE_ARTIST_DID: ${{ secrets.VITE_ARTIST_DID }}
+          VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
@@ -192,8 +192,8 @@ jobs:
 
           flyctl deploy --remote-only --config fly.stg.toml \
             --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
-            --build-arg VITE_APP_DID="${VITE_APP_DID:-}" \
+            --build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
             --build-arg VITE_LEXICON_NAMESPACE="${VITE_LEXICON_NAMESPACE:-}" \
-            --build-arg VITE_ARTIST_DID="${VITE_ARTIST_DID:-}" \
+            --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
             --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"

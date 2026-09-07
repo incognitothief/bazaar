@@ -52,13 +52,13 @@ export function CustomerDashboardPage() {
       .then((rows) => {
         if (cancelled) return;
         // A buyer's repo can hold purchase.receipt records from any Bazaar
-        // storefront, not just this one -- issuerScope is the selling
-        // merchant's own DID, stable across app-identity/key changes on our
-        // side, so it's the right signal for "did this store sell it."
-        const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim();
+        // storefront, not just this one -- merchantDid is the selling
+        // merchant's own DID, stable across storefront-identity/key changes
+        // on our side, so it's the right signal for "did this store sell it."
+        const merchantDid = import.meta.env.VITE_MERCHANT_DID?.trim();
         setPurchases(
-          storefrontDid
-            ? rows.filter((r) => r.receipt.issuerScope === storefrontDid)
+          merchantDid
+            ? rows.filter((r) => r.receipt.merchantDid === merchantDid)
             : rows,
         );
       })

@@ -37,7 +37,7 @@ import {
   isDummyStorefrontItem,
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
-import { resolveStorefrontArtistDid } from "@/lib/atUri";
+import { resolveListingMerchantDid } from "@/lib/atUri";
 import {
   catalogItemRkey,
   isLegacyItemPathSegment,
@@ -149,7 +149,7 @@ export function ItemDetailPage() {
   /** `?from=<rkey>` set on member links from a product/collection page -- the
    * back button then returns there instead of doing a plain history pop. */
   const fromRkey = searchParams.get("from")?.trim() || null;
-  const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
+  const merchantDidEnv = import.meta.env.VITE_MERCHANT_DID?.trim() ?? "";
   const legacySegment = !!rkeyParam && isLegacyItemPathSegment(rkeyParam);
 
   const agent = useMemo(() => createPublicAgent(), []);
@@ -223,16 +223,16 @@ export function ItemDetailPage() {
     setRkeyResolved(false);
     let cancelled = false;
     void (async () => {
-      if (!storefrontDid.startsWith("did:")) {
+      if (!merchantDidEnv.startsWith("did:")) {
         if (!cancelled) {
           setResolvedItemUri(null);
           setRkeyResolved(true);
         }
         return;
       }
-      let uri = await resolveCatalogItemUriFromRkey(storefrontDid, rkeyParam);
+      let uri = await resolveCatalogItemUriFromRkey(merchantDidEnv, rkeyParam);
       if (!uri && catalogDummyEnabled() && rkeyParam === DUMMY_ITEM_RKEY) {
-        uri = resolveDummyItemAtUri(storefrontDid);
+        uri = resolveDummyItemAtUri(merchantDidEnv);
       }
       if (!cancelled) {
         setResolvedItemUri(uri);
@@ -242,22 +242,22 @@ export function ItemDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [rkeyParam, storefrontDid, legacySegment]);
+  }, [rkeyParam, merchantDidEnv, legacySegment]);
 
   const itemUri = legacySegment ? "" : (resolvedItemUri ?? "");
-  const artistDid = resolveStorefrontArtistDid(itemUri);
+  const merchantDid = resolveListingMerchantDid(itemUri);
 
   useEffect(() => {
     if (!itemUri) {
       setLoading(false);
       return;
     }
-    if (!artistDid.startsWith("did:")) {
+    if (!merchantDid.startsWith("did:")) {
       setLoading(false);
       return;
     }
     const dummyTarget =
-      catalogDummyEnabled() && isDummyStorefrontItem(itemUri, artistDid);
+      catalogDummyEnabled() && isDummyStorefrontItem(itemUri, merchantDid);
     let cancelled = false;
     void (async () => {
       setLoading(true);
@@ -265,11 +265,11 @@ export function ItemDetailPage() {
         let v = await getRecordValue<CatalogItem>(itemUri);
         if (cancelled) return;
         if (!v && dummyTarget) {
-          v = buildDummyDigitalItem(itemUri, artistDid);
+          v = buildDummyDigitalItem(itemUri, merchantDid);
         }
         setItem(v ?? null);
 
-        const rows = await listListingRows(artistDid);
+        const rows = await listListingRows(merchantDid);
         if (cancelled) return;
         setAllArtistListings(rows);
         const row = rows.find((r) => r.listing.item.uri === itemUri);
@@ -425,7 +425,7 @@ export function ItemDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [itemUri, artistDid, buyerAgent, session?.did]);
+  }, [itemUri, merchantDid, buyerAgent, session?.did]);
 
   useEffect(() => {
     setRelayAvatarBroken(false);
@@ -598,10 +598,10 @@ export function ItemDetailPage() {
     return <p className="text-muted-foreground">Invalid item link.</p>;
   }
 
-  if (!artistDid.startsWith("did:")) {
+  if (!merchantDid.startsWith("did:")) {
     return (
       <p className="text-muted-foreground">
-        Set <code className="text-xs">VITE_ARTIST_DID</code> in{" "}
+        Set <code className="text-xs">VITE_MERCHANT_DID</code> in{" "}
         <code className="text-xs">packages/client/.env</code> to load catalog
         items. Item URLs use the record TID, e.g.{" "}
         <code className="text-xs">/item/3jui7kd5z2f2x</code>.
@@ -734,10 +734,10 @@ export function ItemDetailPage() {
 
   const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
 
-  const blobDid = isDigital ? item.artistDid : (artistDid ?? "");
+  const blobDid = isDigital ? item.artistDid : (merchantDid ?? "");
 
   const showDummyBanner =
-    catalogDummyEnabled() && isDummyStorefrontItem(itemUri, artistDid);
+    catalogDummyEnabled() && isDummyStorefrontItem(itemUri, merchantDid);
 
   const pageRkey = catalogItemRkey(itemUri);
   const canonicalRel = itemPathPretty(pageRkey, item.title);

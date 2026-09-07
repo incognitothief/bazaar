@@ -6,14 +6,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildServiceDidDocument,
   candidatePemsForKid,
-  diffMerchantKeyMirror,
-  expectedMerchantKeyRecords,
-  getMerchantKeys,
+  diffStorefrontKeyMirror,
+  expectedStorefrontKeyRecords,
+  getStorefrontKeys,
   KEY_HISTORY_CONTEXT_URL,
   keyHistoryContextDocument,
   parseKeyHistoryEnv,
-  resetMerchantKeysCache,
-} from "./merchantKeys";
+  resetStorefrontKeysCache,
+} from "./storefrontKeys";
 import { publicSpkiPemToMultibase } from "./publicKeyMultibase";
 
 const DID = "did:web:bazaar.whereditgo.diamonds";
@@ -31,11 +31,11 @@ function p256() {
 }
 
 const ENV_KEYS = [
-  "APP_DID",
-  "APP_MERCHANT_PRIVATE_KEY",
-  "APP_MERCHANT_KID",
-  "APP_MERCHANT_PUBLIC_MULTIBASE",
-  "APP_MERCHANT_KEY_HISTORY",
+  "STOREFRONT_DID",
+  "STOREFRONT_PRIVATE_KEY",
+  "STOREFRONT_KID",
+  "STOREFRONT_PUBLIC_MULTIBASE",
+  "STOREFRONT_KEY_HISTORY",
 ] as const;
 const saved: Record<string, string | undefined> = {};
 for (const k of ENV_KEYS) saved[k] = process.env[k];
@@ -45,14 +45,14 @@ afterEach(() => {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
   }
-  resetMerchantKeysCache();
+  resetStorefrontKeysCache();
 });
 
 function setEnv(e: Partial<Record<(typeof ENV_KEYS)[number], string>>) {
   for (const k of ENV_KEYS) delete process.env[k];
-  process.env.APP_DID = DID;
+  process.env.STOREFRONT_DID = DID;
   for (const [k, v] of Object.entries(e)) process.env[k] = v;
-  resetMerchantKeysCache();
+  resetStorefrontKeysCache();
 }
 
 const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
@@ -66,34 +66,34 @@ const histEntry = (kid: string, mb: string, next: string, revoked?: boolean) => 
 
 describe("parseKeyHistoryEnv", () => {
   const { multibase } = p256();
-  const e = histEntry("merchant-key-2026-01-10", multibase, "merchant-key-2026-08-29");
+  const e = histEntry("storefront-key-2026-01-10", multibase, "storefront-key-2026-08-29");
 
   test("empty / placeholder → []", () => {
-    process.env.APP_DID = DID;
+    process.env.STOREFRONT_DID = DID;
     expect(parseKeyHistoryEnv(undefined)).toEqual([]);
     expect(parseKeyHistoryEnv("PLACEHOLDER")).toEqual([]);
   });
 
-  test("base64 and bare JSON; bare fragments are expanded with APP_DID", () => {
-    process.env.APP_DID = DID;
+  test("base64 and bare JSON; bare fragments are expanded with STOREFRONT_DID", () => {
+    process.env.STOREFRONT_DID = DID;
     expect(parseKeyHistoryEnv(b64([e]))[0]!.id).toBe(e.id);
     expect(parseKeyHistoryEnv(JSON.stringify([e]))[0]!.id).toBe(e.id);
     const bare = parseKeyHistoryEnv(
       b64([
         {
-          id: "merchant-key-2026-01-10",
+          id: "storefront-key-2026-01-10",
           publicKeyMultibase: multibase,
-          supersededBy: "merchant-key-2026-08-29",
+          supersededBy: "storefront-key-2026-08-29",
         },
       ]),
     );
-    expect(bare[0]!.id).toBe(`${DID}#merchant-key-2026-01-10`);
-    expect(bare[0]!.supersededBy).toBe(`${DID}#merchant-key-2026-08-29`);
+    expect(bare[0]!.id).toBe(`${DID}#storefront-key-2026-01-10`);
+    expect(bare[0]!.supersededBy).toBe(`${DID}#storefront-key-2026-08-29`);
     expect(bare[0]!.type).toBe("Multikey");
   });
 
   test("carries revoked:true through; omits it otherwise", () => {
-    process.env.APP_DID = DID;
+    process.env.STOREFRONT_DID = DID;
     expect(
       parseKeyHistoryEnv(b64([histEntry("k", multibase, "n", true)]))[0]!.revoked,
     ).toBe(true);
@@ -101,7 +101,7 @@ describe("parseKeyHistoryEnv", () => {
   });
 
   test("throws on non-array, missing id, missing supersededBy, non-boolean revoked, bad key", () => {
-    process.env.APP_DID = DID;
+    process.env.STOREFRONT_DID = DID;
     expect(() => parseKeyHistoryEnv(b64({}))).toThrow(/array/);
     expect(() =>
       parseKeyHistoryEnv(b64([{ publicKeyMultibase: multibase, supersededBy: "n" }])),
@@ -118,16 +118,16 @@ describe("parseKeyHistoryEnv", () => {
   });
 });
 
-describe("getMerchantKeys", () => {
+describe("getStorefrontKeys", () => {
   test("current key from env, no history", () => {
     const cur = p256();
     setEnv({
-      APP_MERCHANT_PRIVATE_KEY: cur.privateKeyPem,
-      APP_MERCHANT_KID: "merchant-key-2026-08-29",
+      STOREFRONT_PRIVATE_KEY: cur.privateKeyPem,
+      STOREFRONT_KID: "storefront-key-2026-08-29",
     });
-    const keys = getMerchantKeys();
-    expect(keys.current?.kid).toBe("merchant-key-2026-08-29");
-    expect(keys.current?.id).toBe(`${DID}#merchant-key-2026-08-29`);
+    const keys = getStorefrontKeys();
+    expect(keys.current?.kid).toBe("storefront-key-2026-08-29");
+    expect(keys.current?.id).toBe(`${DID}#storefront-key-2026-08-29`);
     expect(keys.current?.kind).toBe("current");
     expect(keys.current?.revoked).toBe(false);
     expect(keys.history).toEqual([]);
@@ -138,17 +138,17 @@ describe("getMerchantKeys", () => {
     const retired = p256();
     const revoked = p256();
     setEnv({
-      APP_MERCHANT_PRIVATE_KEY: cur.privateKeyPem,
-      APP_MERCHANT_KID: "merchant-key-2026-08-29",
-      APP_MERCHANT_KEY_HISTORY: b64([
-        histEntry("merchant-key-2026-04-17", retired.multibase, "merchant-key-2026-08-29"),
-        histEntry("merchant-key-2026-01-01", revoked.multibase, "merchant-key-2026-04-17", true),
+      STOREFRONT_PRIVATE_KEY: cur.privateKeyPem,
+      STOREFRONT_KID: "storefront-key-2026-08-29",
+      STOREFRONT_KEY_HISTORY: b64([
+        histEntry("storefront-key-2026-04-17", retired.multibase, "storefront-key-2026-08-29"),
+        histEntry("storefront-key-2026-01-01", revoked.multibase, "storefront-key-2026-04-17", true),
       ]),
     });
-    const keys = getMerchantKeys();
+    const keys = getStorefrontKeys();
     expect(keys.history.map((h) => [h.kid, h.kind, h.revoked])).toEqual([
-      ["merchant-key-2026-04-17", "retired", false],
-      ["merchant-key-2026-01-01", "retired", true],
+      ["storefront-key-2026-04-17", "retired", false],
+      ["storefront-key-2026-01-01", "retired", true],
     ]);
     expect(keys.history[0]!.publicKeyPem).toContain("BEGIN PUBLIC KEY");
     expect(keys.byKid.size).toBe(3);
@@ -157,19 +157,19 @@ describe("getMerchantKeys", () => {
   test("current key also in history → throws; PUBLIC_MULTIBASE mismatch → throws", () => {
     const cur = p256();
     setEnv({
-      APP_MERCHANT_PRIVATE_KEY: cur.privateKeyPem,
-      APP_MERCHANT_KID: "dup",
-      APP_MERCHANT_KEY_HISTORY: b64([histEntry("dup", cur.multibase, "dup")]),
+      STOREFRONT_PRIVATE_KEY: cur.privateKeyPem,
+      STOREFRONT_KID: "dup",
+      STOREFRONT_KEY_HISTORY: b64([histEntry("dup", cur.multibase, "dup")]),
     });
-    expect(() => getMerchantKeys()).toThrow(/also appears/);
+    expect(() => getStorefrontKeys()).toThrow(/also appears/);
 
     const other = p256();
     setEnv({
-      APP_MERCHANT_PRIVATE_KEY: cur.privateKeyPem,
-      APP_MERCHANT_KID: "x",
-      APP_MERCHANT_PUBLIC_MULTIBASE: other.multibase,
+      STOREFRONT_PRIVATE_KEY: cur.privateKeyPem,
+      STOREFRONT_KID: "x",
+      STOREFRONT_PUBLIC_MULTIBASE: other.multibase,
     });
-    expect(() => getMerchantKeys()).toThrow(/does not match/);
+    expect(() => getStorefrontKeys()).toThrow(/does not match/);
   });
 });
 
@@ -179,14 +179,14 @@ describe("candidatePemsForKid", () => {
     const retired = p256();
     const revoked = p256();
     setEnv({
-      APP_MERCHANT_PRIVATE_KEY: cur.privateKeyPem,
-      APP_MERCHANT_KID: "cur",
-      APP_MERCHANT_KEY_HISTORY: b64([
+      STOREFRONT_PRIVATE_KEY: cur.privateKeyPem,
+      STOREFRONT_KID: "cur",
+      STOREFRONT_KEY_HISTORY: b64([
         histEntry("retired", retired.multibase, "cur"),
         histEntry("revoked", revoked.multibase, "retired", true),
       ]),
     });
-    return getMerchantKeys();
+    return getStorefrontKeys();
   }
 
   test("revoked kid → hard reject, no candidates", () => {
@@ -220,32 +220,32 @@ describe("buildServiceDidDocument", () => {
     const retired = p256();
     const revoked = p256();
     setEnv({
-      APP_MERCHANT_PRIVATE_KEY: cur.privateKeyPem,
-      APP_MERCHANT_KID: "merchant-key-2026-08-29",
-      APP_MERCHANT_KEY_HISTORY: b64([
-        histEntry("merchant-key-2026-04-17", retired.multibase, "merchant-key-2026-08-29"),
-        histEntry("merchant-key-2026-01-01", revoked.multibase, "merchant-key-2026-04-17", true),
+      STOREFRONT_PRIVATE_KEY: cur.privateKeyPem,
+      STOREFRONT_KID: "storefront-key-2026-08-29",
+      STOREFRONT_KEY_HISTORY: b64([
+        histEntry("storefront-key-2026-04-17", retired.multibase, "storefront-key-2026-08-29"),
+        histEntry("storefront-key-2026-01-01", revoked.multibase, "storefront-key-2026-04-17", true),
       ]),
     });
-    const doc = buildServiceDidDocument(getMerchantKeys(), [
+    const doc = buildServiceDidDocument(getStorefrontKeys(), [
       "https://www.w3.org/ns/did/v1",
       "https://w3id.org/security/multikey/v1",
     ]) as any;
 
     // current + retired (non-revoked); NOT the revoked one
     expect(doc.verificationMethod.map((v: any) => v.id)).toEqual([
-      `${DID}#merchant-key-2026-08-29`,
-      `${DID}#merchant-key-2026-04-17`,
+      `${DID}#storefront-key-2026-08-29`,
+      `${DID}#storefront-key-2026-04-17`,
     ]);
     expect(doc.verificationMethod.every((v: any) => v.controller === DID)).toBe(true);
-    expect(doc.assertionMethod).toEqual([`${DID}#merchant-key-2026-08-29`]);
+    expect(doc.assertionMethod).toEqual([`${DID}#storefront-key-2026-08-29`]);
     expect(doc.keyHistory.map((h: any) => h.id)).toEqual([
-      `${DID}#merchant-key-2026-04-17`,
-      `${DID}#merchant-key-2026-01-01`,
+      `${DID}#storefront-key-2026-04-17`,
+      `${DID}#storefront-key-2026-01-01`,
     ]);
     expect(doc.keyHistory[0]!.type).toBe("Multikey");
     expect(doc.keyHistory.every((h: any) => h.controller === DID)).toBe(true);
-    expect(doc.keyHistory[0]!.supersededBy).toBe(`${DID}#merchant-key-2026-08-29`);
+    expect(doc.keyHistory[0]!.supersededBy).toBe(`${DID}#storefront-key-2026-08-29`);
     expect("revoked" in doc.keyHistory[0]!).toBe(false);
     expect(doc.keyHistory[1]!.revoked).toBe(true);
     expect("authentication" in doc).toBe(false);
@@ -272,7 +272,7 @@ describe("buildServiceDidDocument", () => {
 
   test("no current key → empty verificationMethod / assertionMethod", () => {
     setEnv({});
-    const doc = buildServiceDidDocument(getMerchantKeys(), [
+    const doc = buildServiceDidDocument(getStorefrontKeys(), [
       "https://www.w3.org/ns/did/v1",
     ]) as any;
     expect(doc.verificationMethod).toEqual([]);
@@ -286,15 +286,15 @@ describe("buildServiceDidDocument", () => {
   });
 });
 
-describe("expectedMerchantKeyRecords / diffMerchantKeyMirror", () => {
+describe("expectedStorefrontKeyRecords / diffStorefrontKeyMirror", () => {
   function fixture() {
     const cur = p256();
     const retired = p256();
     const revoked = p256();
     setEnv({
-      APP_MERCHANT_PRIVATE_KEY: cur.privateKeyPem,
-      APP_MERCHANT_KID: "cur",
-      APP_MERCHANT_KEY_HISTORY: b64([
+      STOREFRONT_PRIVATE_KEY: cur.privateKeyPem,
+      STOREFRONT_KID: "cur",
+      STOREFRONT_KEY_HISTORY: b64([
         histEntry("retired", retired.multibase, "cur"),
         histEntry("revoked", revoked.multibase, "retired", true),
       ]),
@@ -303,16 +303,16 @@ describe("expectedMerchantKeyRecords / diffMerchantKeyMirror", () => {
   }
 
   const pdsRec = (rkey: string, value: Record<string, unknown>) => ({
-    uri: `at://${DID}/diamonds.whereditgo.bazaar.actor.merchantKeys/${rkey}`,
+    uri: `at://${DID}/diamonds.whereditgo.bazaar.actor.storefrontKeys/${rkey}`,
     value,
   });
 
   test("expected = one record per history entry (not the current key), rkey = kid", () => {
     fixture();
-    const exp = expectedMerchantKeyRecords();
+    const exp = expectedStorefrontKeyRecords();
     expect(exp.map((e) => e.rkey)).toEqual(["retired", "revoked"]);
     expect(exp[0]!.record).toMatchObject({
-      $type: "diamonds.whereditgo.bazaar.actor.merchantKeys",
+      $type: "diamonds.whereditgo.bazaar.actor.storefrontKeys",
       id: `${DID}#retired`,
       type: "Multikey",
       controller: DID,
@@ -324,7 +324,7 @@ describe("expectedMerchantKeyRecords / diffMerchantKeyMirror", () => {
 
   test("empty PDS → every history kid missing, nothing extra", () => {
     fixture();
-    expect(diffMerchantKeyMirror([])).toEqual({
+    expect(diffStorefrontKeyMirror([])).toEqual({
       missing: ["retired", "revoked"],
       extra: [],
       pdsCount: 0,
@@ -333,10 +333,10 @@ describe("expectedMerchantKeyRecords / diffMerchantKeyMirror", () => {
 
   test("PDS matches → in sync", () => {
     fixture();
-    const recs = expectedMerchantKeyRecords().map((e) =>
+    const recs = expectedStorefrontKeyRecords().map((e) =>
       pdsRec(e.rkey, { ...e.record, syncedAt: "2026-08-30T00:00:00Z" }),
     );
-    const d = diffMerchantKeyMirror(recs);
+    const d = diffStorefrontKeyMirror(recs);
     expect(d.missing).toEqual([]);
     expect(d.extra).toEqual([]);
     expect(d.pdsCount).toBe(2);
@@ -344,15 +344,15 @@ describe("expectedMerchantKeyRecords / diffMerchantKeyMirror", () => {
 
   test("stale field (revoked flipped) → that kid missing; orphan rkey → extra", () => {
     fixture();
-    const exp = expectedMerchantKeyRecords();
+    const exp = expectedStorefrontKeyRecords();
     const recs = [
       pdsRec(exp[0]!.rkey, exp[0]!.record),
       // 'revoked' entry written before it was revoked
       pdsRec(exp[1]!.rkey, { ...exp[1]!.record, revoked: false }),
-      pdsRec("merchant-key-ancient", { id: `${DID}#merchant-key-ancient` }),
+      pdsRec("storefront-key-ancient", { id: `${DID}#storefront-key-ancient` }),
     ];
-    const d = diffMerchantKeyMirror(recs);
+    const d = diffStorefrontKeyMirror(recs);
     expect(d.missing).toEqual(["revoked"]);
-    expect(d.extra).toEqual(["merchant-key-ancient"]);
+    expect(d.extra).toEqual(["storefront-key-ancient"]);
   });
 });

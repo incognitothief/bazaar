@@ -45,7 +45,7 @@ export function buildDevStubListingJson(itemUri: string): Record<string, unknown
   };
 }
 
-/** Minimal digital item JSON for issuerScope / title when the item is not on a PDS. */
+/** Minimal digital item JSON for merchantDid / title when the item is not on a PDS. */
 export function buildDevStubItemJson(itemUri: string): Record<string, unknown> {
   const did = repoFromAtUri(itemUri);
   const now = new Date().toISOString();

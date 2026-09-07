@@ -11,7 +11,7 @@ import {
  */
 const APP_SIG_DIGEST = "sha256";
 
-const APP_MERCHANT_KID_MAX = 64;
+const STOREFRONT_KID_MAX = 64;
 
 /**
  * `appSig` is a 64-byte IEEE-P1363 (raw `r || s`) ECDSA/P-256 signature, normalised to low-S,
@@ -38,30 +38,30 @@ function toLowS(sig: Buffer): Buffer {
 }
 
 /**
- * Optional lexicon `kid` (e.g. merchant-key-2026-08-29), matching the active fragment in
+ * Optional lexicon `kid` (e.g. storefront-key-2026-08-29), matching the active fragment in
  * `packages/server/config/did-document.template.json` assertionMethod / verificationMethod.
  */
-export function appMerchantKidFromEnv(): string | null {
-  const k = process.env.APP_MERCHANT_KID?.trim();
+export function storefrontKidFromEnv(): string | null {
+  const k = process.env.STOREFRONT_KID?.trim();
   if (!k) return null;
-  return k.length > APP_MERCHANT_KID_MAX ? k.slice(0, APP_MERCHANT_KID_MAX) : k;
+  return k.length > STOREFRONT_KID_MAX ? k.slice(0, STOREFRONT_KID_MAX) : k;
 }
 
-/** SPKI PEM for verifyReceiptPayload / verifyConsentPayload when only APP_MERCHANT_PRIVATE_KEY is configured. */
-export function appMerchantPublicKeyPemFromEnv(): string | null {
-  const raw = process.env.APP_MERCHANT_PRIVATE_KEY?.trim();
+/** SPKI PEM for verifyReceiptPayload / verifyConsentPayload when only STOREFRONT_PRIVATE_KEY is configured. */
+export function storefrontPublicKeyPemFromEnv(): string | null {
+  const raw = process.env.STOREFRONT_PRIVATE_KEY?.trim();
   if (!raw) return null;
-  const priv = createPrivateKey(normalizeAppMerchantPrivateKey(raw));
+  const priv = createPrivateKey(normalizeStorefrontPrivateKey(raw));
   const pub = createPublicKey(priv);
   return pub.export({ type: "spki", format: "pem" }) as string;
 }
 
 /**
- * `APP_MERCHANT_PRIVATE_KEY` from `.env` is often a valid PEM that dotenv / shells mangle
+ * `STOREFRONT_PRIVATE_KEY` from `.env` is often a valid PEM that dotenv / shells mangle
  * (literal `\\n`, CRLF, or the whole base64 on one line). OpenSSL/Bun are picky.
  * Supports PKCS#8 (`BEGIN PRIVATE KEY`), SEC1 EC (`BEGIN EC PRIVATE KEY`), PKCS#1 RSA, etc.
  */
-export function normalizeAppMerchantPrivateKey(raw: string): string {
+export function normalizeStorefrontPrivateKey(raw: string): string {
   let t = raw
     .trim()
     .replace(/\\n/g, "\n")
@@ -86,7 +86,7 @@ export function normalizeAppMerchantPrivateKey(raw: string): string {
 
 /** Sign `message` and return a base64url low-S IEEE-P1363 (`r || s`) ECDSA/P-256 signature. */
 function signCanonical(message: string, privateKeyPem: string): string {
-  const key = createPrivateKey(normalizeAppMerchantPrivateKey(privateKeyPem));
+  const key = createPrivateKey(normalizeStorefrontPrivateKey(privateKeyPem));
   const raw = cryptoSign(APP_SIG_DIGEST, Buffer.from(message, "utf8"), {
     key,
     dsaEncoding: "ieee-p1363",

@@ -8,9 +8,9 @@ import { catalogItems, catalogProducts, inventoryUploadObject } from "../db/sche
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { getSessionAgent } from "../lib/atproto/session";
-import { appMerchantPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
+import { storefrontPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
 import { entitlementDigest } from "../lib/atproto/entitlement";
-import { candidatePemsForKid, getMerchantKeys } from "../lib/merchantKeys";
+import { candidatePemsForKid, getStorefrontKeys } from "../lib/storefrontKeys";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import { isS3NoSuchKey } from "../lib/r2/diagnostics";
 import {
@@ -63,9 +63,9 @@ function frozenGrant(rec: PurchaseReceipt): string[] | null {
 /** itemRef no longer carries a stored type field (removed as redundant with the URI itself); the AT-URI's own collection segment is the only source of truth. */
 
 /** True when at least one storefront verification key is configured (env or key history). */
-function merchantVerifyKeysAvailable(): boolean {
+function storefrontVerifyKeysAvailable(): boolean {
   return (
-    getMerchantKeys().byKid.size > 0 || appMerchantPublicKeyPemFromEnv() !== null
+    getStorefrontKeys().byKid.size > 0 || storefrontPublicKeyPemFromEnv() !== null
   );
 }
 
@@ -150,7 +150,7 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    if (!merchantVerifyKeysAvailable())
+    if (!storefrontVerifyKeysAvailable())
       return c.json({ error: "app_key_missing" }, 503);
 
     let entitled = false;
@@ -320,7 +320,7 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    if (!merchantVerifyKeysAvailable())
+    if (!storefrontVerifyKeysAvailable())
       return c.json({ error: "app_key_missing" }, 503);
 
     let entitled = false;
@@ -378,7 +378,7 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    if (!merchantVerifyKeysAvailable())
+    if (!storefrontVerifyKeysAvailable())
       return c.json({ error: "app_key_missing" }, 503);
 
     let entitledReceipt: PurchaseReceipt | null = null;
@@ -432,13 +432,13 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
   const buyerDid = rec.buyerDid ?? sessionDid;
   if (buyerDid !== sessionDid) return false;
 
-  const { revoked, pems } = candidatePemsForKid(getMerchantKeys(), rec.kid);
+  const { revoked, pems } = candidatePemsForKid(getStorefrontKeys(), rec.kid);
   if (revoked) return false;
 
   const candidates =
     pems.length > 0
       ? pems
-      : [appMerchantPublicKeyPemFromEnv()].filter((p): p is string => !!p);
+      : [storefrontPublicKeyPemFromEnv()].filter((p): p is string => !!p);
 
   // Current receipts fold the grantedItems digest into appSig as a sixth
   // payload field; legacy receipts sign only the five-field payload.

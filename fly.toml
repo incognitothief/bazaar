@@ -5,8 +5,8 @@ primary_region = "ams"
 
 [build]
 
-# Server env for Bun (not Vite): merchant routes need ARTIST_DID == store owner did (same as VITE_ARTIST_DID).
-#   fly secrets set ARTIST_DID=did:plc:…
+# Server env for Bun (not Vite): merchant routes need MERCHANT_DID == store owner did (same as VITE_MERCHANT_DID).
+#   fly secrets set MERCHANT_DID=did:plc:…
 [env]
   PORT = "3000"
 
