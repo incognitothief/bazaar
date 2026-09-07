@@ -260,6 +260,8 @@ export function MerchantInventoryPage() {
         relationship: relationshipFor(row, lr, productUriByItemUri, titleByUri),
         canCreateListing: isOurGrain && !hasNonTerminalListing(lr),
         onCreateListing: () => openCreateListing(row),
+        canEditListing: row.kind === "item" && hasNonTerminalListing(lr),
+        onEditListing: () => openCreateListing(row),
         onDeleteListing: () => {
           if (lr) setDeleteRow(lr);
         },

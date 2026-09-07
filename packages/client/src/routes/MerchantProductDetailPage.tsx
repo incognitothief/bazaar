@@ -560,22 +560,14 @@ export function MerchantProductDetailPage() {
       label: "Download package",
       externalHref: catalogProductDownloadUrl(uri),
     },
-    ...(!editing
+    ...(!editing && !listing
       ? [
-          listing
-            ? {
-                key: "list",
-                Icon: Tag,
-                label: "Listing exists",
-                disabled: true,
-                disabledHint: "This product already has a listing",
-              }
-            : {
-                key: "list",
-                Icon: Tag,
-                label: "Create listing",
-                href: `/merchant/listings/new?uri=${encodeURIComponent(uri)}`,
-              },
+          {
+            key: "list",
+            Icon: Tag,
+            label: "Create listing",
+            href: `/merchant/listings/new?uri=${encodeURIComponent(uri)}`,
+          },
         ]
       : []),
   ];

@@ -38,6 +38,9 @@ export type MerchantRowActions = {
   relationship: RelationshipDescriptor;
   canCreateListing: boolean;
   onCreateListing: () => void;
+  /** Item grain with an existing listing -> reach its create-or-edit listing pane. */
+  canEditListing: boolean;
+  onEditListing: () => void;
   onDeleteListing: () => void;
 };
 
@@ -215,13 +218,18 @@ export function MerchantItemRow({
               <SquareArrowOutUpRight className="size-3.5" />
               View on storefront
             </DropdownMenuItem>
+            {actions.canEditListing || listing ? (
+              <DropdownMenuSeparator />
+            ) : null}
+            {actions.canEditListing ? (
+              <DropdownMenuItem onSelect={actions.onEditListing}>
+                Edit listing
+              </DropdownMenuItem>
+            ) : null}
             {listing ? (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem destructive onSelect={actions.onDeleteListing}>
-                  Delete listing
-                </DropdownMenuItem>
-              </>
+              <DropdownMenuItem destructive onSelect={actions.onDeleteListing}>
+                Delete listing
+              </DropdownMenuItem>
             ) : null}
           </DropdownMenuContent>
         </DropdownMenu>

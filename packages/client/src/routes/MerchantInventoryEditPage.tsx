@@ -1479,20 +1479,12 @@ function CatalogItemEditForm({
     },
     ...(!editing
       ? [
-          listing
-            ? {
-                key: "list",
-                Icon: Tag,
-                label: "Listing exists",
-                disabled: true,
-                disabledHint: "This item already has its own listing",
-              }
-            : {
-                key: "list",
-                Icon: Tag,
-                label: "Create listing",
-                href: `/merchant/listings/new?uri=${encodeURIComponent(uri)}`,
-              },
+          {
+            key: "list",
+            Icon: Tag,
+            label: listing ? "Edit listing" : "Create listing",
+            href: `/merchant/listings/new?uri=${encodeURIComponent(uri)}`,
+          },
         ]
       : []),
   ];

@@ -181,16 +181,21 @@ export function MerchantItemCard({
                   <SquareArrowOutUpRight className="size-3.5" />
                   View on storefront
                 </DropdownMenuItem>
+                {actions.canEditListing || listing ? (
+                  <DropdownMenuSeparator />
+                ) : null}
+                {actions.canEditListing ? (
+                  <DropdownMenuItem onSelect={actions.onEditListing}>
+                    Edit listing
+                  </DropdownMenuItem>
+                ) : null}
                 {listing ? (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      destructive
-                      onSelect={actions.onDeleteListing}
-                    >
-                      Delete listing
-                    </DropdownMenuItem>
-                  </>
+                  <DropdownMenuItem
+                    destructive
+                    onSelect={actions.onDeleteListing}
+                  >
+                    Delete listing
+                  </DropdownMenuItem>
                 ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
