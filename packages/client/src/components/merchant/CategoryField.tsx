@@ -28,6 +28,10 @@ export function CategoryField({
   className?: string;
 }) {
   const current = value.trim().toLowerCase();
+  const isMacro = (MACRO_CATEGORIES as readonly string[]).includes(current);
+  /** Only offer a "use what I typed" row for genuinely custom text -- a value
+   * that already equals a macro category is represented by its own list item. */
+  const showCustomRow = current !== "" && !isMacro;
 
   return (
     <Autocomplete.Root
@@ -66,18 +70,24 @@ export function CategoryField({
           <Autocomplete.Popup className="max-h-[min(18rem,var(--available-height))] w-full overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10">
             <button
               type="button"
-              onClick={() => onChange(current)}
-              className={cn(
-                ROW_CLASS,
-                "w-full",
-                current === "" && "text-muted-foreground",
-              )}
+              onClick={() => onChange("")}
+              className={cn(ROW_CLASS, "w-full text-muted-foreground")}
             >
-              <span className="truncate">{current === "" ? "none" : value}</span>
+              <span className="truncate">none</span>
               {current === "" ? (
                 <CheckIcon className="size-4 shrink-0" />
               ) : null}
             </button>
+            {showCustomRow ? (
+              <button
+                type="button"
+                onClick={() => onChange(value.trim())}
+                className={cn(ROW_CLASS, "w-full")}
+              >
+                <span className="truncate">{value.trim()}</span>
+                <CheckIcon className="size-4 shrink-0" />
+              </button>
+            ) : null}
             <Autocomplete.List>
               {(item: MacroCategory) => (
                 <Autocomplete.Item key={item} value={item} className={ROW_CLASS}>

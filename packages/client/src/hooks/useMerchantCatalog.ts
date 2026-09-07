@@ -37,30 +37,38 @@ export type MerchantCatalogState = {
 };
 
 /**
- * A listing may have superseded/archived history for the same item. Prefer the
- * newest non-superseded, top-level (no parentListing) listing so merchants see
- * the listing that actually controls the item's storefront price/status.
+ * The listing that best represents an item's current state -- one per item
+ * URI. A standalone listing (no parentListing) outranks a sold-under-product
+ * child listing; a live/paused listing outranks an archived/superseded one;
+ * ties break on newest. Child listings are included so an item that only
+ * sells inside a product still shows a status (and can't be re-listed on top).
  */
+function listingRank(r: ListingRow): number {
+  const terminal =
+    r.listing.status === "archived" || r.listing.status === "superseded";
+  return (terminal ? 0 : 4) + (r.listing.parentListing ? 0 : 2);
+}
+
 function indexPrimaryListings(rows: ListingRow[]): Record<string, ListingRow> {
   const byItem: Record<string, ListingRow> = {};
   for (const row of rows) {
-    if (row.listing.parentListing) continue;
     const itemUri = row.listing.item.uri;
     const existing = byItem[itemUri];
     if (!existing) {
       byItem[itemUri] = row;
       continue;
     }
-    const existingIsSuperseded = existing.listing.status === "superseded";
-    const rowIsSuperseded = row.listing.status === "superseded";
-    if (existingIsSuperseded && !rowIsSuperseded) {
+    const de = listingRank(existing);
+    const dr = listingRank(row);
+    if (dr > de) {
       byItem[itemUri] = row;
       continue;
     }
-    if (existingIsSuperseded === rowIsSuperseded) {
-      const existingMs = Date.parse(existing.listing.createdAt);
-      const rowMs = Date.parse(row.listing.createdAt);
-      if (rowMs > existingMs) byItem[itemUri] = row;
+    if (
+      dr === de &&
+      Date.parse(row.listing.createdAt) > Date.parse(existing.listing.createdAt)
+    ) {
+      byItem[itemUri] = row;
     }
   }
   return byItem;

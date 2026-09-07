@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
@@ -9,6 +10,7 @@ import { CopyButton } from "@/components/shared/CopyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
 import { MetadataChip } from "@/components/shared/MetadataChip";
+import { TagTokens } from "@/components/shared/TagTokens";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -183,20 +185,31 @@ export function PurchaseDetailPage() {
         const itemVal = await getRecordValue<CatalogItem>(itemUri);
         if (!cancelled) setItem(itemVal ?? null);
 
-        if (itemVal?.$type === BAZAAR_COLLECTION.product && "items" in itemVal) {
+        if (
+          itemVal?.$type === BAZAAR_COLLECTION.product &&
+          "items" in itemVal
+        ) {
+          // Resolve metadata for the union of current members and the frozen
+          // grant, so a member removed since the sale still gets a title.
+          const metaUris = [
+            ...new Set([
+              ...itemVal.items.map((ref) => ref.uri),
+              ...(Array.isArray(rec.grantedItems) ? rec.grantedItems : []),
+            ]),
+          ];
           const [p, resolvedItems] = await Promise.all([
             getCatalogProduct(itemUri),
-            Promise.all(itemVal.items.map((ref) => getCatalogItem(ref.uri))),
+            Promise.all(metaUris.map((uri) => getCatalogItem(uri))),
           ]);
           if (!cancelled) {
             setCoverImages(p?.coverImages ?? []);
             setProductType(p?.productType ?? null);
             setProductItemMeta(
               Object.fromEntries(
-                itemVal.items.map((ref, i) => [
-                  ref.uri,
+                metaUris.map((uri, i) => [
+                  uri,
                   {
-                    title: resolvedItems[i]?.title ?? ref.uri,
+                    title: resolvedItems[i]?.title ?? uri,
                     durationMs: resolvedItems[i]?.durationMs ?? null,
                   },
                 ]),
@@ -321,8 +334,8 @@ export function PurchaseDetailPage() {
     return (
       <div className="mx-auto max-w-lg space-y-6 px-4 py-12">
         <p className="text-muted-foreground">
-          This receipt could not be loaded. It may not exist, may belong to
-          a different account, or the URI may be incomplete.
+          This receipt could not be loaded. It may not exist, may belong to a
+          different account, or the URI may be incomplete.
         </p>
         {receiptUri ? (
           <TriageField
@@ -333,9 +346,10 @@ export function PurchaseDetailPage() {
         ) : null}
         <Link
           to="/dashboard"
-          className="inline-block text-sm text-muted-foreground underline underline-offset-4"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
-          ← Purchases
+          <ArrowLeft className="size-4" />
+          Purchases
         </Link>
       </div>
     );
@@ -347,11 +361,11 @@ export function PurchaseDetailPage() {
         <div className="space-y-1">
           <h1 className="text-lg font-medium">Item record not found</h1>
           <p className="text-sm text-muted-foreground">
-            The purchase itself is real -- this receipt exists and was
-            issued by this store -- but the item it references no longer
-            resolves. This usually means the merchant removed or replaced
-            it after the purchase was made. If you're following up with
-            support, these are the exact values to share.
+            The purchase itself is real -- this receipt exists and was issued by
+            this store -- but the item it references no longer resolves. This
+            usually means the merchant removed or replaced it after the purchase
+            was made. If you're following up with support, these are the exact
+            values to share.
           </p>
         </div>
         <div className="space-y-4 rounded-lg border border-border p-4">
@@ -384,9 +398,10 @@ export function PurchaseDetailPage() {
         </div>
         <Link
           to="/dashboard"
-          className="inline-block text-sm text-muted-foreground underline underline-offset-4"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
-          ← Purchases
+          <ArrowLeft className="size-4" />
+          Purchases
         </Link>
       </div>
     );
@@ -395,8 +410,17 @@ export function PurchaseDetailPage() {
   const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
   const isCollection = item.$type === BAZAAR_COLLECTION.collection;
   const isProduct = item.$type === BAZAAR_COLLECTION.product;
-  const isMusicProduct = isProduct && productTypeConfig(productType).value === "music";
+  const isMusicProduct =
+    isProduct && productTypeConfig(productType).value === "music";
   const isCatalogItemSingle = item.$type === BAZAAR_COLLECTION.item;
+  // What this receipt actually entitles: the frozen grant, or every current
+  // member for a legacy receipt that predates grantedItems.
+  const entitledMemberUris =
+    isProduct && "items" in item
+      ? Array.isArray(receipt.grantedItems) && receipt.grantedItems.length > 0
+        ? receipt.grantedItems
+        : item.items.map((r) => r.uri)
+      : [];
   const blobDid = catalogItemSellerDid(item);
   const coverUrl = coverImages[0]?.url;
   const artworkCid = catalogItemArtworkCid(item);
@@ -407,9 +431,10 @@ export function PurchaseDetailPage() {
       <div>
         <Link
           to="/dashboard"
-          className="text-sm text-muted-foreground underline underline-offset-4"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
-          ← Purchases
+          <ArrowLeft className="size-4" />
+          Purchases
         </Link>
       </div>
 
@@ -422,7 +447,11 @@ export function PurchaseDetailPage() {
             className="block overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64 cursor-zoom-in transition-opacity hover:opacity-90"
           >
             {coverUrl ? (
-              <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+              <img
+                src={coverUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
             ) : (
               <ArtworkImage
                 agent={agent}
@@ -490,6 +519,10 @@ export function PurchaseDetailPage() {
         </div>
       ) : null}
 
+      {"tags" in item && item.tags?.length ? (
+        <TagTokens tags={item.tags} part="tokens" />
+      ) : null}
+
       <section className="flex flex-wrap gap-2" aria-label="Metadata">
         {"releaseDate" in item && item.releaseDate ? (
           <MetadataChip>
@@ -505,6 +538,9 @@ export function PurchaseDetailPage() {
         {"genre" in item
           ? item.genre?.map((g) => <MetadataChip key={g}>{g}</MetadataChip>)
           : null}
+        {"tags" in item && item.tags?.length ? (
+          <TagTokens tags={item.tags} part="plain" />
+        ) : null}
       </section>
 
       {"description" in item && item.description ? (
@@ -554,11 +590,11 @@ export function PurchaseDetailPage() {
             {zipBusy ? "Preparing…" : "Download all (.zip)"}
           </Button>
           <ol className="list-none space-y-2 text-sm m-0 p-0">
-            {item.items.map((ref, index) => {
-              const meta = productItemMeta[ref.uri];
+            {entitledMemberUris.map((uri, index) => {
+              const meta = productItemMeta[uri];
               return (
                 <li
-                  key={ref.uri}
+                  key={uri}
                   className="flex items-center justify-between gap-2 py-1.5"
                 >
                   <span className="flex min-w-0 flex-1 items-baseline gap-2">
@@ -568,7 +604,7 @@ export function PurchaseDetailPage() {
                       </span>
                     ) : null}
                     <span className="min-w-0 flex-1 truncate text-sm">
-                      <span className="font-medium">{meta?.title ?? ref.uri}</span>
+                      <span className="font-medium">{meta?.title ?? uri}</span>
                       {meta?.durationMs != null ? (
                         <span className="ml-2 text-muted-foreground tabular-nums">
                           {formatDuration(meta.durationMs)}
@@ -581,10 +617,10 @@ export function PurchaseDetailPage() {
                     variant="outline"
                     size="sm"
                     className="shrink-0"
-                    disabled={itemDownloadingUri === ref.uri}
-                    onClick={() => void downloadDigitalItemUri(ref.uri)}
+                    disabled={itemDownloadingUri === uri}
+                    onClick={() => void downloadDigitalItemUri(uri)}
                   >
-                    {itemDownloadingUri === ref.uri ? "Preparing…" : "Download"}
+                    {itemDownloadingUri === uri ? "Preparing…" : "Download"}
                   </Button>
                 </li>
               );

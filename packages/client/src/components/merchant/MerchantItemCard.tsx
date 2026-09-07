@@ -1,9 +1,21 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { Agent } from "@atproto/api";
-import { Pause, Pencil, Play, SquareArrowOutUpRight } from "lucide-react";
+import {
+  MoreHorizontal,
+  Pause,
+  Play,
+  SquareArrowOutUpRight,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ArtworkImage } from "@/components/public/ArtworkImage";
 import type { MerchantItemRow } from "@/hooks/useMerchantCatalog";
 import type { ListingRow } from "@/lib/atproto/records";
@@ -18,6 +30,8 @@ import {
   rowCoverImageUrl,
   storefrontHref,
 } from "./merchantItemDisplay";
+import { RelationshipBadge } from "./RelationshipBadge";
+import type { MerchantRowActions } from "./MerchantItemRow";
 
 export function MerchantItemCard({
   agent,
@@ -26,6 +40,9 @@ export function MerchantItemCard({
   listingRow,
   pending,
   onToggleStatus,
+  actions,
+  showKind = true,
+  showRelationship = true,
 }: {
   agent: Agent;
   merchantDid: string;
@@ -33,7 +50,11 @@ export function MerchantItemCard({
   listingRow: ListingRow | undefined;
   pending: boolean;
   onToggleStatus: () => void;
+  actions: MerchantRowActions;
+  showKind?: boolean;
+  showRelationship?: boolean;
 }) {
+  const navigate = useNavigate();
   const title = row.item.title;
   const listing = listingRow?.listing;
 
@@ -64,16 +85,21 @@ export function MerchantItemCard({
       <CardContent className="space-y-1.5 p-3">
         <Link
           to={editHref(row)}
-          className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          className="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <h3 className="text-sm font-medium leading-tight line-clamp-2 hover:underline">
+          <h3 className="line-clamp-2 text-sm font-medium leading-tight hover:underline">
             {title}
           </h3>
         </Link>
         <div className="flex flex-wrap items-center gap-1">
-          <Badge variant="outline" className="text-[10px]">
-            {kindLabel(row.kind)}
-          </Badge>
+          {showKind ? (
+            <Badge variant="outline" className="text-[10px]">
+              {kindLabel(row.kind)}
+            </Badge>
+          ) : null}
+          {showRelationship ? (
+            <RelationshipBadge relationship={actions.relationship} />
+          ) : null}
           {listing ? (
             <Badge
               variant={listingStatusBadgeVariant(listing.status)}
@@ -89,40 +115,90 @@ export function MerchantItemCard({
           {itemDetailText(row)}
         </p>
         <div className="flex items-center justify-between gap-2 pt-0.5">
-          <span className="text-sm font-medium">
+          <span
+            className={cn(
+              "text-sm font-medium",
+              listing &&
+                listing.status !== "active" &&
+                "text-muted-foreground opacity-70",
+            )}
+          >
             {listing ? formatMoney(listing.price) : "—"}
           </span>
           <div className="flex items-center gap-0.5">
-            <Link
-              to={editHref(row)}
-              className={cn(buttonVariants({ variant: "ghost", size: "icon-xs" }))}
-              title="Edit"
-              aria-label="Edit"
-            >
-              <Pencil />
-            </Link>
-            <Link
-              to={storefrontHref(row.uri, title)}
-              className={cn(buttonVariants({ variant: "ghost", size: "icon-xs" }))}
-              title="View on storefront"
-              aria-label="View on storefront"
-            >
-              <SquareArrowOutUpRight />
-            </Link>
-            {listing ? (
+            {actions.canCreateListing ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={actions.onCreateListing}
+              >
+                List
+              </Button>
+            ) : null}
+            {listing &&
+            listing.status !== "archived" &&
+            listing.status !== "superseded" ? (
               <button
                 type="button"
-                className={cn(buttonVariants({ variant: "ghost", size: "icon-xs" }))}
+                className={cn(
+                  buttonVariants({ variant: "ghost", size: "icon-xs" }),
+                )}
                 disabled={pending}
-                title={listing.status === "active" ? "Pause listing" : "Activate listing"}
+                title={
+                  listing.status === "active"
+                    ? "Pause listing"
+                    : "Activate listing"
+                }
                 aria-label={
-                  listing.status === "active" ? "Pause listing" : "Activate listing"
+                  listing.status === "active"
+                    ? "Pause listing"
+                    : "Activate listing"
                 }
                 onClick={onToggleStatus}
               >
                 {listing.status === "active" ? <Pause /> : <Play />}
               </button>
             ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="More actions"
+                className={cn(
+                  buttonVariants({ variant: "ghost", size: "icon-xs" }),
+                )}
+              >
+                <MoreHorizontal />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onSelect={() => navigate(editHref(row))}>
+                  Edit details
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    window.open(storefrontHref(row.uri, title), "_blank");
+                  }}
+                >
+                  <SquareArrowOutUpRight className="size-3.5" />
+                  View on storefront
+                </DropdownMenuItem>
+                {actions.canEditListing || listing ? (
+                  <DropdownMenuSeparator />
+                ) : null}
+                {actions.canEditListing ? (
+                  <DropdownMenuItem onSelect={actions.onEditListing}>
+                    Edit listing
+                  </DropdownMenuItem>
+                ) : null}
+                {listing ? (
+                  <DropdownMenuItem
+                    destructive
+                    onSelect={actions.onDeleteListing}
+                  >
+                    Delete listing
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </CardContent>

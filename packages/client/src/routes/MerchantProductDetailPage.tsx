@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronDown, ChevronUp, Download, Pencil, Tag } from "lucide-react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Pencil,
+  Tag,
+} from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
-import { BatchFileDropzone, type BatchFileEntry } from "@/components/shared/BatchFileDropzone";
+import {
+  BatchFileDropzone,
+  type BatchFileEntry,
+} from "@/components/shared/BatchFileDropzone";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
+import { MarkdownBody } from "@/components/shared/MarkdownBody";
+import { MetadataChip } from "@/components/shared/MetadataChip";
 import { TagsInput } from "@/components/shared/TagsInput";
+import { TagTokens } from "@/components/shared/TagTokens";
 import {
   createInventorySession,
   inventoryUserFacingError,
@@ -15,48 +27,46 @@ import {
   uploadFileToInventoryObject,
 } from "@/lib/api/inventoryApi";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DetailToolbar, type ToolAction } from "@/components/merchant/detailTools";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
   addCatalogProductAsset,
-  findStaleListingsForItem,
+  buildItemRefFromUri,
+  catalogProductDownloadUrl,
+  getCatalogItem,
   getCatalogProduct,
   getCatalogProductAssets,
-  listCatalogItemRows,
+  getRecordValueWithCid,
   listListingRows,
   putCatalogProduct,
   putListing,
   removeCatalogProductAsset,
   syncCatalogProduct,
-  catalogProductDownloadUrl,
   updateCatalogProductSettings,
   type CatalogItemRow,
   type CatalogProductAssets,
   type CatalogProductRow,
-  type ListingRow,
 } from "@/lib/atproto/records";
 import { PRODUCT_TYPE_OPTIONS, productTypeConfig } from "@/lib/productTypes";
 import { contentClassFromFormat } from "@/lib/itemContentClass";
+import { itemMetaLabel, isAudioMeta } from "@/lib/itemMetaLabel";
+import { formatMoney } from "@/lib/format";
 import { probeImageSize, probeVideoDuration } from "@/lib/media/probe";
-import { cn, moveArrayItem } from "@/lib/utils";
-import type { ItemRef } from "@/types/lexicons";
+import { cn, formatBytes, moveArrayItem } from "@/lib/utils";
+import type { ItemRef, LicenseTerms, Listing } from "@/types/lexicons";
 
 const titleFromFileName = (name: string) => name.replace(/\.[^./\\]+$/, "");
 
+function isTerminalStatus(s: Listing["status"]): boolean {
+  return s === "archived" || s === "superseded";
+}
+
 export function MerchantProductDetailPage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const uriParam = searchParams.get("uri")?.trim() ?? "";
   const uri = useMemo(() => {
     try {
@@ -72,7 +82,17 @@ export function MerchantProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [product, setProduct] = useState<CatalogProductRow | null>(null);
-  const [itemsByUri, setItemsByUri] = useState<Record<string, CatalogItemRow>>({});
+  const [itemsByUri, setItemsByUri] = useState<Record<string, CatalogItemRow>>(
+    {},
+  );
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [listingUri, setListingUri] = useState<string | null>(null);
+  const [license, setLicense] = useState<LicenseTerms | null>(null);
+  const [licenseCid, setLicenseCid] = useState<string | null>(null);
+  /** Non-terminal listing per member-item AT-URI — drives the per-row Create/View listing action. */
+  const [childListingByUri, setChildListingByUri] = useState<
+    Record<string, Listing>
+  >({});
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -85,22 +105,22 @@ export function MerchantProductDetailPage() {
   const [saving, setSaving] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
   const [assets, setAssets] = useState<CatalogProductAssets>({
     coverImages: [],
     includedAssets: [],
   });
   const [uploadingCoverArt, setUploadingCoverArt] = useState(false);
-  const [uploadingAssetIds, setUploadingAssetIds] = useState<Set<string>>(new Set());
+  const [uploadingAssetIds, setUploadingAssetIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [removingAssetId, setRemovingAssetId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!uri) return;
     setLoading(true);
     setLoadError(null);
-    const [p, allItems, productAssets] = await Promise.all([
+    const [p, productAssets] = await Promise.all([
       getCatalogProduct(uri),
-      listCatalogItemRows(),
       getCatalogProductAssets(uri),
     ]);
     if (!p) {
@@ -116,12 +136,69 @@ export function MerchantProductDetailPage() {
     setItems(p.items as ItemRef[]);
     setProductType(p.productType);
     setArtIncludedInDownload(p.artIncludedInDownload);
-    setItemsByUri(Object.fromEntries(allItems.map((r) => [r.uri, r])));
     setAssets(productAssets ?? { coverImages: [], includedAssets: [] });
+
+    // Per-member fetch: the bulk item list has no media metadata (runtime /
+    // size / dimensions) -- only this endpoint joins the upload object, same
+    // as the storefront product page.
+    const memberMetas = await Promise.all(
+      (p.items as ItemRef[]).map((ref) => getCatalogItem(ref.uri)),
+    );
+    setItemsByUri(
+      Object.fromEntries(
+        memberMetas
+          .filter((m): m is CatalogItemRow => !!m)
+          .map((m) => [m.uri, m]),
+      ),
+    );
+
+    const rows = await listListingRows(p.sellerDid).catch(() => []);
+    const primary = rows
+      .filter((r) => r.listing.item.uri === uri && !r.listing.parentListing)
+      .sort((a, b) => {
+        const at = isTerminalStatus(a.listing.status) ? 1 : 0;
+        const bt = isTerminalStatus(b.listing.status) ? 1 : 0;
+        if (at !== bt) return at - bt;
+        return (
+          Date.parse(b.listing.createdAt) - Date.parse(a.listing.createdAt)
+        );
+      })[0];
+    const primaryActive =
+      primary && !isTerminalStatus(primary.listing.status) ? primary : null;
+    setListing(primaryActive?.listing ?? null);
+    setListingUri(primaryActive?.uri ?? null);
+    if (primaryActive?.listing.licenseUri) {
+      const lt = await getRecordValueWithCid<LicenseTerms>(
+        primaryActive.listing.licenseUri,
+      ).catch(() => null);
+      setLicense(lt?.value ?? null);
+      setLicenseCid(lt?.cid ?? null);
+    } else {
+      setLicense(null);
+      setLicenseCid(null);
+    }
+
+    const memberUris = new Set((p.items as ItemRef[]).map((r) => r.uri));
+    const byItem: Record<string, Listing> = {};
+    for (const r of rows) {
+      if (isTerminalStatus(r.listing.status)) continue;
+      if (r.listing.item.uri === uri) continue;
+      if (!memberUris.has(r.listing.item.uri)) continue;
+      byItem[r.listing.item.uri] = r.listing;
+    }
+    setChildListingByUri(byItem);
+
     setLoading(false);
   }, [uri]);
 
-  async function onSaveSettings(next: { productType?: string; artIncludedInDownload?: boolean }) {
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function onSaveSettings(next: {
+    productType?: string;
+    artIncludedInDownload?: boolean;
+  }) {
     setSavingSettings(true);
     try {
       const updated = await updateCatalogProductSettings(uri, next);
@@ -133,15 +210,13 @@ export function MerchantProductDetailPage() {
       setArtIncludedInDownload(updated.artIncludedInDownload);
       toast.success("Saved");
     } catch (e) {
-      toast.error("Could not save", { description: inventoryUserFacingError(e) });
+      toast.error("Could not save", {
+        description: inventoryUserFacingError(e),
+      });
     } finally {
       setSavingSettings(false);
     }
   }
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const removeItem = useCallback((itemUri: string) => {
     setItems((prev) => prev.filter((r) => r.uri !== itemUri));
@@ -168,9 +243,6 @@ export function MerchantProductDetailPage() {
         const obj = objects[0];
         await uploadFileToInventoryObject(obj.objectId, file, obj.uploadKind);
 
-        // Browser-side media probes (no deps / server load) -- byte size is
-        // captured server-side regardless; audio duration isn't parsed on this
-        // quick-add path, same as before.
         const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
         const cls = contentClassFromFormat(ext);
         let durationMs: number | undefined;
@@ -188,7 +260,7 @@ export function MerchantProductDetailPage() {
           items: [
             {
               objectId: obj.objectId,
-              title: file.name.replace(/\.[^./\\]+$/, ""),
+              title: titleFromFileName(file.name),
               durationMs,
               width,
               height,
@@ -201,8 +273,17 @@ export function MerchantProductDetailPage() {
           cid: it.cid,
         }));
         setItems((prev) => [...prev, ...newRefs]);
-        const fresh = await listCatalogItemRows();
-        setItemsByUri(Object.fromEntries(fresh.map((r) => [r.uri, r])));
+        const freshMetas = await Promise.all(
+          newRefs.map((r) => getCatalogItem(r.uri)),
+        );
+        setItemsByUri((prev) => ({
+          ...prev,
+          ...Object.fromEntries(
+            freshMetas
+              .filter((m): m is CatalogItemRow => !!m)
+              .map((m) => [m.uri, m]),
+          ),
+        }));
         toast.success("Item added — save to publish the updated product");
       } catch (e) {
         toast.error("Could not add item", {
@@ -252,7 +333,9 @@ export function MerchantProductDetailPage() {
 
   const addIncludedAssetBatch = useCallback(
     async (entries: BatchFileEntry[]) => {
-      setUploadingAssetIds((prev) => new Set([...prev, ...entries.map((e) => e.id)]));
+      setUploadingAssetIds(
+        (prev) => new Set([...prev, ...entries.map((e) => e.id)]),
+      );
       try {
         const { sessionId } = await createInventorySession("product", uri);
         const { objects } = await registerInventoryObjects(
@@ -269,7 +352,11 @@ export function MerchantProductDetailPage() {
           const entry = entries[i];
           const obj = objects[i];
           try {
-            await uploadFileToInventoryObject(obj.objectId, entry.file, obj.uploadKind);
+            await uploadFileToInventoryObject(
+              obj.objectId,
+              entry.file,
+              obj.uploadKind,
+            );
             const updated = await addCatalogProductAsset({
               productUri: uri,
               objectId: obj.objectId,
@@ -309,44 +396,55 @@ export function MerchantProductDetailPage() {
       if (updated) setAssets(updated);
       else toast.error("Could not remove");
     } catch (e) {
-      toast.error("Could not remove", { description: inventoryUserFacingError(e) });
+      toast.error("Could not remove", {
+        description: inventoryUserFacingError(e),
+      });
     } finally {
       setRemovingAssetId(null);
     }
   }, []);
 
-  async function doSave(archiveTargets: ListingRow[]) {
+  const paramsChanged = useCallback((): boolean => {
+    if (!product) return false;
+    const sameItems =
+      items.length === product.items.length &&
+      items.every((r, i) => r.uri === (product.items as ItemRef[])[i]?.uri);
+    return (
+      title.trim() !== product.title ||
+      (description.trim() || "") !== (product.description ?? "") ||
+      JSON.stringify(tags) !== JSON.stringify(product.tags ?? []) ||
+      !sameItems
+    );
+  }, [product, title, description, tags, items]);
+
+  /**
+   * Save the product record. A metadata change re-pins the listing's
+   * `item.cid` in place (same URI) so checkout doesn't reject it as
+   * "item_changed" -- price and terms are edited from the listing tool, not
+   * here.
+   */
+  async function doSave() {
     if (!agent || !product) return;
     setSaving(true);
     try {
+      const repin = paramsChanged();
       await putCatalogProduct(agent, uri, {
         title: title.trim(),
         description: description.trim() || undefined,
         tags: tags.length ? tags : undefined,
         items,
       });
-      for (const listing of archiveTargets) {
-        await putListing(agent, listing.uri, {
-          ...listing.listing,
-          status: "archived",
+
+      if (repin && listing && listingUri) {
+        const freshRef = await buildItemRefFromUri(uri);
+        await putListing(agent, listingUri, {
+          ...listing,
+          item: freshRef ?? listing.item,
         });
       }
+
       await syncCatalogProduct(uri);
-      if (archiveTargets.length > 0) {
-        toast.success("Saved — the old listing has been de-listed", {
-          description: "Create a new listing to sell this product again.",
-          action: {
-            label: "Create listing",
-            onClick: () =>
-              navigate(
-                `/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`,
-              ),
-          },
-        });
-      } else {
-        toast.success("Saved");
-      }
-      setStaleListings(null);
+      toast.success("Saved");
       await load();
       setEditing(false);
     } catch (e) {
@@ -364,13 +462,7 @@ export function MerchantProductDetailPage() {
       toast.error("A product needs at least one item");
       return;
     }
-    const listings = await listListingRows(product.sellerDid).catch(() => []);
-    const stale = findStaleListingsForItem(listings, product.uri, product.cid);
-    if (stale.length > 0) {
-      setStaleListings(stale);
-      return;
-    }
-    await doSave([]);
+    await doSave();
   }
 
   function cancelEditing() {
@@ -413,98 +505,418 @@ export function MerchantProductDetailPage() {
     );
   }
 
-  return (
-    <div className="w-full min-w-0 max-w-2xl space-y-6">
-      <h1 className="text-2xl font-semibold">
-        {editing ? "Edit product" : "Product"}
-      </h1>
+  const cfg = productTypeConfig(productType);
+  const isMusic = cfg.value === "music";
+  const coverImages = assets.coverImages;
 
-      <div className="flex flex-wrap items-start gap-4">
-        {product.coverImages.length > 0 ? (
-          <div className="max-w-xs">
-            <CoverImageSlideshow images={product.coverImages} alt={product.title} />
-          </div>
-        ) : null}
-        <div className="ml-auto grid grid-cols-2 gap-1">
-          {!editing ? (
+  const toolActions: ToolAction[] = [
+    ...(!editing
+      ? [
+          {
+            key: "edit",
+            Icon: Pencil,
+            label: "Edit product",
+            onClick: () => setEditing(true),
+          },
+        ]
+      : []),
+    {
+      key: "download",
+      Icon: Download,
+      label: "Download package",
+      externalHref: catalogProductDownloadUrl(uri),
+    },
+    ...(!editing
+      ? [
+          {
+            key: "list",
+            Icon: Tag,
+            label: listing ? "Manage listings" : "Create listing",
+            href: `/merchant/listings/new?uri=${encodeURIComponent(uri)}`,
+          },
+        ]
+      : []),
+  ];
+
+  // Music product: audio members are the numbered "Tracks"; any non-audio
+  // member drops to "Also included". Bonus files (catalogProductAssets) are
+  // never listed here -- same split the storefront uses.
+  const musicTracks = isMusic
+    ? items.filter((r) => isAudioMeta(itemsByUri[r.uri]))
+    : [];
+  const musicAlsoIncluded = isMusic
+    ? items.filter((r) => !isAudioMeta(itemsByUri[r.uri]))
+    : [];
+
+  const renderItemRow = (
+    ref: ItemRef,
+    marker: number | "bullet" | null,
+    index: number,
+  ) => {
+    const info = itemsByUri[ref.uri];
+    const metaLabel = itemMetaLabel(info);
+    const childListing = childListingByUri[ref.uri];
+    const editHref = `/merchant/inventory/edit?uri=${encodeURIComponent(
+      ref.uri,
+    )}&from=${encodeURIComponent(uri)}`;
+    return (
+      <li
+        key={ref.uri}
+        className="flex items-center justify-between gap-6 py-1.5"
+      >
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+          {marker != null ? (
+            <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+              {marker === "bullet" ? "•" : `${marker}.`}
+            </span>
+          ) : null}
+          {editing ? (
+            <span className="flex shrink-0 flex-col">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Move up"
+                disabled={index === 0}
+                onClick={() => moveItem(index, -1)}
+              >
+                <ChevronUp />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Move down"
+                disabled={index === items.length - 1}
+                onClick={() => moveItem(index, 1)}
+              >
+                <ChevronDown />
+              </Button>
+            </span>
+          ) : null}
+          <span
+            className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-sm"
+            style={{
+              maskImage:
+                "linear-gradient(to right, black 70%, transparent 100%)",
+              WebkitMaskImage:
+                "linear-gradient(to right, black 70%, transparent 100%)",
+            }}
+          >
+            <Link
+              to={editHref}
+              className="font-medium underline-offset-2 hover:underline"
+            >
+              {info?.title ?? ref.uri}
+            </Link>
+            {metaLabel ? (
+              <span className="ml-2 font-mono text-xs text-muted-foreground">
+                {metaLabel}
+              </span>
+            ) : null}
+          </span>
+        </span>
+        {editing ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            onClick={() => removeItem(ref.uri)}
+          >
+            Remove
+          </Button>
+        ) : childListing ? (
+          <Link
+            to={editHref}
+            className={cn(
+              buttonVariants({ size: "sm", variant: "outline" }),
+              "shrink-0",
+            )}
+          >
+            View listing
+          </Link>
+        ) : (
+          <Link
+            to={`/merchant/listings/new?uri=${encodeURIComponent(ref.uri)}`}
+            className={cn(
+              buttonVariants({ size: "sm", variant: "outline" }),
+              "shrink-0",
+            )}
+          >
+            Create listing
+          </Link>
+        )}
+      </li>
+    );
+  };
+
+  return (
+    <div className="w-full min-w-0 max-w-5xl space-y-8">
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          to="/merchant/inventory"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground pt-4"
+        >
+          <ArrowLeft className="size-4" />
+          Back to inventory
+        </Link>
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <Button onClick={() => void onSave()} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
             <Button
               type="button"
-              variant="outline"
-              size="icon-sm"
-              aria-label="Edit product"
-              title="Edit product"
-              onClick={() => setEditing(true)}
+              variant="ghost"
+              onClick={cancelEditing}
+              disabled={saving}
             >
-              <Pencil className="size-4" />
+              Cancel
             </Button>
-          ) : null}
-          <a
-            href={catalogProductDownloadUrl(uri)}
-            className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
-            aria-label="Download package"
-            title="Download package -- the same package a buyer would receive, for handing off during support/incident triage"
-          >
-            <Download className="size-4" />
-          </a>
-          {!editing ? (
-            <Link
-              to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
-              className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
-              aria-label="Create listing"
-              title="Create listing"
-            >
-              <Tag className="size-4" />
-            </Link>
-          ) : null}
-          <Link
-            to="/merchant/inventory"
-            className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
-            aria-label="Back to inventory"
-            title="Back to inventory"
-          >
-            <ArrowLeft className="size-4" />
-          </Link>
-        </div>
+          </div>
+        ) : null}
       </div>
 
-      {editing ? (
-        <>
-          <div className="space-y-2">
-            <Label htmlFor="prod-title">Title</Label>
-            <Input
-              id="prod-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              maxLength={512}
-            />
+      {/* Hero — mirrors the storefront product layout */}
+      <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
+        <div className="space-y-3">
+          <div className="aspect-square max-h-[min(70vw,28rem)] overflow-hidden rounded-xl border border-border bg-muted">
+            {coverImages[0] ? (
+              <img
+                src={coverImages[0].url}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+                No cover art
+              </div>
+            )}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="prod-desc">Description</Label>
-            <Textarea
-              id="prod-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={4}
-              maxLength={4096}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="prod-tags">Tags</Label>
-            <TagsInput
-              id="prod-tags"
-              tags={tags}
-              onChange={setTags}
-              placeholder="e.g. lofi, instrumental, album"
-            />
+          {editing ? (
+            <div className="space-y-2">
+              {coverImages.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {coverImages.map((img) => (
+                    <div key={img.id} className="relative">
+                      <img
+                        src={img.url}
+                        alt=""
+                        className="h-16 w-16 rounded-md border border-border object-cover"
+                      />
+                      <button
+                        type="button"
+                        disabled={removingAssetId === img.id}
+                        onClick={() => void removeAsset(img.id)}
+                        className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground disabled:opacity-60"
+                        aria-label="Remove image"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {cfg.allowMultipleCoverImages || coverImages.length === 0 ? (
+                <ImageDropzone
+                  onFile={(file) => void addCoverImage(file)}
+                  onError={(m) => toast.error(m)}
+                />
+              ) : null}
+              {uploadingCoverArt ? (
+                <p className="text-xs text-muted-foreground">Uploading…</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            {editing ? (
+              <div className="flex-1 space-y-1.5">
+                <Label htmlFor="prod-title">Title</Label>
+                <Input
+                  id="prod-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                  maxLength={512}
+                />
+              </div>
+            ) : (
+              <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+            )}
+            <DetailToolbar actions={toolActions} panelTitle="Product controls" />
           </div>
 
-          <div className="space-y-2 rounded-lg border border-border p-3">
-            <Label>Product type</Label>
+          {listing ? (
+            <p className="text-2xl font-medium">{formatMoney(listing.price)}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Not listed yet</p>
+          )}
+
+          {editing ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="prod-tags">Tags</Label>
+              <TagsInput
+                id="prod-tags"
+                tags={tags}
+                onChange={setTags}
+                placeholder="e.g. lofi, instrumental, album"
+              />
+            </div>
+          ) : tags.length ? (
+            <TagTokens tags={tags} part="tokens" className="pt-1" />
+          ) : null}
+        </div>
+      </section>
+
+      {/* Metadata */}
+      <section
+        className="flex flex-wrap items-center gap-2"
+        aria-label="Metadata"
+      >
+        <MetadataChip>{cfg.label}</MetadataChip>
+        <MetadataChip>
+          {items.length}{" "}
+          {isMusic
+            ? items.length === 1
+              ? "track"
+              : "tracks"
+            : items.length === 1
+              ? "item"
+              : "items"}
+        </MetadataChip>
+        {product.totalBytes ? (
+          <MetadataChip>{formatBytes(product.totalBytes)}</MetadataChip>
+        ) : null}
+        {!editing && tags.length ? (
+          <TagTokens tags={tags} part="plain" />
+        ) : null}
+      </section>
+
+      {/* Items */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-medium">
+            {isMusic ? "Tracks" : "Items"}
+          </h2>
+          {editing ? (
+            <label
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "cursor-pointer",
+                addingItem && "pointer-events-none opacity-60",
+              )}
+            >
+              {addingItem ? "Adding…" : "Add item"}
+              <input
+                type="file"
+                className="sr-only"
+                disabled={addingItem}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void addItemFromFile(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          ) : null}
+        </div>
+        {editing ? (
+          <p className="text-xs text-muted-foreground">
+            Order here is display order on the storefront. Removing an item
+            drops it from the bundle.
+          </p>
+        ) : null}
+
+        {editing ? (
+          <ol className="m-0 list-none space-y-2 p-0 text-sm">
+            {items.map((ref, i) => renderItemRow(ref, i + 1, i))}
+          </ol>
+        ) : isMusic ? (
+          <>
+            <ol className="m-0 list-none space-y-2 p-0 text-sm">
+              {musicTracks.map((ref, i) =>
+                renderItemRow(ref, i + 1, items.indexOf(ref)),
+              )}
+            </ol>
+            {musicAlsoIncluded.length > 0 ? (
+              <div className="space-y-3 pt-4">
+                <h3 className="text-base font-medium">Also included</h3>
+                <ul className="m-0 list-none space-y-2 p-0 text-sm">
+                  {musicAlsoIncluded.map((ref) =>
+                    renderItemRow(ref, "bullet", items.indexOf(ref)),
+                  )}
+                </ul>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <ol className="m-0 list-none space-y-2 p-0 text-sm">
+            {items.map((ref, i) => renderItemRow(ref, null, i))}
+          </ol>
+        )}
+      </section>
+
+      {/* Description */}
+      <section className="space-y-2">
+        <h2 className="text-lg font-medium">Description</h2>
+        {editing ? (
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={5}
+            maxLength={4096}
+            placeholder="Shown on the storefront. Markdown supported."
+          />
+        ) : description ? (
+          <div className="max-w-none text-sm text-foreground">
+            <MarkdownBody>{description}</MarkdownBody>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No description</p>
+        )}
+      </section>
+
+      {/* License — the terms the current listing was created against */}
+      {listing && license ? (
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium">License</h2>
+          <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+            {typeof license.licenseText === "string"
+              ? license.licenseText
+              : "Legacy license format — see full terms."}
+          </p>
+          {licenseCid ? (
+            <a
+              href={`/license/${encodeURIComponent(licenseCid)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-sm text-primary underline-offset-2 hover:underline"
+            >
+              View full license →
+            </a>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* Merchant-only settings */}
+      {editing ? (
+        <section className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+          <div>
+            <h2 className="text-sm font-medium">
+              Merchant settings — not shown to buyers
+            </h2>
             <p className="text-xs text-muted-foreground">
-              UI-only — never part of the public record, so changing it doesn't
-              affect any existing listing.
+              These save immediately and never touch the public record or any
+              listing.
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Product type</Label>
             <div className="flex flex-wrap gap-2">
               {PRODUCT_TYPE_OPTIONS.map((opt) => (
                 <Button
@@ -513,7 +925,9 @@ export function MerchantProductDetailPage() {
                   size="sm"
                   variant={productType === opt.value ? "default" : "outline"}
                   disabled={savingSettings}
-                  onClick={() => void onSaveSettings({ productType: opt.value })}
+                  onClick={() =>
+                    void onSaveSettings({ productType: opt.value })
+                  }
                 >
                   {opt.label}
                 </Button>
@@ -525,7 +939,9 @@ export function MerchantProductDetailPage() {
                 checked={artIncludedInDownload}
                 disabled={savingSettings}
                 onChange={(e) =>
-                  void onSaveSettings({ artIncludedInDownload: e.target.checked })
+                  void onSaveSettings({
+                    artIncludedInDownload: e.target.checked,
+                  })
                 }
               />
               Include cover art in the buyer's download package
@@ -533,51 +949,10 @@ export function MerchantProductDetailPage() {
           </div>
 
           <div className="space-y-2">
-            <Label>
-              {productTypeConfig(productType).allowMultipleCoverImages
-                ? "Cover images"
-                : "Cover art"}
-            </Label>
-            {assets.coverImages.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {assets.coverImages.map((img) => (
-                  <div key={img.id} className="relative">
-                    <img
-                      src={img.url}
-                      alt=""
-                      className="h-20 w-20 rounded-md border border-border object-cover"
-                    />
-                    <button
-                      type="button"
-                      disabled={removingAssetId === img.id}
-                      onClick={() => void removeAsset(img.id)}
-                      className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground disabled:opacity-60"
-                      aria-label="Remove image"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {productTypeConfig(productType).allowMultipleCoverImages ||
-            assets.coverImages.length === 0 ? (
-              <ImageDropzone
-                onFile={(file) => void addCoverImage(file)}
-                onError={(m) => toast.error(m)}
-              />
-            ) : null}
-            {uploadingCoverArt ? (
-              <p className="text-xs text-muted-foreground">Uploading…</p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
             <Label>Included assets ({assets.includedAssets.length})</Label>
             <p className="text-xs text-muted-foreground">
-              Liner notes, a poster, anything else bundled with the purchase
-              but not part of the product's core items. Always included in
-              the buyer's download.
+              Liner notes, a poster, anything bundled with the purchase but not
+              a core item. Always in the buyer's download.
             </p>
             {assets.includedAssets.length > 0 ? (
               <div className="space-y-2">
@@ -614,202 +989,8 @@ export function MerchantProductDetailPage() {
               <p className="text-xs text-muted-foreground">Uploading…</p>
             ) : null}
           </div>
-
-          <div className="space-y-2">
-            <Label>Items ({items.length})</Label>
-            <p className="text-xs text-muted-foreground">
-              Order here is display order on the storefront.
-            </p>
-            <div className="space-y-2">
-              {items.map((ref, index) => {
-                const info = itemsByUri[ref.uri];
-                return (
-                  <div
-                    key={ref.uri}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
-                  >
-                    <div className="flex flex-col">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label="Move up"
-                        disabled={index === 0}
-                        onClick={() => moveItem(index, -1)}
-                      >
-                        <ChevronUp />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label="Move down"
-                        disabled={index === items.length - 1}
-                        onClick={() => moveItem(index, 1)}
-                      >
-                        <ChevronDown />
-                      </Button>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        to={`/merchant/inventory/edit?uri=${encodeURIComponent(ref.uri)}`}
-                        className="truncate text-sm font-medium hover:underline"
-                      >
-                        {info?.title ?? ref.uri}
-                      </Link>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {[info?.category, info?.format].filter(Boolean).join(" · ")}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeItem(ref.uri)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-            <label
-              className={cn(
-                buttonVariants({ variant: "outline", size: "sm" }),
-                "cursor-pointer",
-                addingItem && "pointer-events-none opacity-60",
-              )}
-            >
-              {addingItem ? "Adding…" : "Add item"}
-              <input
-                type="file"
-                className="sr-only"
-                disabled={addingItem}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void addItemFromFile(f);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button onClick={() => void onSave()} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={cancelEditing}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="space-y-1">
-            <h2 className="text-lg font-medium">{product.title}</h2>
-            {product.description ? (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                {product.description}
-              </p>
-            ) : null}
-          </div>
-          <p className="text-sm">
-            <span className="text-muted-foreground">Tags: </span>
-            {product.tags?.length ? product.tags.join(", ") : "—"}
-          </p>
-
-          <div className="space-y-1 rounded-lg border border-border p-3 text-sm">
-            <p>
-              <span className="text-muted-foreground">Product type: </span>
-              {productTypeConfig(product.productType).label}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Cover art in download: </span>
-              {product.artIncludedInDownload ? "Yes" : "No"}
-            </p>
-            {assets.includedAssets.length > 0 ? (
-              <p>
-                <span className="text-muted-foreground">Included assets: </span>
-                {assets.includedAssets.map((a) => a.role).join(", ")}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label>Items ({items.length})</Label>
-            <div className="space-y-2">
-              {items.map((ref) => {
-                const info = itemsByUri[ref.uri];
-                return (
-                  <div
-                    key={ref.uri}
-                    className="rounded-lg border border-border p-3"
-                  >
-                    <Link
-                      to={`/merchant/inventory/edit?uri=${encodeURIComponent(ref.uri)}`}
-                      className="truncate text-sm font-medium hover:underline"
-                    >
-                      {info?.title ?? ref.uri}
-                    </Link>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {[info?.category, info?.format].filter(Boolean).join(" · ")}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      )}
-
-      <Dialog
-        open={!!staleListings}
-        onOpenChange={(open) => {
-          if (!open) setStaleListings(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {staleListings?.length === 1
-                ? "1 listing will be de-listed"
-                : `${staleListings?.length ?? 0} listings will be de-listed`}
-            </DialogTitle>
-            <DialogDescription>
-              Saving changes this product's content, which invalidates the
-              CID that {staleListings?.length === 1 ? "this listing" : "these listings"}{" "}
-              pinned when created. To protect buyers from checking out
-              against terms they never saw,{" "}
-              {staleListings?.length === 1 ? "it" : "they"} will be
-              permanently de-listed and can't be reactivated — create a new
-              listing afterward if you want to sell this product again.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setStaleListings(null)}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void doSave(staleListings ?? [])}
-              disabled={saving}
-            >
-              {saving
-                ? "Saving…"
-                : "I acknowledge this item will be de-listed"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </section>
+      ) : null}
     </div>
   );
 }

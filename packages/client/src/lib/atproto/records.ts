@@ -225,8 +225,7 @@ function isRecording(v: unknown): v is Recording {
   return (
     typeof v === "object" &&
     v !== null &&
-    (v as Recording).$type ===
-      "diamonds.whereditgo.bazaar.catalog.recording"
+    (v as Recording).$type === "diamonds.whereditgo.bazaar.catalog.recording"
   );
 }
 
@@ -243,8 +242,7 @@ function isCollection(v: unknown): v is Collection {
   return (
     typeof v === "object" &&
     v !== null &&
-    (v as Collection).$type ===
-      "diamonds.whereditgo.bazaar.catalog.collection"
+    (v as Collection).$type === "diamonds.whereditgo.bazaar.catalog.collection"
   );
 }
 
@@ -305,7 +303,9 @@ export type PurchaseReceiptRow = {
 };
 
 /** One row per Stripe payment (or per record URI if paymentRef missing). */
-function dedupePurchaseReceiptRows(rows: PurchaseReceiptRow[]): PurchaseReceiptRow[] {
+function dedupePurchaseReceiptRows(
+  rows: PurchaseReceiptRow[],
+): PurchaseReceiptRow[] {
   const byKey = new Map<string, PurchaseReceiptRow>();
   for (const row of rows) {
     const pr = row.receipt.paymentRef?.trim();
@@ -352,7 +352,9 @@ export type PurchaseConsentRow = {
 };
 
 /** One consent per receipt URI (latest consentedAt wins). */
-function dedupePurchaseConsentRows(rows: PurchaseConsentRow[]): PurchaseConsentRow[] {
+function dedupePurchaseConsentRows(
+  rows: PurchaseConsentRow[],
+): PurchaseConsentRow[] {
   const byReceipt = new Map<string, PurchaseConsentRow>();
   for (const row of rows) {
     const ru = row.consent.receiptUri?.trim();
@@ -430,9 +432,7 @@ export async function listPhysicalItemRows(
 
 export type RecordingRow = { uri: string; cid: string; recording: Recording };
 
-export async function listRecordingRows(
-  did: string,
-): Promise<RecordingRow[]> {
+export async function listRecordingRows(did: string): Promise<RecordingRow[]> {
   const records = await listAllRecordsForCollection(
     did,
     BAZAAR_COLLECTION.recording,
@@ -446,7 +446,11 @@ export async function listRecordingRows(
     }));
 }
 
-export type CompositionRow = { uri: string; cid: string; composition: Composition };
+export type CompositionRow = {
+  uri: string;
+  cid: string;
+  composition: Composition;
+};
 
 export async function listCompositionRows(
   did: string,
@@ -492,7 +496,9 @@ export type ProductRow = { uri: string; cid: string; item: Product };
  * never on the PDS record) isn't included here; callers needing it fetch it
  * separately per product via getCatalogProduct (see useCatalog.ts).
  */
-export async function listBazaarItemRows(did: string): Promise<BazaarItemRow[]> {
+export async function listBazaarItemRows(
+  did: string,
+): Promise<BazaarItemRow[]> {
   const agent = await agentForRepo(did);
   const res = (await agent.com.atproto.repo.listRecords({
     repo: did,
@@ -770,8 +776,33 @@ export async function listCatalogProductRows(): Promise<CatalogProductRow[]> {
   return data.products;
 }
 
+/**
+ * True when the merchant has at least one completed payment fulfillment for
+ * `entityUri` (a product or item URI). Used to warn before leaving a newly
+ * added product member unlisted -- past buyers' entitlement is frozen.
+ */
+export async function hasCompletedSale(entityUri: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      browserApiUrl("/api/merchant/payment-fulfillments"),
+      { credentials: "include" },
+    );
+    if (!res.ok) return false;
+    const data = (await res.json()) as {
+      rows?: Array<{ itemUri: string | null; status: string }>;
+    };
+    return (data.rows ?? []).some(
+      (r) => r.itemUri === entityUri && r.status === "completed",
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** ERP-first, public: a single catalog.item by URI (no auth needed, same data storefront reads use). */
-export async function getCatalogItem(uri: string): Promise<CatalogItemRow | null> {
+export async function getCatalogItem(
+  uri: string,
+): Promise<CatalogItemRow | null> {
   const res = await fetch(
     browserApiUrl(`/api/catalog/items?uri=${encodeURIComponent(uri)}`),
   );
@@ -781,7 +812,9 @@ export async function getCatalogItem(uri: string): Promise<CatalogItemRow | null
 }
 
 /** ERP-first, public: a single catalog.product by URI. */
-export async function getCatalogProduct(uri: string): Promise<CatalogProductRow | null> {
+export async function getCatalogProduct(
+  uri: string,
+): Promise<CatalogProductRow | null> {
   const res = await fetch(
     browserApiUrl(`/api/catalog/products?uri=${encodeURIComponent(uri)}`),
   );
@@ -791,7 +824,9 @@ export async function getCatalogProduct(uri: string): Promise<CatalogProductRow 
 }
 
 /** Manual "Sync with PDS": re-fetches live and refreshes the ERP row. */
-export async function syncCatalogItem(uri: string): Promise<CatalogItemRow | null> {
+export async function syncCatalogItem(
+  uri: string,
+): Promise<CatalogItemRow | null> {
   const res = await fetch(browserApiUrl("/api/merchant/catalog/items/sync"), {
     method: "POST",
     credentials: "include",
@@ -804,13 +839,18 @@ export async function syncCatalogItem(uri: string): Promise<CatalogItemRow | nul
 }
 
 /** Manual "Sync with PDS" for a product. */
-export async function syncCatalogProduct(uri: string): Promise<CatalogProductRow | null> {
-  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/sync"), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uri }),
-  });
+export async function syncCatalogProduct(
+  uri: string,
+): Promise<CatalogProductRow | null> {
+  const res = await fetch(
+    browserApiUrl("/api/merchant/catalog/products/sync"),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uri }),
+    },
+  );
   if (!res.ok) return null;
   const data = (await res.json()) as { product: CatalogProductRow | null };
   return data.product;
@@ -825,12 +865,15 @@ export async function updateCatalogProductSettings(
   uri: string,
   settings: { productType?: string | null; artIncludedInDownload?: boolean },
 ): Promise<CatalogProductRow | null> {
-  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/settings"), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uri, ...settings }),
-  });
+  const res = await fetch(
+    browserApiUrl("/api/merchant/catalog/products/settings"),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uri, ...settings }),
+    },
+  );
   if (!res.ok) return null;
   const data = (await res.json()) as { product: CatalogProductRow | null };
   return data.product;
@@ -851,7 +894,9 @@ export async function getCatalogProductAssets(
   productUri: string,
 ): Promise<CatalogProductAssets | null> {
   const res = await fetch(
-    browserApiUrl(`/api/merchant/catalog/products/assets?uri=${encodeURIComponent(productUri)}`),
+    browserApiUrl(
+      `/api/merchant/catalog/products/assets?uri=${encodeURIComponent(productUri)}`,
+    ),
     { credentials: "include" },
   );
   if (!res.ok) return null;
@@ -864,12 +909,15 @@ export async function addCatalogProductAsset(params: {
   objectId: string;
   role: string;
 }): Promise<CatalogProductAssets | null> {
-  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/assets"), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
+  const res = await fetch(
+    browserApiUrl("/api/merchant/catalog/products/assets"),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    },
+  );
   if (!res.ok) return null;
   return (await res.json()) as CatalogProductAssets;
 }
@@ -878,12 +926,15 @@ export async function addCatalogProductAsset(params: {
 export async function removeCatalogProductAsset(
   id: string,
 ): Promise<CatalogProductAssets | null> {
-  const res = await fetch(browserApiUrl("/api/merchant/catalog/products/assets/remove"), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id }),
-  });
+  const res = await fetch(
+    browserApiUrl("/api/merchant/catalog/products/assets/remove"),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    },
+  );
   if (!res.ok) return null;
   return (await res.json()) as CatalogProductAssets;
 }
@@ -896,7 +947,9 @@ export async function getCatalogItemDownloadUrl(
   uri: string,
 ): Promise<{ url: string; fileName: string } | null> {
   const res = await fetch(
-    browserApiUrl(`/api/merchant/catalog/items/download?uri=${encodeURIComponent(uri)}`),
+    browserApiUrl(
+      `/api/merchant/catalog/items/download?uri=${encodeURIComponent(uri)}`,
+    ),
     { credentials: "include" },
   );
   if (!res.ok) return null;
@@ -919,7 +972,9 @@ export async function getLegacyDigitalDownloadUrl(
   uri: string,
 ): Promise<{ url: string; fileName: string } | null> {
   const res = await fetch(
-    browserApiUrl(`/api/merchant/catalog/legacy/item-download?uri=${encodeURIComponent(uri)}`),
+    browserApiUrl(
+      `/api/merchant/catalog/legacy/item-download?uri=${encodeURIComponent(uri)}`,
+    ),
     { credentials: "include" },
   );
   if (!res.ok) return null;
@@ -950,10 +1005,16 @@ export function findStaleListingsForItem(
 ): ListingRow[] {
   return listingRows.filter((row) => {
     const status = row.listing.status;
-    if (status === "archived" || status === "soldOut" || status === "superseded") {
+    if (
+      status === "archived" ||
+      status === "soldOut" ||
+      status === "superseded"
+    ) {
       return false;
     }
-    return row.listing.item.uri === itemUri && row.listing.item.cid === currentCid;
+    return (
+      row.listing.item.uri === itemUri && row.listing.item.cid === currentCid
+    );
   });
 }
 
@@ -1294,9 +1355,7 @@ export async function putCatalogProduct(
   return { cid: res.cid };
 }
 
-export async function listTracksForArtist(
-  did: string,
-): Promise<DigitalItem[]> {
+export async function listTracksForArtist(did: string): Promise<DigitalItem[]> {
   const items = await listCatalogItems(did);
   return items.filter((i) => i.itemClass === "track");
 }

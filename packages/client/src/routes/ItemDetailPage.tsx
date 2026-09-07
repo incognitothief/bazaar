@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { AtUri } from "@atproto/syntax";
+import { ArrowLeft } from "lucide-react";
 import { Helmet } from "react-helmet-async";
-import { Link, Navigate, useParams } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { toast } from "sonner";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
@@ -137,6 +144,11 @@ export function ItemDetailPage() {
     rkey: string;
     slug?: string;
   }>();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  /** `?from=<rkey>` set on member links from a product/collection page -- the
+   * back button then returns there instead of doing a plain history pop. */
+  const fromRkey = searchParams.get("from")?.trim() || null;
   const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
   const legacySegment = !!rkeyParam && isLegacyItemPathSegment(rkeyParam);
 
@@ -153,6 +165,12 @@ export function ItemDetailPage() {
   const [allArtistListings, setAllArtistListings] = useState<ListingRow[]>([]);
   const [ownsCollection, setOwnsCollection] = useState(false);
   const [ownsProduct, setOwnsProduct] = useState(false);
+  /**
+   * The buyer's frozen `grantedItems` for this product, or null when they
+   * don't own it or the receipt predates the field. When null but ownsProduct
+   * is true, every current member counts as owned (legacy behavior).
+   */
+  const [productGrant, setProductGrant] = useState<string[] | null>(null);
   /** Ownership of a standalone purchase (legacy digital item or a catalog.item single) -- collection/product have their own owns* flags above since a bundle purchase is entitlement-checked differently. */
   const [ownsItem, setOwnsItem] = useState(false);
   /** catalog.product's own cover art, or a catalog.item single's borrowed from its owning product -- neither is ever a PDS blob CID. */
@@ -305,13 +323,19 @@ export function ItemDetailPage() {
         if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.product) {
           if (buyerAgent && session?.did) {
             const receipts = await listPurchaseReceiptRows(session.did);
+            const mine = receipts.find((r) => r.receipt.item.uri === itemUri);
             if (!cancelled) {
-              setOwnsProduct(
-                receipts.some((r) => r.receipt.item.uri === itemUri),
+              setOwnsProduct(!!mine);
+              setProductGrant(
+                Array.isArray(mine?.receipt.grantedItems) &&
+                  mine.receipt.grantedItems.length > 0
+                  ? mine.receipt.grantedItems
+                  : null,
               );
             }
           } else if (!cancelled) {
             setOwnsProduct(false);
+            setProductGrant(null);
           }
           const [p, resolvedItems] = await Promise.all([
             getCatalogProduct(itemUri),
@@ -343,6 +367,7 @@ export function ItemDetailPage() {
           }
         } else if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.item) {
           setOwnsProduct(false);
+          setProductGrant(null);
           setProductType(null);
           setProductTotalBytes(null);
           setProductItemMeta({});
@@ -365,6 +390,7 @@ export function ItemDetailPage() {
           }
         } else if (!cancelled) {
           setOwnsProduct(false);
+          setProductGrant(null);
           setCoverImages([]);
           setProductType(null);
           setProductTotalBytes(null);
@@ -447,8 +473,7 @@ export function ItemDetailPage() {
       if (cancelled) return;
 
       const v = merchantList.data.records[0]?.value as
-        | ActorMerchant
-        | undefined;
+        ActorMerchant | undefined;
       const merchantName = v?.displayName?.trim() || null;
       const relayName = profile.displayName?.trim() || null;
       setAuthorDisplayName(merchantName ?? relayName);
@@ -511,19 +536,29 @@ export function ItemDetailPage() {
     return m;
   }, [isCollection, listingUri, allArtistListings]);
 
-  /** Active per-item listings sold as singles under this product's own listing -- same parentListing convention as purchaseByTrackUri above. */
+  /**
+   * Active listing a buyer can follow to purchase a single product member --
+   * whether it's sold under this product's own listing or as the member's own
+   * standalone listing. A listing sold under the product wins if both exist.
+   */
   const purchaseByProductItemUri = useMemo(() => {
     const m = new Map<string, { listingUri: string; listing: Listing }>();
-    if (!isProduct || !listingUri) return m;
+    if (!isProduct || !item || !("items" in item)) return m;
+    const memberUris = new Set(item.items.map((r) => r.uri));
     for (const row of allArtistListings) {
       const L = row.listing;
       if (L.status !== "active") continue;
-      if (L.parentListing !== listingUri) continue;
-      if (new AtUri(L.item.uri).collection !== BAZAAR_COLLECTION.item) continue;
+      if (!memberUris.has(L.item.uri)) continue;
+      const prev = m.get(L.item.uri);
+      const prevIsChild =
+        prev != null &&
+        listingUri != null &&
+        prev.listing.parentListing === listingUri;
+      if (prevIsChild) continue;
       m.set(L.item.uri, { listingUri: row.uri, listing: L });
     }
     return m;
-  }, [isProduct, listingUri, allArtistListings]);
+  }, [isProduct, item, listingUri, allArtistListings]);
 
   if (legacySegment && rkeyParam) {
     try {
@@ -741,6 +776,15 @@ export function ItemDetailPage() {
     ? productItems.filter((r) => !isAudioProductItem(r))
     : [];
 
+  // A member the buyer's frozen grant covers. A legacy receipt carries no
+  // grant -- treat every current member as covered, as before the freeze.
+  const grantCoversMember = (uri: string) =>
+    ownsProduct && (productGrant == null || productGrant.includes(uri));
+  const addedSincePurchase =
+    ownsProduct && productGrant != null
+      ? productItems.filter((r) => !productGrant.includes(r.uri))
+      : [];
+
   const renderProductItemRow = (
     ref: { uri: string },
     marker: number | "bullet" | null,
@@ -748,6 +792,12 @@ export function ItemDetailPage() {
     const purchase = purchaseByProductItemUri.get(ref.uri);
     const meta = productItemMeta[ref.uri];
     const metaLabel = meta ? primaryFileMetaLabel(meta) : null;
+    // Carry the current product's rkey so the member's page can offer a
+    // "Back" link that returns here.
+    const memberHref = `${itemPathPretty(
+      catalogItemRkey(ref.uri),
+      meta?.title ?? ref.uri,
+    )}?from=${encodeURIComponent(pageRkey)}`;
     return (
       <li
         key={ref.uri}
@@ -769,10 +819,7 @@ export function ItemDetailPage() {
             }}
           >
             <Link
-              to={itemPathPretty(
-                catalogItemRkey(ref.uri),
-                meta?.title ?? ref.uri,
-              )}
+              to={memberHref}
               className="font-medium underline-offset-2 hover:underline"
             >
               {meta?.title ?? ref.uri}
@@ -784,7 +831,7 @@ export function ItemDetailPage() {
             ) : null}
           </span>
         </span>
-        {ownsProduct ? (
+        {grantCoversMember(ref.uri) ? (
           <Button
             type="button"
             variant="outline"
@@ -797,17 +844,18 @@ export function ItemDetailPage() {
           </Button>
         ) : purchase ? (
           <Link
-            to={itemPathPretty(
-              catalogItemRkey(ref.uri),
-              meta?.title ?? ref.uri,
-            )}
+            to={memberHref}
             className={cn(
               buttonVariants({ size: "sm", variant: "outline" }),
               "shrink-0",
             )}
           >
-            Buy · {formatMoney(purchase.listing.price)}
+            Add · {formatMoney(purchase.listing.price)}
           </Link>
+        ) : ownsProduct ? (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            not sold separately *
+          </span>
         ) : (
           <span className="shrink-0 text-xs text-muted-foreground">
             Not sold separately
@@ -855,6 +903,28 @@ export function ItemDetailPage() {
           <code className="text-xs">catalog.listing</code> /{" "}
           <code className="text-xs">license.terms</code> records.
         </p>
+      ) : null}
+      {fromRkey ||
+      (typeof window !== "undefined" && window.history.length > 1) ? (
+        <button
+          type="button"
+          onClick={() => {
+            // Prefer a real history pop: when the visitor clicked through from
+            // a product/collection page it's the entry right behind them, so
+            // popping avoids stacking a duplicate (product <-> item ping-pong).
+            // Fall back to a forward navigation only for a cold deep link that
+            // still carries ?from.
+            if (typeof window !== "undefined" && window.history.length > 1) {
+              navigate(-1);
+            } else if (fromRkey) {
+              navigate(itemPathCanonical(fromRkey));
+            }
+          }}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground [&+section]:!mt-3"
+        >
+          <ArrowLeft className="size-4" />
+          Back
+        </button>
       ) : null}
       <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
         {hasArtwork ? (
@@ -951,10 +1021,19 @@ export function ItemDetailPage() {
               {(isCollection && ownsCollection) ||
               (isProduct && ownsProduct) ||
               ((isDigital || isCatalogItemSingle) && ownsItem) ? (
-                <p className="text-sm text-muted-foreground">
-                  You have purchased this item. Your downloads are available
-                  below
-                </p>
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    You have purchased this item. Your downloads are available
+                    below
+                  </p>
+                  {addedSincePurchase.length > 0 ? (
+                    <p className="text-xs italic text-muted-foreground">
+                      Merchant added {addedSincePurchase.length}{" "}
+                      {addedSincePurchase.length === 1 ? "item" : "items"} to
+                      this product since your purchase. *
+                    </p>
+                  ) : null}
+                </>
               ) : isDigital ||
                 isCollection ||
                 isProduct ||

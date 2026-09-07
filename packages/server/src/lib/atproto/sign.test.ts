@@ -106,6 +106,37 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
     ).toBe(false);
   });
 
+  test("entitlementDigest is bound into the signature", () => {
+    const { privateKeyPem, publicKeyPem } = p256Pems();
+    const entitlementDigest = "Zm9vYmFyZW50aXRsZW1lbnRkaWdlc3RfXw";
+    const appSig = signReceiptPayload({
+      ...params,
+      entitlementDigest,
+      privateKeyPem,
+    });
+
+    expect(
+      verifyReceiptPayload({ ...params, entitlementDigest, appSig, publicKeyPem }),
+    ).toBe(true);
+    // Same fields, digest dropped -> five-field payload -> mismatch.
+    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(false);
+    // Same fields, different digest -> mismatch.
+    expect(
+      verifyReceiptPayload({
+        ...params,
+        entitlementDigest: `${entitlementDigest}x`,
+        appSig,
+        publicKeyPem,
+      }),
+    ).toBe(false);
+  });
+
+  test("legacy five-field payload still round-trips when no digest is given", () => {
+    const { privateKeyPem, publicKeyPem } = p256Pems();
+    const appSig = signReceiptPayload({ ...params, privateKeyPem });
+    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
+  });
+
   test("SEC1 EC PRIVATE KEY collapsed to one line (typical .env)", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ec", {
       namedCurve: "prime256v1",

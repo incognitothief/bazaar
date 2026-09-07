@@ -1,10 +1,90 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { Filter, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { browserApiUrl } from "@/lib/browserApi";
 import { resolveHandleForDid } from "@/lib/atproto/pdsResolve";
 import { pdslsRecordUrl, pdslsRepoCollectionsUrl } from "@/lib/pdsls";
 import { catalogItemRkey, itemPathPretty } from "@/lib/itemPath";
 import { cn } from "@/lib/utils";
+
+type TxWindow = "all" | "7d" | "24h";
+
+const WINDOW_LABEL: Record<TxWindow, string> = {
+  all: "All time",
+  "7d": "Last 7 days",
+  "24h": "Last 24 hours",
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
+
+/** Quick-filter status buttons — a subset of the fulfillment states worth pinning. */
+const STATUS_QUICK_FILTERS = ["completed", "failed", "dead_letter"] as const;
+
+function statusLabel(s: string): string {
+  return s === "dead_letter"
+    ? "Dead letter"
+    : s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function FilterChip({
+  label,
+  onClear,
+}: {
+  label: string;
+  onClear: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 py-0.5 pl-2.5 pr-1 text-xs">
+      {label}
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`Clear ${label} filter`}
+        className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <X className="size-3" />
+      </button>
+    </span>
+  );
+}
+
+/** A stat card that doubles as a toggle for its time-window filter. */
+function StatFilterBox({
+  label,
+  value,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={active ? `Clear the ${label} filter` : `Filter to ${label}`}
+      className={cn(
+        "relative rounded-lg border p-4 text-left transition-colors hover:bg-muted/40",
+        active ? "border-primary ring-1 ring-primary/30" : "border-border",
+      )}
+    >
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="text-2xl font-semibold">{value}</p>
+      <Filter
+        className={cn(
+          "absolute bottom-2 right-2 size-3.5 text-muted-foreground",
+          active ? "text-primary opacity-100" : "opacity-40",
+        )}
+        aria-hidden="true"
+      />
+    </button>
+  );
+}
 
 export type PaymentFulfillmentRow = {
   paymentIntentId: string;
@@ -45,7 +125,13 @@ function fmtRetry(ms: number | null): string {
 function Ellipsis({ text, className }: { text: string; className?: string }) {
   if (!text) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className={cn("block max-w-[14rem] truncate font-mono text-xs", className)} title={text}>
+    <span
+      className={cn(
+        "block max-w-[14rem] truncate font-mono text-xs",
+        className,
+      )}
+      title={text}
+    >
       {text}
     </span>
   );
@@ -74,18 +160,31 @@ export function MerchantTransactionsPage() {
   const [handles, setHandles] = useState<Record<string, string | null>>({});
   const requestedDidsRef = useRef<Set<string>>(new Set());
 
+  const [win, setWin] = useState<TxWindow>("all");
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const hasFilters = win !== "all" || statusFilter !== null;
+  const clearAll = () => {
+    setWin("all");
+    setStatusFilter(null);
+  };
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       setLoading(true);
       setErr(null);
       try {
-        const res = await fetch(browserApiUrl("/api/merchant/payment-fulfillments"), {
-          credentials: "include",
-        });
-        const j = (await res.json().catch(() => null)) as
-          | { rows?: PaymentFulfillmentRow[]; error?: string; detail?: string }
-          | null;
+        const res = await fetch(
+          browserApiUrl("/api/merchant/payment-fulfillments"),
+          {
+            credentials: "include",
+          },
+        );
+        const j = (await res.json().catch(() => null)) as {
+          rows?: PaymentFulfillmentRow[];
+          error?: string;
+          detail?: string;
+        } | null;
         if (cancelled) return;
         if (!res.ok) {
           const parts = [j?.error, j?.detail].filter(
@@ -123,7 +222,9 @@ export function MerchantTransactionsPage() {
 
     let cancelled = false;
     void Promise.all(
-      missing.map(async (did) => [did, await resolveHandleForDid(did)] as const),
+      missing.map(
+        async (did) => [did, await resolveHandleForDid(did)] as const,
+      ),
     ).then((entries) => {
       if (cancelled) return;
       setHandles((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
@@ -153,29 +254,108 @@ export function MerchantTransactionsPage() {
     return { total, lastWeek, last24h };
   }, [rows]);
 
+  const filteredRows = useMemo(() => {
+    if (!hasFilters) return rows;
+    const now = Date.now();
+    return rows.filter((r) => {
+      if (statusFilter && r.status !== statusFilter) return false;
+      if (win !== "all") {
+        const age = now - new Date(r.createdAt).getTime();
+        if (Number.isNaN(age)) return false;
+        if (win === "24h" && age > DAY_MS) return false;
+        if (win === "7d" && age > WEEK_MS) return false;
+      }
+      return true;
+    });
+  }, [rows, hasFilters, statusFilter, win]);
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Sales</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Stripe PaymentIntent fulfillment state (PDS receipt and consent writes). Newest first.
+          Transactions and sales data.
         </p>
       </div>
 
       {!loading && !err ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border border-border p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {(["all", "7d", "24h"] as TxWindow[]).map((w) => (
+            <Button
+              key={w}
+              type="button"
+              size="sm"
+              variant={win === w ? "default" : "outline"}
+              onClick={() => setWin(w)}
+            >
+              {WINDOW_LABEL[w]}
+            </Button>
+          ))}
+          <span className="mx-1 hidden h-5 w-px bg-border sm:block" />
+          {STATUS_QUICK_FILTERS.map((s) => (
+            <Button
+              key={s}
+              type="button"
+              size="sm"
+              variant={statusFilter === s ? "default" : "outline"}
+              onClick={() =>
+                setStatusFilter((cur) => (cur === s ? null : s))
+              }
+            >
+              {statusLabel(s)}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+
+      {!loading && !err ? (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="col-span-2 rounded-lg border border-border p-4 sm:col-span-1">
             <p className="text-sm text-muted-foreground">Total sales</p>
             <p className="text-2xl font-semibold">{stats.total}</p>
           </div>
-          <div className="rounded-lg border border-border p-4">
-            <p className="text-sm text-muted-foreground">Last 7 days</p>
-            <p className="text-2xl font-semibold">{stats.lastWeek}</p>
-          </div>
-          <div className="rounded-lg border border-border p-4">
-            <p className="text-sm text-muted-foreground">Last 24 hours</p>
-            <p className="text-2xl font-semibold">{stats.last24h}</p>
-          </div>
+          <StatFilterBox
+            label="Last 7 days"
+            value={stats.lastWeek}
+            active={win === "7d"}
+            onClick={() => setWin((w) => (w === "7d" ? "all" : "7d"))}
+          />
+          <StatFilterBox
+            label="Last 24 hours"
+            value={stats.last24h}
+            active={win === "24h"}
+            onClick={() => setWin((w) => (w === "24h" ? "all" : "24h"))}
+          />
+        </div>
+      ) : null}
+
+      {!loading && !err && hasFilters ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">
+            Filters
+          </span>
+          {win !== "all" ? (
+            <FilterChip
+              label={WINDOW_LABEL[win]}
+              onClear={() => setWin("all")}
+            />
+          ) : null}
+          {statusFilter ? (
+            <FilterChip
+              label={`Status: ${statusLabel(statusFilter)}`}
+              onClear={() => setStatusFilter(null)}
+            />
+          ) : null}
+          <button
+            type="button"
+            onClick={clearAll}
+            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            Clear all
+          </button>
+          <span className="ml-auto text-xs text-muted-foreground">
+            {filteredRows.length} of {rows.length}
+          </span>
         </div>
       ) : null}
 
@@ -185,8 +365,12 @@ export function MerchantTransactionsPage() {
         <p className="text-sm text-destructive" role="alert">
           {err}
         </p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No payment rows yet.</p>
+      ) : filteredRows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {rows.length === 0
+            ? "No payment rows yet."
+            : "No transactions match the current filters."}
+        </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
@@ -204,8 +388,11 @@ export function MerchantTransactionsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.paymentIntentId} className="border-b border-border/80 hover:bg-muted/30">
+              {filteredRows.map((r) => (
+                <tr
+                  key={r.paymentIntentId}
+                  className="border-b border-border/80 hover:bg-muted/30"
+                >
                   <td className="px-3 py-2 align-top">
                     <span
                       className={cn(
@@ -219,7 +406,10 @@ export function MerchantTransactionsPage() {
                   <td className="px-3 py-2 align-top">
                     <Ellipsis text={r.paymentIntentId} />
                     {r.checkoutSessionId ? (
-                      <Ellipsis text={r.checkoutSessionId} className="mt-0.5 text-muted-foreground" />
+                      <Ellipsis
+                        text={r.checkoutSessionId}
+                        className="mt-0.5 text-muted-foreground"
+                      />
                     ) : null}
                   </td>
                   <td className="px-3 py-2 align-top">
@@ -256,7 +446,10 @@ export function MerchantTransactionsPage() {
                   <td className="px-3 py-2 align-top font-mono text-xs">
                     {r.attemptCount}
                     {r.nextRetryAt != null ? (
-                      <span className="mt-1 block text-muted-foreground" title="Next retry">
+                      <span
+                        className="mt-1 block text-muted-foreground"
+                        title="Next retry"
+                      >
                         ↻ {fmtRetry(r.nextRetryAt)}
                       </span>
                     ) : null}
@@ -302,7 +495,10 @@ export function MerchantTransactionsPage() {
                   </td>
                   <td className="px-3 py-2 align-top max-w-[12rem]">
                     {r.lastError ? (
-                      <span className="line-clamp-3 text-xs text-destructive" title={r.lastError}>
+                      <span
+                        className="line-clamp-3 text-xs text-destructive"
+                        title={r.lastError}
+                      >
                         {r.lastError}
                       </span>
                     ) : (

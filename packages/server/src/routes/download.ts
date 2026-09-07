@@ -9,6 +9,7 @@ import type { OAuthClient } from "../lib/atproto/oauth";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { getSessionAgent } from "../lib/atproto/session";
 import { appMerchantPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
+import { entitlementDigest } from "../lib/atproto/entitlement";
 import { candidatePemsForKid, getMerchantKeys } from "../lib/merchantKeys";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import { isS3NoSuchKey } from "../lib/r2/diagnostics";
@@ -45,7 +46,19 @@ type PurchaseReceipt = {
   appSig: string;
   /** Hint for selecting the storefront key that produced `appSig` (ADR 0013). */
   kid?: string;
+  /**
+   * Frozen entitlement: the catalog.item URIs this purchase covers, captured
+   * at checkout. Present on current receipts; absent on legacy ones, which
+   * fall back to live product/collection membership.
+   */
+  grantedItems?: string[];
 };
+
+function frozenGrant(rec: PurchaseReceipt): string[] | null {
+  return Array.isArray(rec.grantedItems) && rec.grantedItems.length > 0
+    ? rec.grantedItems
+    : null;
+}
 
 /** itemRef no longer carries a stored type field (removed as redundant with the URI itself); the AT-URI's own collection segment is the only source of truth. */
 
@@ -147,6 +160,19 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       try {
         const rec = row.value as PurchaseReceipt;
         if (!rec?.item?.uri) continue;
+
+        // Current receipts: entitlement is exactly the frozen grant. A later
+        // edit to the product's items[] cannot add or remove access.
+        const grant = frozenGrant(rec);
+        if (grant) {
+          if (!grant.includes(itemUriRaw)) continue;
+          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
+          entitled = true;
+          receipt = rec;
+          break;
+        }
+
+        // Legacy receipts (no grantedItems): resolve against live membership.
         if (rec.item.uri === itemUriRaw) {
           if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
           entitled = true;
@@ -355,7 +381,7 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
     if (!merchantVerifyKeysAvailable())
       return c.json({ error: "app_key_missing" }, 503);
 
-    let entitled = false;
+    let entitledReceipt: PurchaseReceipt | null = null;
     for (const row of list.data.records) {
       try {
         const rec = row.value as PurchaseReceipt;
@@ -363,14 +389,14 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
         if (!receiptItemIsProduct(rec.item.uri)) continue;
         if (rec.item.uri !== productUriRaw) continue;
         if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-        entitled = true;
+        entitledReceipt = rec;
         break;
       } catch (e) {
         console.warn("download product-zip: skip receipt row", e);
       }
     }
 
-    if (!entitled) return c.json({ error: "not_entitled" }, 403);
+    if (!entitledReceipt) return c.json({ error: "not_entitled" }, 403);
 
     const product = db
       .select()
@@ -379,7 +405,15 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       .get();
     if (!product) return c.json({ error: "not_found" }, 404);
 
-    const result = await buildProductZip(db, cfg, product);
+    // Current receipts package exactly the frozen grant; legacy receipts
+    // package the live product.
+    const grant = frozenGrant(entitledReceipt);
+    const result = await buildProductZip(
+      db,
+      cfg,
+      product,
+      grant ?? undefined,
+    );
     if (result instanceof Response) return result;
     return c.json({ error: result.error }, result.status);
   });
@@ -406,6 +440,11 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
       ? pems
       : [appMerchantPublicKeyPemFromEnv()].filter((p): p is string => !!p);
 
+  // Current receipts fold the grantedItems digest into appSig as a sixth
+  // payload field; legacy receipts sign only the five-field payload.
+  const grant = frozenGrant(rec);
+  const digest = grant ? entitlementDigest(grant) : undefined;
+
   return candidates.some((publicKeyPem) =>
     verifyReceiptPayload({
       purchasedAt: rec.purchasedAt,
@@ -413,6 +452,7 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
       itemUri: rec.item.uri,
       listingCid: rec.listingCid,
       buyerDid,
+      entitlementDigest: digest,
       appSig: rec.appSig,
       publicKeyPem,
     }),

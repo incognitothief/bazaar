@@ -4,15 +4,13 @@ import { AtUri } from "@atproto/syntax";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { CategoryField } from "@/components/merchant/CategoryField";
-import { CoverImageSlideshow } from "@/components/merchant/CoverImageSlideshow";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  DetailToolbar,
+  type ToolAction,
+} from "@/components/merchant/detailTools";
+import { MarkdownBody } from "@/components/shared/MarkdownBody";
+import { MetadataChip } from "@/components/shared/MetadataChip";
+import { TagTokens } from "@/components/shared/TagTokens";
 import { Input } from "@/components/ui/input";
 import { TagsInput } from "@/components/shared/TagsInput";
 import { Label } from "@/components/ui/label";
@@ -20,9 +18,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
-  findStaleListingsForItem,
+  buildItemRefFromUri,
   getCatalogItem,
   getRecordValue,
+  getRecordValueWithCid,
+  isTerminalListingStatus,
+  listCatalogProductRows,
   listListingRows,
   putCatalogItem,
   putCollection,
@@ -34,18 +35,21 @@ import {
   legacyCollectionDownloadUrl,
   syncCatalogItem,
   type CatalogItemRow,
-  type ListingRow,
 } from "@/lib/atproto/records";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import type { ATPRepoClient } from "@/lib/atproto/session";
 import { uploadBlob } from "@/lib/atproto/upload";
-import { cn } from "@/lib/utils";
+import { formatMoney } from "@/lib/format";
+import { formatRuntime } from "@/lib/itemMetaLabel";
+import { cn, formatBytes } from "@/lib/utils";
 import type {
   CatalogItem,
   Collection,
   CollectionItemEntry,
   CollectionItemRole,
   DigitalItem,
+  LicenseTerms,
+  Listing,
   PhysicalItem,
   Variant,
 } from "@/types/lexicons";
@@ -1206,7 +1210,24 @@ function CatalogItemEditForm({
   uri: string;
   agent: ATPRepoClient;
 }) {
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  /** `?from=<productAtUri>` set on links from the product page -- return there instead of the inventory list. */
+  const from = useMemo(() => {
+    const raw = searchParams.get("from");
+    if (!raw) return null;
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }, [searchParams]);
+  const cameFromProduct =
+    !!from && from.includes("/diamonds.whereditgo.bazaar.catalog.product/");
+  const backHref = cameFromProduct
+    ? `/merchant/inventory/products?uri=${encodeURIComponent(from)}`
+    : "/merchant/inventory";
+  const backLabel = cameFromProduct ? "Back to product" : "Back to inventory";
+
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [row, setRow] = useState<CatalogItemRow | null>(null);
@@ -1218,7 +1239,18 @@ function CatalogItemEditForm({
   const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [staleListings, setStaleListings] = useState<ListingRow[] | null>(null);
+
+  /** This item's own non-terminal listing (standalone or sold-under-product), if any. */
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [listingUri, setListingUri] = useState<string | null>(null);
+  const [parentProductUri, setParentProductUri] = useState<string | null>(null);
+  const [parentProductTitle, setParentProductTitle] = useState<string | null>(
+    null,
+  );
+  const [license, setLicense] = useState<LicenseTerms | null>(null);
+  const [licenseCid, setLicenseCid] = useState<string | null>(null);
+  /** True when the license shown is inherited from the parent product's listing. */
+  const [licenseInherited, setLicenseInherited] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1235,6 +1267,53 @@ function CatalogItemEditForm({
     setCategory(r.category ?? "");
     setDescription(r.description ?? "");
     setTags(r.tags ?? []);
+
+    const [listings, productRows] = await Promise.all([
+      listListingRows(r.sellerDid).catch(() => []),
+      listCatalogProductRows().catch(() => []),
+    ]);
+
+    const parentProduct = productRows.find((p) =>
+      p.items.some((ref) => ref.uri === uri),
+    );
+    setParentProductUri(parentProduct?.uri ?? null);
+    setParentProductTitle(parentProduct?.title ?? null);
+
+    const own = listings.find(
+      (l) =>
+        l.listing.item.uri === uri &&
+        !isTerminalListingStatus(l.listing.status),
+    );
+    setListing(own?.listing ?? null);
+    setListingUri(own?.uri ?? null);
+
+    const parentListing = parentProduct
+      ? listings.find(
+          (l) =>
+            l.listing.item.uri === parentProduct.uri &&
+            !l.listing.parentListing &&
+            !isTerminalListingStatus(l.listing.status),
+        )
+      : undefined;
+
+    // Defer to the item's own license; otherwise inherit the parent product
+    // listing's license (an item with no listing of its own still sells under
+    // the product, under the product's terms).
+    const licUri = own?.listing.licenseUri ?? parentListing?.listing.licenseUri;
+    const inherited = !own && !!parentListing?.listing.licenseUri;
+    if (licUri) {
+      const lt = await getRecordValueWithCid<LicenseTerms>(licUri).catch(
+        () => null,
+      );
+      setLicense(lt?.value ?? null);
+      setLicenseCid(lt?.cid ?? null);
+      setLicenseInherited(inherited);
+    } else {
+      setLicense(null);
+      setLicenseCid(null);
+      setLicenseInherited(false);
+    }
+
     setLoading(false);
   }, [uri]);
 
@@ -1242,38 +1321,43 @@ function CatalogItemEditForm({
     void load();
   }, [load]);
 
-  async function doSave(archiveTargets: ListingRow[]) {
+  const paramsChanged = useCallback((): boolean => {
+    if (!row) return false;
+    return (
+      title.trim() !== row.title ||
+      (category.trim() || "") !== (row.category ?? "") ||
+      (description.trim() || "") !== (row.description ?? "") ||
+      JSON.stringify(tags) !== JSON.stringify(row.tags ?? [])
+    );
+  }, [row, title, category, description, tags]);
+
+  /**
+   * Save the item record. A metadata change re-pins the listing's `item.cid`
+   * in place (same URI) so checkout doesn't reject it as "item_changed" --
+   * price and terms are edited from the listing tool, not here.
+   */
+  async function doSave() {
     if (!row) return;
     setSaving(true);
     try {
+      const repin = paramsChanged();
       await putCatalogItem(agent, uri, {
         title: title.trim(),
         category: category.trim() || undefined,
         description: description.trim() || undefined,
         tags: tags.length ? tags : undefined,
       });
-      for (const listing of archiveTargets) {
-        await putListing(agent, listing.uri, {
-          ...listing.listing,
-          status: "archived",
+
+      if (repin && listing && listingUri) {
+        const freshRef = await buildItemRefFromUri(uri);
+        await putListing(agent, listingUri, {
+          ...listing,
+          item: freshRef ?? listing.item,
         });
       }
+
       await syncCatalogItem(uri);
-      if (archiveTargets.length > 0) {
-        toast.success("Saved — the old listing has been de-listed", {
-          description: "Create a new listing to sell this item again.",
-          action: {
-            label: "Create listing",
-            onClick: () =>
-              navigate(
-                `/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`,
-              ),
-          },
-        });
-      } else {
-        toast.success("Saved");
-      }
-      setStaleListings(null);
+      toast.success("Saved");
       await load();
       setEditing(false);
     } catch (err) {
@@ -1285,16 +1369,13 @@ function CatalogItemEditForm({
     }
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function onSave() {
     if (!row) return;
-    const listings = await listListingRows(row.sellerDid).catch(() => []);
-    const stale = findStaleListingsForItem(listings, row.uri, row.cid);
-    if (stale.length > 0) {
-      setStaleListings(stale);
+    if (!title.trim()) {
+      toast.error("Title is required");
       return;
     }
-    await doSave([]);
+    await doSave();
   }
 
   function cancelEditing() {
@@ -1323,9 +1404,7 @@ function CatalogItemEditForm({
   }
 
   if (loading) {
-    return (
-      <p className="text-sm text-muted-foreground">Loading item…</p>
-    );
+    return <p className="text-sm text-muted-foreground">Loading item…</p>;
   }
 
   if (loadError || !row) {
@@ -1341,89 +1420,136 @@ function CatalogItemEditForm({
     );
   }
 
-  return (
-    <form
-      onSubmit={(e) => void onSubmit(e)}
-      className="w-full min-w-0 max-w-2xl space-y-6"
-    >
-      <h1 className="text-2xl font-semibold">
-        {editing ? "Edit item" : "Item"}
-      </h1>
+  const coverUrl = row.coverImages[0]?.url;
+  const runtimeLabel = row.durationMs ? formatRuntime(row.durationMs) : null;
+  const sizeLabel = row.byteSize ? formatBytes(row.byteSize) : null;
+  const dimsLabel =
+    row.mediaWidth && row.mediaHeight
+      ? `${row.mediaWidth} × ${row.mediaHeight}`
+      : null;
 
-      <div className="flex flex-wrap items-start gap-4">
-        {row.coverImages.length > 0 ? (
-          <div className="max-w-xs">
-            <CoverImageSlideshow images={row.coverImages} alt={row.title} />
-          </div>
-        ) : null}
-        <div className="ml-auto grid grid-cols-2 gap-1">
-          {!editing ? (
+  const toolActions: ToolAction[] = [
+    ...(!editing
+      ? [
+          {
+            key: "edit",
+            Icon: Pencil,
+            label: "Edit item",
+            onClick: () => setEditing(true),
+          },
+        ]
+      : []),
+    {
+      key: "download",
+      Icon: Download,
+      label: downloading ? "Preparing…" : "Download file",
+      onClick: () => void onDownload(),
+      disabled: downloading,
+      disabledHint: "Preparing…",
+    },
+    ...(!editing
+      ? [
+          {
+            key: "list",
+            Icon: Tag,
+            label: listing ? "Edit listing" : "Create listing",
+            href: `/merchant/listings/new?uri=${encodeURIComponent(uri)}`,
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <div className="w-full min-w-0 max-w-5xl space-y-8">
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          to={backHref}
+          className="inline-flex items-center gap-1.5 pt-4 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" />
+          {backLabel}
+        </Link>
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <Button onClick={() => void onSave()} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
             <Button
               type="button"
-              variant="outline"
-              size="icon-sm"
-              aria-label="Edit item"
-              title="Edit item"
-              onClick={() => setEditing(true)}
+              variant="ghost"
+              onClick={cancelEditing}
+              disabled={saving}
             >
-              <Pencil className="size-4" />
+              Cancel
             </Button>
-          ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-sm"
-            disabled={downloading}
-            onClick={() => void onDownload()}
-            aria-label={downloading ? "Preparing download" : "Download"}
-            title="Get this file directly -- for support/incident handoff, not the buyer-facing download"
-          >
-            <Download className="size-4" />
-          </Button>
-          {!editing ? (
-            <Link
-              to={`/merchant/listings/new?prefillItemUri=${encodeURIComponent(uri)}`}
-              className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
-              aria-label="Create listing"
-              title="Create listing"
-            >
-              <Tag className="size-4" />
-            </Link>
-          ) : null}
-          <Link
-            to="/merchant/inventory"
-            className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }))}
-            aria-label="Back to inventory"
-            title="Back to inventory"
-          >
-            <ArrowLeft className="size-4" />
-          </Link>
-        </div>
+          </div>
+        ) : null}
       </div>
 
-      {editing ? (
-        <>
-          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1">
-            <p className="text-muted-foreground text-xs">
-              File identity (format, checksum, CID) is immutable — upload a new
-              file via a replace flow to change the asset.
-            </p>
-            <p className="text-xs">
-              Format: <span className="font-medium">{row.format || "—"}</span>
-            </p>
+      {/* Hero — mirrors the storefront single-item layout */}
+      <section className="grid gap-8 lg:grid-cols-[1fr_minmax(0,24rem)] lg:items-start">
+        <div className="space-y-3">
+          <div className="aspect-square max-h-[min(70vw,28rem)] overflow-hidden rounded-xl border border-border bg-muted">
+            {coverUrl ? (
+              <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+                No cover art
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            {editing ? (
+              <div className="flex-1 space-y-1.5">
+                <Label htmlFor="ci-title">Title</Label>
+                <Input
+                  id="ci-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                  maxLength={512}
+                />
+              </div>
+            ) : (
+              <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+            )}
+            <DetailToolbar actions={toolActions} panelTitle="Item controls" />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="ci-title">Title</Label>
-            <Input
-              id="ci-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              maxLength={512}
-            />
-          </div>
-          <div className="space-y-2">
+          {listing ? (
+            <p className="text-2xl font-medium">{formatMoney(listing.price)}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {parentProductTitle ? "Not sold separately" : "Not listed"}
+            </p>
+          )}
+
+          {editing ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="ci-tags">Tags</Label>
+              <TagsInput
+                id="ci-tags"
+                tags={tags}
+                onChange={setTags}
+                placeholder="e.g. lofi, drum loop, 90bpm"
+              />
+            </div>
+          ) : tags.length ? (
+            <TagTokens tags={tags} part="tokens" className="pt-1" />
+          ) : null}
+        </div>
+      </section>
+
+      {/* Metadata */}
+      <section
+        className="flex flex-wrap items-center gap-2"
+        aria-label="Metadata"
+      >
+        {editing ? (
+          <div className="w-full space-y-1.5">
             <Label htmlFor="ci-category">Category</Label>
             <CategoryField
               id="ci-category"
@@ -1431,108 +1557,72 @@ function CatalogItemEditForm({
               onChange={setCategory}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="ci-desc">Description</Label>
-            <Textarea
-              id="ci-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={4}
-              maxLength={4096}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="ci-tags">Tags</Label>
-            <TagsInput
-              id="ci-tags"
-              tags={tags}
-              onChange={setTags}
-              placeholder="e.g. lofi, drum loop, 90bpm"
-            />
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button type="submit" className={cn(buttonVariants())} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-            <button
-              type="button"
-              className={cn(buttonVariants({ variant: "ghost" }))}
-              onClick={cancelEditing}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-          </div>
-        </>
-      ) : (
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <h2 className="text-lg font-medium">{row.title}</h2>
-            {row.description ? (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                {row.description}
-              </p>
+        ) : (
+          <>
+            {row.category ? <MetadataChip>{row.category}</MetadataChip> : null}
+            {runtimeLabel ? <MetadataChip>{runtimeLabel}</MetadataChip> : null}
+            {dimsLabel ? <MetadataChip>{dimsLabel}</MetadataChip> : null}
+            {sizeLabel ? <MetadataChip>{sizeLabel}</MetadataChip> : null}
+            {row.format ? <MetadataChip>{row.format}</MetadataChip> : null}
+            {tags.length ? <TagTokens tags={tags} part="plain" /> : null}
+            {parentProductTitle && parentProductUri ? (
+              <Link
+                to={`/merchant/inventory/products?uri=${encodeURIComponent(parentProductUri)}`}
+                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              >
+                In {parentProductTitle}
+              </Link>
             ) : null}
-          </div>
-          <p className="text-sm">
-            <span className="text-muted-foreground">Category: </span>
-            {row.category || "—"}
-          </p>
-          <p className="text-sm">
-            <span className="text-muted-foreground">Format: </span>
-            {row.format || "—"}
-          </p>
-          <p className="text-sm">
-            <span className="text-muted-foreground">Tags: </span>
-            {row.tags?.length ? row.tags.join(", ") : "—"}
-          </p>
-        </div>
-      )}
+          </>
+        )}
+      </section>
 
-      <Dialog
-        open={!!staleListings}
-        onOpenChange={(open) => {
-          if (!open) setStaleListings(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {staleListings?.length === 1
-                ? "1 listing will be de-listed"
-                : `${staleListings?.length ?? 0} listings will be de-listed`}
-            </DialogTitle>
-            <DialogDescription>
-              Saving changes this item's content, which invalidates the CID
-              that {staleListings?.length === 1 ? "this listing" : "these listings"}{" "}
-              pinned when created. To protect buyers from checking out
-              against terms they never saw,{" "}
-              {staleListings?.length === 1 ? "it" : "they"} will be
-              permanently de-listed and can't be reactivated — create a new
-              listing afterward if you want to sell this item again.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setStaleListings(null)}
-              disabled={saving}
+      {/* Description */}
+      <section className="space-y-2">
+        <h2 className="text-lg font-medium">Description</h2>
+        {editing ? (
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={5}
+            maxLength={4096}
+            placeholder="Shown on the storefront. Markdown supported."
+          />
+        ) : description ? (
+          <div className="max-w-none text-sm text-foreground">
+            <MarkdownBody>{description}</MarkdownBody>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No description</p>
+        )}
+      </section>
+
+      {/* License — the item's own terms, or inherited from the product listing */}
+      {license ? (
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium">License</h2>
+          {licenseInherited ? (
+            <p className="text-xs text-muted-foreground">
+              Inherited from {parentProductTitle ?? "the product"} listing
+            </p>
+          ) : null}
+          <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+            {typeof license.licenseText === "string"
+              ? license.licenseText
+              : "Legacy license format — see full terms."}
+          </p>
+          {licenseCid ? (
+            <a
+              href={`/license/${encodeURIComponent(licenseCid)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-sm text-primary underline-offset-2 hover:underline"
             >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void doSave(staleListings ?? [])}
-              disabled={saving}
-            >
-              {saving
-                ? "Saving…"
-                : "I acknowledge this item will be de-listed"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </form>
+              View full license →
+            </a>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
   );
 }
