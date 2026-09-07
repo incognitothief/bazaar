@@ -850,7 +850,8 @@ export function ItemDetailPage() {
               "shrink-0",
             )}
           >
-            Add · {formatMoney(purchase.listing.price)}
+            {ownsProduct ? "Add" : "Buy"} ·{" "}
+            {formatMoney(purchase.listing.price)}
           </Link>
         ) : ownsProduct ? (
           <span className="shrink-0 text-xs text-muted-foreground">
