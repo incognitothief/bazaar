@@ -98,7 +98,7 @@ export function TrackList({
                     "shrink-0",
                   )}
                 >
-                  Add · {formatMoney(r.purchase.listing.price)}
+                  Buy · {formatMoney(r.purchase.listing.price)}
                 </Link>
               ) : (
                 <span className="text-xs text-muted-foreground">
