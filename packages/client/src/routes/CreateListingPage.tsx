@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -88,9 +88,11 @@ export function CreateListingPage() {
    * true = independent (no parentListing); false = sells under the product listing.
    * A member not in here follows its listing's current link, or false when unlisted.
    */
-  const [childStandalone, setChildStandalone] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [childStandalone, setChildStandalone] = useState<
+    Record<string, boolean>
+  >({});
+  /** Product manage view: which step of the license -> pricing walkthrough is open. */
+  const [manageStep, setManageStep] = useState<1 | 2>(1);
 
   const load = useCallback(async () => {
     if (!agent || !session?.did) return;
@@ -103,9 +105,11 @@ export function CreateListingPage() {
         priceUsd?: string;
       } | null = null;
       if (!targetUri && source === "upload") {
-        const { prefill: p } = await fetchLatestInventoryPrefill().catch(() => ({
-          prefill: null,
-        }));
+        const { prefill: p } = await fetchLatestInventoryPrefill().catch(
+          () => ({
+            prefill: null,
+          }),
+        );
         if (p?.primaryItemUri) {
           targetUri = p.primaryItemUri;
           prefill = p;
@@ -170,6 +174,7 @@ export function CreateListingPage() {
         }
         setChildStandalone(attach);
         setItemPriceOverride(rowPrice);
+        setManageStep(1);
       } else {
         setProductItems([]);
         setChildStandalone({});
@@ -519,7 +524,9 @@ export function CreateListingPage() {
         updated > 0 ? `${updated} updated` : null,
         skipped > 0 ? `${skipped} skipped` : null,
       ].filter(Boolean);
-      toast.success(parts.length ? `Saved — ${parts.join(", ")}.` : "No changes");
+      toast.success(
+        parts.length ? `Saved — ${parts.join(", ")}.` : "No changes",
+      );
       navigate(
         `/merchant/inventory/products?uri=${encodeURIComponent(entity.uri)}`,
       );
@@ -622,12 +629,60 @@ export function CreateListingPage() {
     </div>
   );
 
+  const licenseChosen = Boolean(licenseUri && licenseCid);
+  const selectedLicense = licenseRows.find(
+    (r) => r.uri === licenseUri && r.cid === licenseCid,
+  );
+
+  /** One collapsible header in the manage walkthrough. */
+  const manageStepHeader = (
+    n: 1 | 2,
+    title: string,
+    summary: string,
+    canOpen: boolean,
+  ) => (
+    <button
+      type="button"
+      disabled={!canOpen}
+      aria-expanded={manageStep === n}
+      onClick={() => setManageStep(n)}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors",
+        manageStep === n
+          ? "border-ring bg-muted/40"
+          : "border-border hover:bg-muted/30",
+        !canOpen && "cursor-not-allowed opacity-60 hover:bg-transparent",
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-medium",
+          manageStep === n ? "border-ring bg-background" : "border-border",
+        )}
+      >
+        {n}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {summary}
+        </span>
+      </span>
+      <ChevronDown
+        className={cn(
+          "size-4 shrink-0 text-muted-foreground transition-transform",
+          manageStep === n && "rotate-180",
+        )}
+      />
+    </button>
+  );
+
   return (
     <div className="w-full min-w-0 max-w-xl space-y-6">
       {backLink}
       <h1 className="text-2xl font-semibold">
         {manageMode
-          ? "Manage listings"
+          ? `Edit Listing: ${entity.title}`
           : editMode
             ? "Edit listing"
             : "Create listing"}
@@ -642,7 +697,9 @@ export function CreateListingPage() {
             <div className="mt-4">
               <Link
                 to="/merchant/inventory"
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                )}
               >
                 Back to inventory
               </Link>
@@ -668,218 +725,258 @@ export function CreateListingPage() {
               and choose which sell on their own.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {licensePicker}
-
-            <div className="space-y-2">
-              <Label htmlFor="manage-product-price">Product price (USD)</Label>
-              <Input
-                id="manage-product-price"
-                inputMode="decimal"
-                value={priceUsd}
-                onChange={(e) => setPriceUsd(e.target.value)}
-                className="max-w-[10rem]"
-              />
-            </div>
-
-            {productItems.length > 0 ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-sm font-medium">Item listings</h2>
-                </div>
-
-                <div className="flex items-end gap-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="manage-bulk-price">
-                      Set every item price (USD)
-                    </Label>
-                    <Input
-                      id="manage-bulk-price"
-                      inputMode="decimal"
-                      value={bulkItemPrice}
-                      onChange={(e) => setBulkItemPrice(e.target.value)}
-                      className="h-9 max-w-[10rem]"
-                    />
-                  </div>
+          <CardContent className="space-y-3">
+            {manageStepHeader(
+              1,
+              "License",
+              selectedLicense
+                ? `${selectedLicense.title} · ${selectedLicense.version}`
+                : "Choose the terms buyers agree to",
+              true,
+            )}
+            {manageStep === 1 ? (
+              <div className="space-y-4 rounded-lg border border-border p-4">
+                {licensePicker}
+                <div className="flex justify-end">
                   <Button
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setItemPriceOverride((p) => {
-                        const next = { ...p };
-                        for (const it of productItems)
-                          next[it.uri] = bulkItemPrice;
-                        return next;
-                      })
-                    }
+                    disabled={!licenseChosen}
+                    onClick={() => setManageStep(2)}
                   >
-                    Apply to all
+                    Next: pricing
                   </Button>
                 </div>
-
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full border-collapse text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/50">
-                        <th className="w-10 px-3 py-2">
-                          <input
-                            type="checkbox"
-                            className="size-4 align-middle"
-                            aria-label="Select every unlisted item"
-                            checked={allMembersSelected}
-                            disabled={selectableMembers.length === 0}
-                            onChange={(e) =>
-                              setItemSelected((p) => {
-                                const next = { ...p };
-                                for (const it of selectableMembers)
-                                  next[it.uri] = e.target.checked;
-                                return next;
-                              })
-                            }
-                          />
-                        </th>
-                        <th className="px-3 py-2 font-medium">Item</th>
-                        <th className="w-28 px-3 py-2 font-medium">Price</th>
-                        <th className="w-24 px-3 py-2 text-center font-medium">
-                          Standalone
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {productItems.map((it) => {
-                        const childRow = memberListing(it.uri);
-                        const listed = !!childRow;
-                        const status = childRow?.listing.status;
-                        const wantStandalone =
-                          childStandalone[it.uri] ??
-                          (childRow ? !childRow.listing.parentListing : false);
-                        const included = listed
-                          ? true
-                          : (itemSelected[it.uri] ?? false);
-                        const priceVal =
-                          itemPriceOverride[it.uri] ??
-                          (childRow
-                            ? (childRow.listing.price.amount / 100).toFixed(2)
-                            : bulkItemPrice);
-                        const attachLockedOn =
-                          wantStandalone && !productListingActive;
-                        return (
-                          <Fragment key={it.uri}>
-                            <tr className="border-b border-border last:border-b-0">
-                              <td className="px-3 py-2 align-middle">
-                                <input
-                                  type="checkbox"
-                                  className="size-4 align-middle"
-                                  aria-label={`Create a listing for ${it.title}`}
-                                  checked={included}
-                                  disabled={listed}
-                                  onChange={(e) =>
-                                    setItemSelected((p) => ({
-                                      ...p,
-                                      [it.uri]: e.target.checked,
-                                    }))
-                                  }
-                                />
-                              </td>
-                              <td className="px-3 py-2 align-middle">
-                                <div className="flex items-center gap-2">
-                                  <span className="min-w-0 truncate font-medium">
-                                    {it.title}
-                                  </span>
-                                  {listed ? (
-                                    <Badge
-                                      variant={listingStatusBadgeVariant(
-                                        status!,
-                                      )}
-                                      className="shrink-0 text-[10px]"
-                                    >
-                                      {status}
-                                    </Badge>
-                                  ) : (
-                                    <span className="shrink-0 text-xs text-muted-foreground">
-                                      No listing
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-3 py-2 align-middle">
-                                <Input
-                                  inputMode="decimal"
-                                  aria-label={`Price for ${it.title}`}
-                                  value={priceVal}
-                                  disabled={!included}
-                                  onChange={(e) =>
-                                    setItemPriceOverride((p) => ({
-                                      ...p,
-                                      [it.uri]: e.target.value,
-                                    }))
-                                  }
-                                  className="h-8 w-full"
-                                />
-                              </td>
-                              <td className="px-3 py-2 text-center align-middle">
-                                <input
-                                  type="checkbox"
-                                  className="size-4 align-middle"
-                                  aria-label={`Sell ${it.title} as a standalone item`}
-                                  checked={wantStandalone}
-                                  disabled={!included || attachLockedOn}
-                                  onChange={(e) =>
-                                    setChildStandalone((p) => ({
-                                      ...p,
-                                      [it.uri]: e.target.checked,
-                                    }))
-                                  }
-                                />
-                              </td>
-                            </tr>
-                            {attachLockedOn ? (
-                              <tr className="border-b border-border last:border-b-0">
-                                <td aria-hidden />
-                                <td
-                                  colSpan={3}
-                                  className="px-3 pb-2 text-xs text-amber-600 dark:text-amber-400"
-                                >
-                                  Activate the product listing to sell this item
-                                  under it.
-                                </td>
-                              </tr>
-                            ) : null}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Standalone items sell on their own and aren't affected when the
-                  product listing is paused or deleted. Others sell under the
-                  product listing and follow it.
-                </p>
               </div>
             ) : null}
 
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                disabled={
-                  busy ||
-                  !licenseUri ||
-                  !licenseCid ||
-                  parsePrice(priceUsd) == null
-                }
-                onClick={() => void saveManage()}
-              >
-                {busy ? "Saving…" : "Save listings"}
-              </Button>
-              <Link
-                to={`/merchant/inventory/products?uri=${encodeURIComponent(entity.uri)}`}
-                className={cn(buttonVariants({ variant: "ghost" }))}
-              >
-                Cancel
-              </Link>
-            </div>
+            {manageStepHeader(
+              2,
+              "Pricing",
+              `Product ${
+                parsePrice(priceUsd) == null ? "—" : "$" + priceUsd
+              } · ${productItems.length} item${
+                productItems.length === 1 ? "" : "s"
+              }`,
+              licenseChosen,
+            )}
+            {manageStep === 2 ? (
+              <div className="space-y-6 rounded-lg border border-border p-4">
+                <div className="space-y-2">
+                  <Label htmlFor="manage-product-price">
+                    Product price (USD)
+                  </Label>
+                  <Input
+                    id="manage-product-price"
+                    inputMode="decimal"
+                    value={priceUsd}
+                    onChange={(e) => setPriceUsd(e.target.value)}
+                    className="max-w-[10rem]"
+                  />
+                </div>
+
+                {productItems.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-medium">Item listings</h2>
+                    </div>
+
+                    <div className="flex items-end gap-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="manage-bulk-price">
+                          Set every item price (USD)
+                        </Label>
+                        <Input
+                          id="manage-bulk-price"
+                          inputMode="decimal"
+                          value={bulkItemPrice}
+                          onChange={(e) => setBulkItemPrice(e.target.value)}
+                          className="h-9 max-w-[10rem]"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setItemPriceOverride((p) => {
+                            const next = { ...p };
+                            for (const it of productItems)
+                              next[it.uri] = bulkItemPrice;
+                            return next;
+                          })
+                        }
+                      >
+                        Apply to all
+                      </Button>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-lg border border-border">
+                      <table className="w-full border-collapse text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-border bg-muted/50">
+                            <th className="w-10 px-3 py-2">
+                              <input
+                                type="checkbox"
+                                className="size-4 align-middle"
+                                aria-label="Select every unlisted item"
+                                checked={allMembersSelected}
+                                disabled={selectableMembers.length === 0}
+                                onChange={(e) =>
+                                  setItemSelected((p) => {
+                                    const next = { ...p };
+                                    for (const it of selectableMembers)
+                                      next[it.uri] = e.target.checked;
+                                    return next;
+                                  })
+                                }
+                              />
+                            </th>
+                            <th className="px-3 py-2 font-medium">Item</th>
+                            <th className="w-28 px-3 py-2 font-medium">
+                              Price
+                            </th>
+                            <th className="w-24 px-3 py-2 text-center font-medium">
+                              Standalone
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {productItems.map((it) => {
+                            const childRow = memberListing(it.uri);
+                            const listed = !!childRow;
+                            const status = childRow?.listing.status;
+                            const wantStandalone =
+                              childStandalone[it.uri] ??
+                              (childRow
+                                ? !childRow.listing.parentListing
+                                : false);
+                            const included = listed
+                              ? true
+                              : (itemSelected[it.uri] ?? false);
+                            const priceVal =
+                              itemPriceOverride[it.uri] ??
+                              (childRow
+                                ? (childRow.listing.price.amount / 100).toFixed(
+                                    2,
+                                  )
+                                : bulkItemPrice);
+                            const attachLockedOn =
+                              wantStandalone && !productListingActive;
+                            return (
+                              <Fragment key={it.uri}>
+                                <tr className="border-b border-border last:border-b-0">
+                                  <td className="px-3 py-2 align-middle">
+                                    <input
+                                      type="checkbox"
+                                      className="size-4 align-middle"
+                                      aria-label={`Create a listing for ${it.title}`}
+                                      checked={included}
+                                      disabled={listed}
+                                      onChange={(e) =>
+                                        setItemSelected((p) => ({
+                                          ...p,
+                                          [it.uri]: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 align-middle">
+                                    <div className="flex items-center gap-2">
+                                      <span className="min-w-0 truncate font-medium">
+                                        {it.title}
+                                      </span>
+                                      {listed ? (
+                                        <Badge
+                                          variant={listingStatusBadgeVariant(
+                                            status!,
+                                          )}
+                                          className="shrink-0 text-[10px]"
+                                        >
+                                          {status}
+                                        </Badge>
+                                      ) : (
+                                        <span className="shrink-0 text-xs text-muted-foreground">
+                                          No listing
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 align-middle">
+                                    <Input
+                                      inputMode="decimal"
+                                      aria-label={`Price for ${it.title}`}
+                                      value={priceVal}
+                                      disabled={!included}
+                                      onChange={(e) =>
+                                        setItemPriceOverride((p) => ({
+                                          ...p,
+                                          [it.uri]: e.target.value,
+                                        }))
+                                      }
+                                      className="h-8 w-full"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 text-center align-middle">
+                                    <input
+                                      type="checkbox"
+                                      className="size-4 align-middle"
+                                      aria-label={`Sell ${it.title} as a standalone item`}
+                                      checked={wantStandalone}
+                                      disabled={!included || attachLockedOn}
+                                      onChange={(e) =>
+                                        setChildStandalone((p) => ({
+                                          ...p,
+                                          [it.uri]: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                  </td>
+                                </tr>
+                                {attachLockedOn ? (
+                                  <tr className="border-b border-border last:border-b-0">
+                                    <td aria-hidden />
+                                    <td
+                                      colSpan={3}
+                                      className="px-3 pb-2 text-xs text-amber-600 dark:text-amber-400"
+                                    >
+                                      Activate the product listing to sell this
+                                      item under it.
+                                    </td>
+                                  </tr>
+                                ) : null}
+                              </Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Standalone items sell on their own and aren't affected
+                      when the product listing is paused or deleted. Others sell
+                      under the product listing and follow it.
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    disabled={
+                      busy || !licenseChosen || parsePrice(priceUsd) == null
+                    }
+                    onClick={() => void saveManage()}
+                  >
+                    {busy ? "Saving…" : "Save listings"}
+                  </Button>
+                  <Link
+                    to={`/merchant/inventory/products?uri=${encodeURIComponent(entity.uri)}`}
+                    className={cn(buttonVariants({ variant: "ghost" }))}
+                  >
+                    Cancel
+                  </Link>
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : (
@@ -917,9 +1014,9 @@ export function CreateListingPage() {
                 </label>
                 {attachBlocked ? (
                   <p className="text-xs text-amber-600 dark:text-amber-400">
-                    {titleByUri[parentProductUri] ?? "The product"} has no active
-                    listing to attach to — list the product first, or keep this
-                    standalone.
+                    {titleByUri[parentProductUri] ?? "The product"} has no
+                    active listing to attach to — list the product first, or
+                    keep this standalone.
                   </p>
                 ) : null}
               </div>
@@ -929,7 +1026,9 @@ export function CreateListingPage() {
 
             <div className="space-y-2">
               <Label htmlFor="create-listing-price">
-                {entity.kind === "product" ? "Product price (USD)" : "Price (USD)"}
+                {entity.kind === "product"
+                  ? "Product price (USD)"
+                  : "Price (USD)"}
               </Label>
               <Input
                 id="create-listing-price"
@@ -966,8 +1065,8 @@ export function CreateListingPage() {
                         className="max-w-[10rem]"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Applied to every selected item. Edit a row to override it —
-                        that won't change this field.
+                        Applied to every selected item. Edit a row to override
+                        it — that won't change this field.
                       </p>
                     </div>
 
@@ -1005,7 +1104,9 @@ export function CreateListingPage() {
                               <Input
                                 inputMode="decimal"
                                 aria-label={`Price for ${it.title}`}
-                                value={itemPriceOverride[it.uri] ?? bulkItemPrice}
+                                value={
+                                  itemPriceOverride[it.uri] ?? bulkItemPrice
+                                }
                                 onChange={(e) =>
                                   setItemPriceOverride((p) => ({
                                     ...p,
