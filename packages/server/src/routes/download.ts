@@ -381,7 +381,7 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
     if (!merchantVerifyKeysAvailable())
       return c.json({ error: "app_key_missing" }, 503);
 
-    let entitled = false;
+    let entitledReceipt: PurchaseReceipt | null = null;
     for (const row of list.data.records) {
       try {
         const rec = row.value as PurchaseReceipt;
@@ -389,14 +389,14 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
         if (!receiptItemIsProduct(rec.item.uri)) continue;
         if (rec.item.uri !== productUriRaw) continue;
         if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-        entitled = true;
+        entitledReceipt = rec;
         break;
       } catch (e) {
         console.warn("download product-zip: skip receipt row", e);
       }
     }
 
-    if (!entitled) return c.json({ error: "not_entitled" }, 403);
+    if (!entitledReceipt) return c.json({ error: "not_entitled" }, 403);
 
     const product = db
       .select()
@@ -405,7 +405,15 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       .get();
     if (!product) return c.json({ error: "not_found" }, 404);
 
-    const result = await buildProductZip(db, cfg, product);
+    // Current receipts package exactly the frozen grant; legacy receipts
+    // package the live product.
+    const grant = frozenGrant(entitledReceipt);
+    const result = await buildProductZip(
+      db,
+      cfg,
+      product,
+      grant ?? undefined,
+    );
     if (result instanceof Response) return result;
     return c.json({ error: result.error }, result.status);
   });

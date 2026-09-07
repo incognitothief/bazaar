@@ -59,11 +59,18 @@ export async function buildProductZip(
   db: Db,
   r2: Extract<ReturnType<typeof r2ConfigFromEnv>, { ok: true }>,
   product: CatalogProductRow,
+  /**
+   * Restrict the package to these item URIs -- the buyer's frozen
+   * `purchase.receipt.grantedItems`. Items removed from the product since the
+   * sale are still included; items added since are not. Omit for the merchant
+   * incident-response path, which packages the whole current product.
+   */
+  entitledItemUris?: string[],
 ): Promise<Response | { error: string; status: 400 | 413 }> {
   const client = getR2S3Client(r2);
 
   const itemRefs = JSON.parse(product.items) as Array<{ uri: string }>;
-  const itemUris = itemRefs.map((ref) => ref.uri);
+  const itemUris = entitledItemUris ?? itemRefs.map((ref) => ref.uri);
   const itemRows = itemUris.length
     ? db.select().from(catalogItems).where(inArray(catalogItems.uri, itemUris)).all()
     : [];

@@ -21,6 +21,7 @@ import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   buildItemRefFromUri,
   createListing,
+  hasCompletedSale,
   isTerminalListingStatus,
   listCatalogItemRows,
   listCatalogProductRows,
@@ -93,6 +94,12 @@ export function CreateListingPage() {
   >({});
   /** Product manage view: which step of the license -> pricing walkthrough is open. */
   const [manageStep, setManageStep] = useState<1 | 2>(1);
+  /**
+   * Product manage view: the product has at least one completed sale. Members
+   * added now default to getting their own listing, since past buyers'
+   * entitlement is frozen and can't reach a new unlisted member.
+   */
+  const [productHasSales, setProductHasSales] = useState(false);
 
   const load = useCallback(async () => {
     if (!agent || !session?.did) return;
@@ -175,9 +182,11 @@ export function CreateListingPage() {
         setChildStandalone(attach);
         setItemPriceOverride(rowPrice);
         setManageStep(1);
+        setProductHasSales(await hasCompletedSale(targetUri));
       } else {
         setProductItems([]);
         setChildStandalone({});
+        setProductHasSales(false);
       }
 
       const parentUri = pbi.get(targetUri);
@@ -272,9 +281,19 @@ export function CreateListingPage() {
     () => productItems.filter((it) => !memberListing(it.uri)),
     [productItems, memberListing],
   );
+  /**
+   * Will a create-a-listing row for this unlisted member fire on save? Defaults
+   * on once the product has sales, so a new member reaches past buyers.
+   */
+  const memberWillBeListed = (uri: string) =>
+    itemSelected[uri] ?? productHasSales;
   const allMembersSelected =
     selectableMembers.length > 0 &&
-    selectableMembers.every((it) => itemSelected[it.uri] ?? false);
+    selectableMembers.every((it) => memberWillBeListed(it.uri));
+  /** Manage view: added members the merchant is about to leave unlisted. */
+  const unlistedNewMembers = productHasSales
+    ? selectableMembers.filter((it) => !memberWillBeListed(it.uri))
+    : [];
 
   const priceValid = useMemo(() => {
     const n = parseFloat(priceUsd);
@@ -497,7 +516,7 @@ export function CreateListingPage() {
           await putListing(agent, childRow.uri, rec);
           updated += 1;
         } else {
-          if (!(itemSelected[it.uri] ?? false)) continue;
+          if (!memberWillBeListed(it.uri)) continue;
           const cents = parsePrice(itemPriceOverride[it.uri] ?? bulkItemPrice);
           const ref = cents == null ? null : await buildItemRefFromUri(it.uri);
           if (cents == null || !ref?.cid) {
@@ -852,7 +871,7 @@ export function CreateListingPage() {
                                 : false);
                             const included = listed
                               ? true
-                              : (itemSelected[it.uri] ?? false);
+                              : memberWillBeListed(it.uri);
                             const priceVal =
                               itemPriceOverride[it.uri] ??
                               (childRow
@@ -950,6 +969,19 @@ export function CreateListingPage() {
                         </tbody>
                       </table>
                     </div>
+                    {unlistedNewMembers.length > 0 ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        {unlistedNewMembers.length}{" "}
+                        {unlistedNewMembers.length === 1
+                          ? "item has"
+                          : "items have"}{" "}
+                        no listing. This product has sold, so buyers who already
+                        own it can't get{" "}
+                        {unlistedNewMembers.length === 1 ? "it" : "them"} — give{" "}
+                        {unlistedNewMembers.length === 1 ? "it" : "each"} a
+                        listing above.
+                      </p>
+                    ) : null}
                     <p className="text-xs text-muted-foreground">
                       Standalone items sell on their own and aren't affected
                       when the product listing is paused or deleted. Others sell

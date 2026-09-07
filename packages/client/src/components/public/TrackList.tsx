@@ -27,10 +27,7 @@ export function TrackList({
 }: {
   collection: Collection;
   /** Active per-track listings where parentListing matches the collection listing AT-URI. */
-  purchaseByTrackUri?: Map<
-    string,
-    { listingUri: string; listing: Listing }
-  >;
+  purchaseByTrackUri?: Map<string, { listingUri: string; listing: Listing }>;
 }) {
   const [rows, setRows] = useState<
     {
@@ -101,7 +98,7 @@ export function TrackList({
                     "shrink-0",
                   )}
                 >
-                  Buy · {formatMoney(r.purchase.listing.price)}
+                  Add · {formatMoney(r.purchase.listing.price)}
                 </Link>
               ) : (
                 <span className="text-xs text-muted-foreground">

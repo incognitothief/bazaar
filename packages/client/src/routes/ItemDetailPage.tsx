@@ -165,6 +165,12 @@ export function ItemDetailPage() {
   const [allArtistListings, setAllArtistListings] = useState<ListingRow[]>([]);
   const [ownsCollection, setOwnsCollection] = useState(false);
   const [ownsProduct, setOwnsProduct] = useState(false);
+  /**
+   * The buyer's frozen `grantedItems` for this product, or null when they
+   * don't own it or the receipt predates the field. When null but ownsProduct
+   * is true, every current member counts as owned (legacy behavior).
+   */
+  const [productGrant, setProductGrant] = useState<string[] | null>(null);
   /** Ownership of a standalone purchase (legacy digital item or a catalog.item single) -- collection/product have their own owns* flags above since a bundle purchase is entitlement-checked differently. */
   const [ownsItem, setOwnsItem] = useState(false);
   /** catalog.product's own cover art, or a catalog.item single's borrowed from its owning product -- neither is ever a PDS blob CID. */
@@ -317,13 +323,19 @@ export function ItemDetailPage() {
         if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.product) {
           if (buyerAgent && session?.did) {
             const receipts = await listPurchaseReceiptRows(session.did);
+            const mine = receipts.find((r) => r.receipt.item.uri === itemUri);
             if (!cancelled) {
-              setOwnsProduct(
-                receipts.some((r) => r.receipt.item.uri === itemUri),
+              setOwnsProduct(!!mine);
+              setProductGrant(
+                Array.isArray(mine?.receipt.grantedItems) &&
+                  mine.receipt.grantedItems.length > 0
+                  ? mine.receipt.grantedItems
+                  : null,
               );
             }
           } else if (!cancelled) {
             setOwnsProduct(false);
+            setProductGrant(null);
           }
           const [p, resolvedItems] = await Promise.all([
             getCatalogProduct(itemUri),
@@ -355,6 +367,7 @@ export function ItemDetailPage() {
           }
         } else if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.item) {
           setOwnsProduct(false);
+          setProductGrant(null);
           setProductType(null);
           setProductTotalBytes(null);
           setProductItemMeta({});
@@ -377,6 +390,7 @@ export function ItemDetailPage() {
           }
         } else if (!cancelled) {
           setOwnsProduct(false);
+          setProductGrant(null);
           setCoverImages([]);
           setProductType(null);
           setProductTotalBytes(null);
@@ -459,8 +473,7 @@ export function ItemDetailPage() {
       if (cancelled) return;
 
       const v = merchantList.data.records[0]?.value as
-        | ActorMerchant
-        | undefined;
+        ActorMerchant | undefined;
       const merchantName = v?.displayName?.trim() || null;
       const relayName = profile.displayName?.trim() || null;
       setAuthorDisplayName(merchantName ?? relayName);
@@ -753,6 +766,15 @@ export function ItemDetailPage() {
     ? productItems.filter((r) => !isAudioProductItem(r))
     : [];
 
+  // A member the buyer's frozen grant covers. A legacy receipt carries no
+  // grant -- treat every current member as covered, as before the freeze.
+  const grantCoversMember = (uri: string) =>
+    ownsProduct && (productGrant == null || productGrant.includes(uri));
+  const addedSincePurchase =
+    ownsProduct && productGrant != null
+      ? productItems.filter((r) => !productGrant.includes(r.uri))
+      : [];
+
   const renderProductItemRow = (
     ref: { uri: string },
     marker: number | "bullet" | null,
@@ -799,7 +821,7 @@ export function ItemDetailPage() {
             ) : null}
           </span>
         </span>
-        {ownsProduct ? (
+        {grantCoversMember(ref.uri) ? (
           <Button
             type="button"
             variant="outline"
@@ -818,8 +840,12 @@ export function ItemDetailPage() {
               "shrink-0",
             )}
           >
-            Buy · {formatMoney(purchase.listing.price)}
+            Add · {formatMoney(purchase.listing.price)}
           </Link>
+        ) : ownsProduct ? (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            Added after your purchase — not sold separately yet
+          </span>
         ) : (
           <span className="shrink-0 text-xs text-muted-foreground">
             Not sold separately
@@ -868,7 +894,8 @@ export function ItemDetailPage() {
           <code className="text-xs">license.terms</code> records.
         </p>
       ) : null}
-      {fromRkey || (typeof window !== "undefined" && window.history.length > 1) ? (
+      {fromRkey ||
+      (typeof window !== "undefined" && window.history.length > 1) ? (
         <button
           type="button"
           onClick={() => {
@@ -1157,6 +1184,13 @@ export function ItemDetailPage() {
               {item.items.map((ref) => renderProductItemRow(ref, null))}
             </ol>
           )}
+          {addedSincePurchase.length > 0 ? (
+            <p className="text-xs italic text-muted-foreground">
+              Merchant added {addedSincePurchase.length}{" "}
+              {addedSincePurchase.length === 1 ? "item" : "items"} to this
+              product since your purchase.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
