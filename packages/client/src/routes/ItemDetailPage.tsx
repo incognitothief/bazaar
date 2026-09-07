@@ -1021,10 +1021,18 @@ export function ItemDetailPage() {
               {(isCollection && ownsCollection) ||
               (isProduct && ownsProduct) ||
               ((isDigital || isCatalogItemSingle) && ownsItem) ? (
-                <p className="text-sm text-muted-foreground">
-                  You have purchased this item. Your downloads are available
-                  below
-                </p>
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    You have purchased this item. Your downloads are available
+                    below
+                  </p>
+                  {addedSincePurchase.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      * Added after your purchase; not included in what you
+                      bought.
+                    </p>
+                  ) : null}
+                </>
               ) : isDigital ||
                 isCollection ||
                 isProduct ||
