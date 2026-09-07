@@ -1027,9 +1027,10 @@ export function ItemDetailPage() {
                     below
                   </p>
                   {addedSincePurchase.length > 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      * Added after your purchase; not included in what you
-                      bought.
+                    <p className="text-xs italic text-muted-foreground">
+                      Merchant added {addedSincePurchase.length}{" "}
+                      {addedSincePurchase.length === 1 ? "item" : "items"} to
+                      this product since your purchase. *
                     </p>
                   ) : null}
                 </>
@@ -1202,13 +1203,6 @@ export function ItemDetailPage() {
               {item.items.map((ref) => renderProductItemRow(ref, null))}
             </ol>
           )}
-          {addedSincePurchase.length > 0 ? (
-            <p className="text-xs italic text-muted-foreground">
-              Merchant added {addedSincePurchase.length}{" "}
-              {addedSincePurchase.length === 1 ? "item" : "items"} to this
-              product since your purchase. *
-            </p>
-          ) : null}
         </section>
       ) : null}
 
