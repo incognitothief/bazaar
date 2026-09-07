@@ -17,6 +17,10 @@ import {
   signConsentPayload,
   signReceiptPayload,
 } from "../atproto/sign";
+import {
+  entitlementDigest,
+  resolveGrantedItems,
+} from "../atproto/entitlement";
 import { getStripe } from "./getStripe";
 
 const COL_RECEIPT = "diamonds.whereditgo.bazaar.purchase.receipt";
@@ -557,6 +561,13 @@ export async function fulfillCheckoutSession(opts: {
   const issuerScope =
     (item?.artistDid as string | undefined) ?? process.env.ARTIST_DID ?? "";
 
+  // Frozen download entitlement -- captured now, folded into appSig, and
+  // written onto the receipt so later product edits can't move it.
+  const grantedItems = resolveGrantedItems(itemUri, item);
+  const grantedDigest = grantedItems
+    ? entitlementDigest(grantedItems)
+    : undefined;
+
   const appDid = process.env.APP_DID ?? "";
   const privateKeyRaw = process.env.APP_MERCHANT_PRIVATE_KEY;
 
@@ -584,6 +595,7 @@ export async function fulfillCheckoutSession(opts: {
         itemUri,
         listingCid: resolvedListingCid,
         buyerDid,
+        entitlementDigest: grantedDigest,
         privateKeyPem: privateKeyRaw,
       });
     } catch (e) {
@@ -609,6 +621,7 @@ export async function fulfillCheckoutSession(opts: {
     licenseGrantUri,
     licenseGrantCid,
     buyerDid,
+    ...(grantedItems ? { grantedItems } : {}),
     appDid,
     issuerScope,
     appSig: appSigReceipt,

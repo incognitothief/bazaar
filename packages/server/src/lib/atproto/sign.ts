@@ -135,14 +135,22 @@ function receiptPayloadString(params: {
   itemUri: string;
   listingCid: string;
   buyerDid: string;
+  /**
+   * base64url(SHA-256(grantedItems...)) -- see `entitlement.ts`. Appended as a
+   * sixth colon-delimited field when present. Legacy receipts have no
+   * `grantedItems` and sign only the five-field payload.
+   */
+  entitlementDigest?: string;
 }): string {
-  return [
+  const base = [
     params.purchasedAt,
     params.paymentRef,
     params.itemUri,
     params.listingCid,
     params.buyerDid,
-  ].join(":");
+  ];
+  if (params.entitlementDigest) base.push(params.entitlementDigest);
+  return base.join(":");
 }
 
 function consentPayloadString(params: {
@@ -165,6 +173,7 @@ export function signReceiptPayload(params: {
   itemUri: string;
   listingCid: string;
   buyerDid: string;
+  entitlementDigest?: string;
   privateKeyPem: string;
 }): string {
   return signCanonical(receiptPayloadString(params), params.privateKeyPem);
@@ -176,6 +185,7 @@ export function verifyReceiptPayload(params: {
   itemUri: string;
   listingCid: string;
   buyerDid: string;
+  entitlementDigest?: string;
   appSig: string;
   publicKeyPem: string;
 }): boolean {
