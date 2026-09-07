@@ -1,4 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildServiceDidDocument,
@@ -6,6 +9,8 @@ import {
   diffMerchantKeyMirror,
   expectedMerchantKeyRecords,
   getMerchantKeys,
+  KEY_HISTORY_CONTEXT_URL,
+  keyHistoryContextDocument,
   parseKeyHistoryEnv,
   resetMerchantKeysCache,
 } from "./merchantKeys";
@@ -245,13 +250,21 @@ describe("buildServiceDidDocument", () => {
     expect(doc.keyHistory[1]!.revoked).toBe(true);
     expect("authentication" in doc).toBe(false);
 
-    const ctx = doc["@context"].at(-1);
-    expect(ctx.keyHistory["@container"]).toBe("@list");
-    expect(ctx.supersededBy).toEqual({
+    // String URL only — ATCute / Bluesky DID parsers reject inline context objects.
+    expect(doc["@context"]).toEqual([
+      "https://www.w3.org/ns/did/v1",
+      "https://w3id.org/security/multikey/v1",
+      KEY_HISTORY_CONTEXT_URL,
+    ]);
+    expect(doc["@context"].every((x: unknown) => typeof x === "string")).toBe(true);
+
+    const hosted = keyHistoryContextDocument() as any;
+    expect(hosted["@context"].keyHistory["@container"]).toBe("@list");
+    expect(hosted["@context"].supersededBy).toEqual({
       "@id": "https://bazaar.whereditgo.diamonds/ns#supersededBy",
       "@type": "@id",
     });
-    expect(ctx.revoked).toEqual({
+    expect(hosted["@context"].revoked).toEqual({
       "@id": "https://bazaar.whereditgo.diamonds/ns#revoked",
       "@type": "http://www.w3.org/2001/XMLSchema#boolean",
     });
@@ -265,6 +278,11 @@ describe("buildServiceDidDocument", () => {
     expect(doc.verificationMethod).toEqual([]);
     expect(doc.assertionMethod).toEqual([]);
     expect(doc.keyHistory).toEqual([]);
+  });
+
+  test("config/bazaar-ns-v1.jsonld mirrors keyHistoryContextDocument()", () => {
+    const path = join(dirname(fileURLToPath(import.meta.url)), "../../config/bazaar-ns-v1.jsonld");
+    expect(JSON.parse(readFileSync(path, "utf-8"))).toEqual(keyHistoryContextDocument());
   });
 });
 

@@ -1,0 +1,16 @@
+{
+  "@context": {
+    "keyHistory": {
+      "@id": "https://bazaar.whereditgo.diamonds/ns#keyHistory",
+      "@container": "@list"
+    },
+    "supersededBy": {
+      "@id": "https://bazaar.whereditgo.diamonds/ns#supersededBy",
+      "@type": "@id"
+    },
+    "revoked": {
+      "@id": "https://bazaar.whereditgo.diamonds/ns#revoked",
+      "@type": "http://www.w3.org/2001/XMLSchema#boolean"
+    }
+  }
+}
