@@ -24,14 +24,15 @@ import {
   listCatalogProductRows,
   listLicensesWithStatus,
   listListingRows,
+  putListing,
   type LicenseListRow,
   type ListingRow,
 } from "@/lib/atproto/records";
 import { collectionFromAtUri } from "@/lib/atUri";
 import { cn } from "@/lib/utils";
+import type { Listing } from "@/types/lexicons";
 
 type EntityKind = "item" | "product" | "other";
-type ParentChoice = "part-of-product" | "separately";
 
 export function CreateListingPage() {
   const [searchParams] = useSearchParams();
@@ -65,7 +66,8 @@ export function CreateListingPage() {
   const [licenseUri, setLicenseUri] = useState("");
   const [licenseCid, setLicenseCid] = useState("");
   const [priceUsd, setPriceUsd] = useState("9.99");
-  const [parentChoice, setParentChoice] = useState<ParentChoice>("separately");
+  /** Item toggle: true = independent listing (no parentListing); false = sells under the product listing. */
+  const [standalone, setStandalone] = useState(true);
   const [busy, setBusy] = useState(false);
 
   /** Product-only: batch-create listings for the product's member items. */
@@ -146,12 +148,42 @@ export function CreateListingPage() {
         setProductItems([]);
       }
 
+      const parentUri = pbi.get(targetUri);
+      const productListing = parentUri
+        ? rows.find(
+            (r) =>
+              r.listing.item.uri === parentUri &&
+              !r.listing.parentListing &&
+              !isTerminalListingStatus(r.listing.status),
+          )
+        : undefined;
+      const own = rows.find(
+        (r) =>
+          r.listing.item.uri === targetUri &&
+          !isTerminalListingStatus(r.listing.status),
+      );
+
+      if (own) {
+        // Edit an existing item listing.
+        setStandalone(!own.listing.parentListing);
+        setPriceUsd((own.listing.price.amount / 100).toFixed(2));
+        setLicenseUri(own.listing.licenseUri ?? "");
+        setLicenseCid(own.listing.licenseGrantCid ?? "");
+      } else {
+        // New listing: default to selling under the product when it's listed,
+        // otherwise standalone. Seed the license from the product's listing.
+        setStandalone(!productListing);
+        if (productListing?.listing.licenseUri) {
+          setLicenseUri(productListing.listing.licenseUri);
+          setLicenseCid(productListing.listing.licenseGrantCid ?? "");
+        }
+      }
+
       if (prefill) {
         setLicenseUri(prefill.licenseUri ?? "");
         setLicenseCid(prefill.licenseGrantCid ?? "");
         if (prefill.priceUsd) setPriceUsd(prefill.priceUsd);
       }
-      setParentChoice(pbi.get(targetUri) ? "part-of-product" : "separately");
     } finally {
       setLoading(false);
     }
@@ -185,11 +217,8 @@ export function CreateListingPage() {
     );
   }, [listingRows, entity]);
 
-  useEffect(() => {
-    if (!canSellUnderProduct && parentChoice === "part-of-product") {
-      setParentChoice("separately");
-    }
-  }, [canSellUnderProduct, parentChoice]);
+  /** Item listing edit: the item grain, an existing listing to modify. */
+  const editMode = entity?.kind === "item" && !!existingListing;
 
   const priceValid = useMemo(() => {
     const n = parseFloat(priceUsd);
@@ -227,10 +256,15 @@ export function CreateListingPage() {
     });
   }, [batchEnabled, productItems, rowIncluded, priceForRow]);
 
+  /** Item can only attach to a product listing that exists. */
+  const attachBlocked =
+    entity?.kind === "item" && !standalone && !canSellUnderProduct;
+
   const canSubmit =
     !!entity &&
     !busy &&
-    !existingListing &&
+    (editMode || !existingListing) &&
+    !attachBlocked &&
     priceValid &&
     batchValid &&
     Boolean(licenseUri && licenseCid);
@@ -246,11 +280,30 @@ export function CreateListingPage() {
       }
       const cents = Math.round(parseFloat(priceUsd) * 100);
       const parentListing =
-        entity.kind === "item" &&
-        parentChoice === "part-of-product" &&
-        parentProductListing
+        entity.kind === "item" && !standalone && parentProductListing
           ? parentProductListing.uri
           : undefined;
+
+      if (editMode && existingListing) {
+        const rec: Listing = {
+          ...existingListing.listing,
+          item: itemRef,
+          price: {
+            amount: cents,
+            currency: existingListing.listing.price.currency,
+          },
+          licenseUri,
+          licenseGrantCid: licenseCid,
+        };
+        if (parentListing) rec.parentListing = parentListing;
+        else delete rec.parentListing;
+        await putListing(agent, existingListing.uri, rec);
+        toast.success("Listing updated");
+        navigate(
+          `/merchant/inventory/edit?uri=${encodeURIComponent(entity.uri)}`,
+        );
+        return;
+      }
 
       const { uri: createdListingUri } = await createListing(agent, {
         item: itemRef,
@@ -344,18 +397,21 @@ export function CreateListingPage() {
     );
   }
 
+  const blockCard = !!existingListing && entity.kind !== "item";
+
   return (
     <div className="w-full min-w-0 max-w-xl space-y-6">
       {backLink}
-      <h1 className="text-2xl font-semibold">Create listing</h1>
+      <h1 className="text-2xl font-semibold">
+        {editMode ? "Edit listing" : "Create listing"}
+      </h1>
 
-      {existingListing ? (
+      {blockCard ? (
         <Card>
           <CardContent className="py-6 text-sm text-muted-foreground">
             <span className="font-medium text-foreground">{entity.title}</span>{" "}
-            already has a listing (currently {existingListing.listing.status}). An
-            entity keeps a single listing for its whole life — edit or reactivate
-            that one from its inventory row instead of creating another.
+            already has a listing (currently {existingListing!.listing.status}).
+            Edit its price and terms from the product page.
             <div className="mt-4">
               <Link
                 to="/merchant/inventory"
@@ -373,70 +429,52 @@ export function CreateListingPage() {
             <CardDescription>
               {entity.kind === "product"
                 ? "Listing the whole product. Its items are covered unless you also list one separately."
-                : "Choose how it's sold, pick license terms, and set a price."}
+                : editMode
+                  ? "Change how this item sells, its price, and its terms."
+                  : "Choose how it's sold, pick license terms, and set a price."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {entity.kind === "item" && parentProductUri ? (
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-medium">
-                  How is this item sold?
-                </legend>
-                <label
-                  className={cn(
-                    "flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm",
-                    !canSellUnderProduct && "cursor-not-allowed opacity-50",
-                    parentChoice === "part-of-product" &&
-                      canSellUnderProduct &&
-                      "bg-muted/40 ring-2 ring-ring",
-                  )}
-                >
+              <div className="space-y-2">
+                <label className="flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm">
                   <input
-                    type="radio"
-                    name="parent-choice"
-                    className="mt-1"
-                    disabled={!canSellUnderProduct}
-                    checked={parentChoice === "part-of-product"}
-                    onChange={() => setParentChoice("part-of-product")}
+                    type="checkbox"
+                    className="mt-0.5 size-4 shrink-0"
+                    checked={standalone}
+                    onChange={(e) => setStandalone(e.target.checked)}
                   />
                   <span>
                     <span className="font-medium">
-                      Sell as part of{" "}
-                      {titleByUri[parentProductUri] ?? "its product"}
+                      List this as a standalone item
                     </span>
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      {canSellUnderProduct
-                        ? "The listing follows the product listing — pausing the product pauses this one."
-                        : `List ${titleByUri[parentProductUri] ?? "the product"} first to sell this item under it.`}
+                      {standalone
+                        ? `Sells on its own, independent of ${titleByUri[parentProductUri] ?? "the product"} — pausing or editing the product doesn't touch it.`
+                        : `Sells under the ${titleByUri[parentProductUri] ?? "product"} listing — follows it for pause, and is retired if the product listing is deleted.`}
                     </span>
                   </span>
                 </label>
-                <label
-                  className={cn(
-                    "flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm",
-                    parentChoice === "separately" && "bg-muted/40 ring-2 ring-ring",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="parent-choice"
-                    className="mt-1"
-                    checked={parentChoice === "separately"}
-                    onChange={() => setParentChoice("separately")}
-                  />
-                  <span>
-                    <span className="font-medium">Sell separately</span>
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      A standalone listing, independent of any product it also
-                      ships inside.
-                    </span>
-                  </span>
-                </label>
-              </fieldset>
+                {attachBlocked ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {titleByUri[parentProductUri] ?? "The product"} has no active
+                    listing to attach to — list the product first, or keep this
+                    standalone.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
 
             <div className="space-y-2">
               <Label>License</Label>
+              {entity.kind === "item" ? (
+                <p className="text-xs text-muted-foreground">
+                  Items normally sell under their product's license. Setting a
+                  different license here is deliberate — buyers who purchase this
+                  item on its own agree to <em>these</em> terms, not the
+                  product's.
+                </p>
+              ) : null}
               {licenseRows.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No licenses yet.{" "}
@@ -590,10 +628,14 @@ export function CreateListingPage() {
                 onClick={() => void submit()}
               >
                 {busy
-                  ? "Creating…"
-                  : entity.kind === "product" && batchEnabled
-                    ? "Create listings"
-                    : "Create listing"}
+                  ? editMode
+                    ? "Saving…"
+                    : "Creating…"
+                  : editMode
+                    ? "Save listing"
+                    : entity.kind === "product" && batchEnabled
+                      ? "Create listings"
+                      : "Create listing"}
               </Button>
               <Link
                 to="/merchant/inventory"
