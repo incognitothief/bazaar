@@ -10,8 +10,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { listingStatusBadgeVariant } from "@/components/merchant/merchantItemDisplay";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { fetchLatestInventoryPrefill } from "@/lib/api/inventoryApi";
@@ -81,6 +83,14 @@ export function CreateListingPage() {
   const [itemPriceOverride, setItemPriceOverride] = useState<
     Record<string, string>
   >({});
+  /**
+   * Product manage view: per-member "list as standalone" toggle.
+   * true = independent (no parentListing); false = sells under the product listing.
+   * A member not in here follows its listing's current link, or false when unlisted.
+   */
+  const [childStandalone, setChildStandalone] = useState<Record<string, boolean>>(
+    {},
+  );
 
   const load = useCallback(async () => {
     if (!agent || !session?.did) return;
@@ -138,14 +148,31 @@ export function CreateListingPage() {
 
       if (kind === "product") {
         const p = productRows.find((x) => x.uri === targetUri);
-        setProductItems(
-          (p?.items ?? []).map((ref) => ({
-            uri: ref.uri,
-            title: tb[ref.uri] ?? ref.uri,
-          })),
-        );
+        const members = (p?.items ?? []).map((ref) => ({
+          uri: ref.uri,
+          title: tb[ref.uri] ?? ref.uri,
+        }));
+        setProductItems(members);
+
+        // Manage view: seed each member row from its live listing.
+        const attach: Record<string, boolean> = {};
+        const rowPrice: Record<string, string> = {};
+        for (const m of members) {
+          const childRow = rows.find(
+            (r) =>
+              r.listing.item.uri === m.uri &&
+              !isTerminalListingStatus(r.listing.status),
+          );
+          if (childRow) {
+            attach[m.uri] = !childRow.listing.parentListing;
+            rowPrice[m.uri] = (childRow.listing.price.amount / 100).toFixed(2);
+          }
+        }
+        setChildStandalone(attach);
+        setItemPriceOverride(rowPrice);
       } else {
         setProductItems([]);
+        setChildStandalone({});
       }
 
       const parentUri = pbi.get(targetUri);
@@ -219,6 +246,21 @@ export function CreateListingPage() {
 
   /** Item listing edit: the item grain, an existing listing to modify. */
   const editMode = entity?.kind === "item" && !!existingListing;
+
+  /** Product grain with a live listing -> manage the product + its items' listings. */
+  const manageMode = entity?.kind === "product" && !!existingListing;
+  const productListing = manageMode ? existingListing : undefined;
+  const productListingActive = productListing?.listing.status === "active";
+
+  const memberListing = useCallback(
+    (itemUri: string) =>
+      listingRows.find(
+        (r) =>
+          r.listing.item.uri === itemUri &&
+          !isTerminalListingStatus(r.listing.status),
+      ),
+    [listingRows],
+  );
 
   const priceValid = useMemo(() => {
     const n = parseFloat(priceUsd);
@@ -364,6 +406,123 @@ export function CreateListingPage() {
     }
   }
 
+  const parsePrice = (raw: string): number | null => {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
+  };
+
+  /**
+   * Product manage view. Patches the product listing (price / license) in
+   * place, then walks every member row: re-prices or attaches/detaches an
+   * existing item listing, and creates one for a selected unlisted member.
+   * New child listings inherit the product listing's license; an existing
+   * child's own license is left untouched (bespoke licenses are edited from
+   * that item's listing tool).
+   */
+  async function saveManage() {
+    if (!entity || !agent || !productListing) return;
+    setBusy(true);
+    try {
+      const cur = productListing.listing;
+      const prodCents = parsePrice(priceUsd);
+      if (prodCents == null) {
+        toast.error("Enter a valid product price");
+        return;
+      }
+      if (!licenseUri || !licenseCid) {
+        toast.error("Pick a license for the product");
+        return;
+      }
+      const priceChanged = prodCents !== cur.price.amount;
+      const licenseChanged =
+        licenseUri !== cur.licenseUri || licenseCid !== cur.licenseGrantCid;
+      if (priceChanged || licenseChanged) {
+        const freshRef = await buildItemRefFromUri(entity.uri);
+        await putListing(agent, productListing.uri, {
+          ...cur,
+          item: freshRef ?? cur.item,
+          price: { amount: prodCents, currency: cur.price.currency },
+          licenseUri,
+          licenseGrantCid: licenseCid,
+        });
+      }
+
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      for (const it of productItems) {
+        const childRow = memberListing(it.uri);
+        const wantStandalone =
+          childStandalone[it.uri] ??
+          (childRow ? !childRow.listing.parentListing : false);
+
+        if (childRow) {
+          const c = childRow.listing;
+          const rowCents = parsePrice(
+            itemPriceOverride[it.uri] ?? (c.price.amount / 100).toFixed(2),
+          );
+          const curStandalone = !c.parentListing;
+          const attachChanged = wantStandalone !== curStandalone;
+          const priceMoved = rowCents != null && rowCents !== c.price.amount;
+          if (!attachChanged && !priceMoved) continue;
+          if (attachChanged && !wantStandalone && !productListingActive) {
+            skipped += 1;
+            continue;
+          }
+          const ref = await buildItemRefFromUri(it.uri);
+          const rec: Listing = {
+            ...c,
+            item: ref ?? c.item,
+            price:
+              rowCents != null
+                ? { amount: rowCents, currency: c.price.currency }
+                : c.price,
+          };
+          if (wantStandalone) delete rec.parentListing;
+          else rec.parentListing = productListing.uri;
+          await putListing(agent, childRow.uri, rec);
+          updated += 1;
+        } else {
+          if (!(itemSelected[it.uri] ?? false)) continue;
+          const cents = parsePrice(itemPriceOverride[it.uri] ?? bulkItemPrice);
+          const ref = cents == null ? null : await buildItemRefFromUri(it.uri);
+          if (cents == null || !ref?.cid) {
+            skipped += 1;
+            continue;
+          }
+          await createListing(agent, {
+            item: ref,
+            price: { amount: cents, currency: "USD" },
+            status: "active",
+            licenseUri,
+            licenseGrantCid: licenseCid,
+            parentListing: wantStandalone ? undefined : productListing.uri,
+          });
+          created += 1;
+        }
+      }
+
+      const parts = [
+        priceChanged || licenseChanged ? "product listing updated" : null,
+        created > 0
+          ? `${created} item listing${created === 1 ? "" : "s"} created`
+          : null,
+        updated > 0 ? `${updated} updated` : null,
+        skipped > 0 ? `${skipped} skipped` : null,
+      ].filter(Boolean);
+      toast.success(parts.length ? `Saved — ${parts.join(", ")}.` : "No changes");
+      navigate(
+        `/merchant/inventory/products?uri=${encodeURIComponent(entity.uri)}`,
+      );
+    } catch (e) {
+      toast.error("Could not save listings", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!session || !agent) return null;
 
   const backLink = (
@@ -397,13 +556,72 @@ export function CreateListingPage() {
     );
   }
 
-  const blockCard = !!existingListing && entity.kind !== "item";
+  const blockCard = !!existingListing && entity.kind === "other";
+
+  const licensePicker = (
+    <div className="space-y-2">
+      <Label>License</Label>
+      {entity.kind === "item" ? (
+        <p className="text-xs text-muted-foreground">
+          Items normally sell under their product's license. Setting a different
+          license here is deliberate — buyers who purchase this item on its own
+          agree to <em>these</em> terms, not the product's.
+        </p>
+      ) : null}
+      {licenseRows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No licenses yet.{" "}
+          <Link to="/merchant/license" className="underline underline-offset-2">
+            Create one
+          </Link>
+          .
+        </p>
+      ) : (
+        <div className="grid max-h-44 gap-2 overflow-y-auto sm:grid-cols-2">
+          {licenseRows.map((row) => {
+            const picked = licenseUri === row.uri && licenseCid === row.cid;
+            return (
+              <button
+                key={row.uri}
+                type="button"
+                onClick={() => {
+                  setLicenseUri(row.uri);
+                  setLicenseCid(row.cid);
+                }}
+                className={cn(
+                  "rounded-lg border p-3 text-left text-sm transition-colors",
+                  picked && "bg-muted/40 ring-2 ring-ring",
+                )}
+              >
+                <span className="font-medium">{row.title}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {row.version}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {licenseRows.length > 0 ? (
+        <Link
+          to="/merchant/license"
+          className="text-sm text-primary underline-offset-2 hover:underline"
+        >
+          Don't see the right license? Create one
+        </Link>
+      ) : null}
+    </div>
+  );
 
   return (
     <div className="w-full min-w-0 max-w-xl space-y-6">
       {backLink}
       <h1 className="text-2xl font-semibold">
-        {editMode ? "Edit listing" : "Create listing"}
+        {manageMode
+          ? "Manage listings"
+          : editMode
+            ? "Edit listing"
+            : "Create listing"}
       </h1>
 
       {blockCard ? (
@@ -418,6 +636,204 @@ export function CreateListingPage() {
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
               >
                 Back to inventory
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      ) : manageMode && productListing ? (
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-lg">{entity.title}</CardTitle>
+              <Badge
+                variant={listingStatusBadgeVariant(
+                  productListing.listing.status,
+                )}
+                className="shrink-0 text-[10px]"
+              >
+                {productListing.listing.status}
+              </Badge>
+            </div>
+            <CardDescription>
+              Set the product listing's price and terms, then price its items
+              and choose which sell on their own.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {licensePicker}
+
+            <div className="space-y-2">
+              <Label htmlFor="manage-product-price">Product price (USD)</Label>
+              <Input
+                id="manage-product-price"
+                inputMode="decimal"
+                value={priceUsd}
+                onChange={(e) => setPriceUsd(e.target.value)}
+                className="max-w-[10rem]"
+              />
+            </div>
+
+            {productItems.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-medium">Item listings</h2>
+                </div>
+
+                <div className="flex items-end gap-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="manage-bulk-price">
+                      Set every item price (USD)
+                    </Label>
+                    <Input
+                      id="manage-bulk-price"
+                      inputMode="decimal"
+                      value={bulkItemPrice}
+                      onChange={(e) => setBulkItemPrice(e.target.value)}
+                      className="h-9 max-w-[10rem]"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setItemPriceOverride((p) => {
+                        const next = { ...p };
+                        for (const it of productItems)
+                          next[it.uri] = bulkItemPrice;
+                        return next;
+                      })
+                    }
+                  >
+                    Apply to all
+                  </Button>
+                </div>
+
+                <ul className="m-0 list-none space-y-1.5 p-0">
+                  {productItems.map((it) => {
+                    const childRow = memberListing(it.uri);
+                    const listed = !!childRow;
+                    const status = childRow?.listing.status;
+                    const wantStandalone =
+                      childStandalone[it.uri] ??
+                      (childRow ? !childRow.listing.parentListing : false);
+                    const include = listed
+                      ? true
+                      : (itemSelected[it.uri] ?? false);
+                    const priceVal =
+                      itemPriceOverride[it.uri] ??
+                      (childRow
+                        ? (childRow.listing.price.amount / 100).toFixed(2)
+                        : bulkItemPrice);
+                    const attachLockedOn = wantStandalone && !productListingActive;
+                    return (
+                      <li
+                        key={it.uri}
+                        className="space-y-2 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          {listed ? null : (
+                            <input
+                              type="checkbox"
+                              className="size-4 shrink-0"
+                              aria-label={`Create a listing for ${it.title}`}
+                              checked={include}
+                              onChange={(e) =>
+                                setItemSelected((p) => ({
+                                  ...p,
+                                  [it.uri]: e.target.checked,
+                                }))
+                              }
+                            />
+                          )}
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {it.title}
+                          </span>
+                          {listed ? (
+                            <Badge
+                              variant={listingStatusBadgeVariant(status!)}
+                              className="shrink-0 text-[10px]"
+                            >
+                              {status}
+                            </Badge>
+                          ) : (
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              No listing
+                            </span>
+                          )}
+                        </div>
+                        {listed || include ? (
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">
+                                Price
+                              </span>
+                              <Input
+                                inputMode="decimal"
+                                aria-label={`Price for ${it.title}`}
+                                value={priceVal}
+                                onChange={(e) =>
+                                  setItemPriceOverride((p) => ({
+                                    ...p,
+                                    [it.uri]: e.target.value,
+                                  }))
+                                }
+                                className="h-8 w-24"
+                              />
+                            </div>
+                            <label className="flex cursor-pointer items-center gap-2 text-xs">
+                              <input
+                                type="checkbox"
+                                className="size-4"
+                                checked={wantStandalone}
+                                disabled={attachLockedOn}
+                                onChange={(e) =>
+                                  setChildStandalone((p) => ({
+                                    ...p,
+                                    [it.uri]: e.target.checked,
+                                  }))
+                                }
+                              />
+                              Standalone
+                            </label>
+                          </div>
+                        ) : null}
+                        {attachLockedOn ? (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            Activate the product listing to sell this item under
+                            it.
+                          </p>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  Standalone items sell on their own and aren't affected when the
+                  product listing is paused or deleted. Others sell under the
+                  product listing and follow it.
+                </p>
+              </div>
+            ) : null}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                disabled={
+                  busy ||
+                  !licenseUri ||
+                  !licenseCid ||
+                  parsePrice(priceUsd) == null
+                }
+                onClick={() => void saveManage()}
+              >
+                {busy ? "Saving…" : "Save listings"}
+              </Button>
+              <Link
+                to={`/merchant/inventory/products?uri=${encodeURIComponent(entity.uri)}`}
+                className={cn(buttonVariants({ variant: "ghost" }))}
+              >
+                Cancel
               </Link>
             </div>
           </CardContent>
@@ -465,63 +881,7 @@ export function CreateListingPage() {
               </div>
             ) : null}
 
-            <div className="space-y-2">
-              <Label>License</Label>
-              {entity.kind === "item" ? (
-                <p className="text-xs text-muted-foreground">
-                  Items normally sell under their product's license. Setting a
-                  different license here is deliberate — buyers who purchase this
-                  item on its own agree to <em>these</em> terms, not the
-                  product's.
-                </p>
-              ) : null}
-              {licenseRows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No licenses yet.{" "}
-                  <Link
-                    to="/merchant/license"
-                    className="underline underline-offset-2"
-                  >
-                    Create one
-                  </Link>
-                  .
-                </p>
-              ) : (
-                <div className="grid max-h-44 gap-2 overflow-y-auto sm:grid-cols-2">
-                  {licenseRows.map((row) => {
-                    const picked =
-                      licenseUri === row.uri && licenseCid === row.cid;
-                    return (
-                      <button
-                        key={row.uri}
-                        type="button"
-                        onClick={() => {
-                          setLicenseUri(row.uri);
-                          setLicenseCid(row.cid);
-                        }}
-                        className={cn(
-                          "rounded-lg border p-3 text-left text-sm transition-colors",
-                          picked && "bg-muted/40 ring-2 ring-ring",
-                        )}
-                      >
-                        <span className="font-medium">{row.title}</span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          {row.version}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {licenseRows.length > 0 ? (
-                <Link
-                  to="/merchant/license"
-                  className="text-sm text-primary underline-offset-2 hover:underline"
-                >
-                  Don't see the right license? Create one
-                </Link>
-              ) : null}
-            </div>
+            {licensePicker}
 
             <div className="space-y-2">
               <Label htmlFor="create-listing-price">
