@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -261,6 +261,15 @@ export function CreateListingPage() {
       ),
     [listingRows],
   );
+
+  /** Manage view: members with no live listing -- the rows "select all" acts on. */
+  const selectableMembers = useMemo(
+    () => productItems.filter((it) => !memberListing(it.uri)),
+    [productItems, memberListing],
+  );
+  const allMembersSelected =
+    selectableMembers.length > 0 &&
+    selectableMembers.every((it) => itemSelected[it.uri] ?? false);
 
   const priceValid = useMemo(() => {
     const n = parseFloat(priceUsd);
@@ -709,105 +718,140 @@ export function CreateListingPage() {
                   </Button>
                 </div>
 
-                <ul className="m-0 list-none space-y-1.5 p-0">
-                  {productItems.map((it) => {
-                    const childRow = memberListing(it.uri);
-                    const listed = !!childRow;
-                    const status = childRow?.listing.status;
-                    const wantStandalone =
-                      childStandalone[it.uri] ??
-                      (childRow ? !childRow.listing.parentListing : false);
-                    const include = listed
-                      ? true
-                      : (itemSelected[it.uri] ?? false);
-                    const priceVal =
-                      itemPriceOverride[it.uri] ??
-                      (childRow
-                        ? (childRow.listing.price.amount / 100).toFixed(2)
-                        : bulkItemPrice);
-                    const attachLockedOn = wantStandalone && !productListingActive;
-                    return (
-                      <li
-                        key={it.uri}
-                        className="space-y-2 rounded-md border border-border bg-background px-3 py-2 text-sm"
-                      >
-                        <div className="flex items-center gap-3">
-                          {listed ? null : (
-                            <input
-                              type="checkbox"
-                              className="size-4 shrink-0"
-                              aria-label={`Create a listing for ${it.title}`}
-                              checked={include}
-                              onChange={(e) =>
-                                setItemSelected((p) => ({
-                                  ...p,
-                                  [it.uri]: e.target.checked,
-                                }))
-                              }
-                            />
-                          )}
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {it.title}
-                          </span>
-                          {listed ? (
-                            <Badge
-                              variant={listingStatusBadgeVariant(status!)}
-                              className="shrink-0 text-[10px]"
-                            >
-                              {status}
-                            </Badge>
-                          ) : (
-                            <span className="shrink-0 text-xs text-muted-foreground">
-                              No listing
-                            </span>
-                          )}
-                        </div>
-                        {listed || include ? (
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">
-                                Price
-                              </span>
-                              <Input
-                                inputMode="decimal"
-                                aria-label={`Price for ${it.title}`}
-                                value={priceVal}
-                                onChange={(e) =>
-                                  setItemPriceOverride((p) => ({
-                                    ...p,
-                                    [it.uri]: e.target.value,
-                                  }))
-                                }
-                                className="h-8 w-24"
-                              />
-                            </div>
-                            <label className="flex cursor-pointer items-center gap-2 text-xs">
-                              <input
-                                type="checkbox"
-                                className="size-4"
-                                checked={wantStandalone}
-                                disabled={attachLockedOn}
-                                onChange={(e) =>
-                                  setChildStandalone((p) => ({
-                                    ...p,
-                                    [it.uri]: e.target.checked,
-                                  }))
-                                }
-                              />
-                              Standalone
-                            </label>
-                          </div>
-                        ) : null}
-                        {attachLockedOn ? (
-                          <p className="text-xs text-amber-600 dark:text-amber-400">
-                            Activate the product listing to sell this item under
-                            it.
-                          </p>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/50">
+                        <th className="w-10 px-3 py-2">
+                          <input
+                            type="checkbox"
+                            className="size-4 align-middle"
+                            aria-label="Select every unlisted item"
+                            checked={allMembersSelected}
+                            disabled={selectableMembers.length === 0}
+                            onChange={(e) =>
+                              setItemSelected((p) => {
+                                const next = { ...p };
+                                for (const it of selectableMembers)
+                                  next[it.uri] = e.target.checked;
+                                return next;
+                              })
+                            }
+                          />
+                        </th>
+                        <th className="px-3 py-2 font-medium">Item</th>
+                        <th className="w-28 px-3 py-2 font-medium">Price</th>
+                        <th className="w-24 px-3 py-2 text-center font-medium">
+                          Standalone
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productItems.map((it) => {
+                        const childRow = memberListing(it.uri);
+                        const listed = !!childRow;
+                        const status = childRow?.listing.status;
+                        const wantStandalone =
+                          childStandalone[it.uri] ??
+                          (childRow ? !childRow.listing.parentListing : false);
+                        const included = listed
+                          ? true
+                          : (itemSelected[it.uri] ?? false);
+                        const priceVal =
+                          itemPriceOverride[it.uri] ??
+                          (childRow
+                            ? (childRow.listing.price.amount / 100).toFixed(2)
+                            : bulkItemPrice);
+                        const attachLockedOn =
+                          wantStandalone && !productListingActive;
+                        return (
+                          <Fragment key={it.uri}>
+                            <tr className="border-b border-border last:border-b-0">
+                              <td className="px-3 py-2 align-middle">
+                                <input
+                                  type="checkbox"
+                                  className="size-4 align-middle"
+                                  aria-label={`Create a listing for ${it.title}`}
+                                  checked={included}
+                                  disabled={listed}
+                                  onChange={(e) =>
+                                    setItemSelected((p) => ({
+                                      ...p,
+                                      [it.uri]: e.target.checked,
+                                    }))
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2 align-middle">
+                                <div className="flex items-center gap-2">
+                                  <span className="min-w-0 truncate font-medium">
+                                    {it.title}
+                                  </span>
+                                  {listed ? (
+                                    <Badge
+                                      variant={listingStatusBadgeVariant(
+                                        status!,
+                                      )}
+                                      className="shrink-0 text-[10px]"
+                                    >
+                                      {status}
+                                    </Badge>
+                                  ) : (
+                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                      No listing
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-middle">
+                                <Input
+                                  inputMode="decimal"
+                                  aria-label={`Price for ${it.title}`}
+                                  value={priceVal}
+                                  disabled={!included}
+                                  onChange={(e) =>
+                                    setItemPriceOverride((p) => ({
+                                      ...p,
+                                      [it.uri]: e.target.value,
+                                    }))
+                                  }
+                                  className="h-8 w-full"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-center align-middle">
+                                <input
+                                  type="checkbox"
+                                  className="size-4 align-middle"
+                                  aria-label={`Sell ${it.title} as a standalone item`}
+                                  checked={wantStandalone}
+                                  disabled={!included || attachLockedOn}
+                                  onChange={(e) =>
+                                    setChildStandalone((p) => ({
+                                      ...p,
+                                      [it.uri]: e.target.checked,
+                                    }))
+                                  }
+                                />
+                              </td>
+                            </tr>
+                            {attachLockedOn ? (
+                              <tr className="border-b border-border last:border-b-0">
+                                <td aria-hidden />
+                                <td
+                                  colSpan={3}
+                                  className="px-3 pb-2 text-xs text-amber-600 dark:text-amber-400"
+                                >
+                                  Activate the product listing to sell this item
+                                  under it.
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Standalone items sell on their own and aren't affected when the
                   product listing is paused or deleted. Others sell under the
