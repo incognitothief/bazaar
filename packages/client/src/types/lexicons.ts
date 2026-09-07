@@ -241,6 +241,12 @@ export type PurchaseReceipt = {
   licenseGrantCid?: string;
   shippingAddress?: Address;
   fulfillmentUri?: string;
+  /**
+   * Frozen download entitlement: the catalog.item URIs this purchase covers,
+   * captured at checkout. Absent on legacy receipts. Later edits to a
+   * product's items[] do not change it.
+   */
+  grantedItems?: string[];
   appDid: string;
   issuerScope: string;
   appSig: string;
