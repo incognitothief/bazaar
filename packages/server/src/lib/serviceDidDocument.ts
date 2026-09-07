@@ -33,7 +33,7 @@ function documentCandidates(): string[] {
 /**
  * Base `@context` for the served DID document. Read from `did-document.template.json` so an
  * operator can add context entries without a code change; the storefront DID id itself comes
- * from `APP_DID` (see `merchantDid()`), and the key arrays + the `keyHistory` `@context` term
+ * from `APP_DID` (see `merchantDid()`), and the key arrays + the hosted `keyHistory` context URL
  * are assembled in code. See `docs/adr/0013-key-rotation-and-did-document-v2.md`.
  */
 function loadContextBase(): unknown[] {

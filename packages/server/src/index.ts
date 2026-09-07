@@ -16,6 +16,7 @@ import {
 } from "./lib/stripe/fulfillCheckoutSession";
 import { getStripe } from "./lib/stripe/getStripe";
 import { lexicons } from "@bazaar/shared";
+import { ns } from "./routes/ns";
 import { wellKnown } from "./routes/wellKnown";
 
 const port = Number(process.env.PORT ?? 3000);
@@ -82,6 +83,7 @@ app.get("/xrpc/com.atproto.lexicon.get", (c) => {
 
 app.route("/api", api);
 app.route("/.well-known", wellKnown);
+app.route("/ns", ns);
 
 /** Legacy share links: `/item/<encodeURIComponent(at-uri)>` → `/item/<rkey>` */
 app.use("/item/*", async (c, next) => {

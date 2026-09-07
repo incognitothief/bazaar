@@ -28,7 +28,10 @@ import { publicSpkiPemToMultibase } from "./publicKeyMultibase";
  * `app_keys` (SQLite) is a boot-rebuilt audit mirror with zero authority.
  */
 
+/** Fixed project vocab IRIs (identical for every deployment). Term defs live under `/ns/v1`. */
 const CTX_NS = "https://bazaar.whereditgo.diamonds/ns#";
+/** Hosted JSON-LD context URL — string-only `@context` entries for ATCute / Bluesky parsers. */
+export const KEY_HISTORY_CONTEXT_URL = "https://bazaar.whereditgo.diamonds/ns/v1";
 const DEFAULT_DID = "did:web:bazaar.whereditgo.diamonds";
 
 /** One entry of the decoded APP_MERCHANT_KEY_HISTORY array / the served `keyHistory`. */
@@ -265,14 +268,20 @@ export function candidatePemsForKid(
   return { revoked: false, pems: ordered.map((k) => k.publicKeyPem) };
 }
 
-/** Inline JSON-LD `@context` object declaring `keyHistory` and its Bazaar-specific terms. */
-export function keyHistoryContext(): Record<string, unknown> {
+/**
+ * JSON-LD context document for Bazaar DID extensions (`keyHistory`, `supersededBy`, `revoked`).
+ * Served at `GET /ns/v1` and referenced by URL from the DID `@context` array (no inline object —
+ * ATCute / Bluesky DID parsers reject non-string context entries).
+ */
+export function keyHistoryContextDocument(): Record<string, unknown> {
   return {
-    keyHistory: { "@id": `${CTX_NS}keyHistory`, "@container": "@list" },
-    supersededBy: { "@id": `${CTX_NS}supersededBy`, "@type": "@id" },
-    revoked: {
-      "@id": `${CTX_NS}revoked`,
-      "@type": "http://www.w3.org/2001/XMLSchema#boolean",
+    "@context": {
+      keyHistory: { "@id": `${CTX_NS}keyHistory`, "@container": "@list" },
+      supersededBy: { "@id": `${CTX_NS}supersededBy`, "@type": "@id" },
+      revoked: {
+        "@id": `${CTX_NS}revoked`,
+        "@type": "http://www.w3.org/2001/XMLSchema#boolean",
+      },
     },
   };
 }
@@ -360,7 +369,7 @@ export function buildServiceDidDocument(
   }));
 
   return {
-    "@context": [...contextBase, keyHistoryContext()],
+    "@context": [...contextBase, KEY_HISTORY_CONTEXT_URL],
     id,
     verificationMethod,
     assertionMethod,

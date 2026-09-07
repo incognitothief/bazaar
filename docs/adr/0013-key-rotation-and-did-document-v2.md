@@ -102,22 +102,37 @@ Each entry is a complete Multikey verification method (`id`, `type`, `controller
 `publicKeyMultibase`) plus `supersededBy` and the optional `revoked` — so a consumer can hand a
 `keyHistory` entry straight to a Multikey verifier.
 
-#### 1b. `@context` (inline)
+#### 1b. `@context` (hosted URL)
 
 Only `keyHistory` and the two Bazaar-specific terms need declaring — `id`, `type`, `controller`,
-`publicKeyMultibase` come from the DID-core + Multikey contexts. An **inline context object** is
-appended to the `@context` array (no second document to serve, offline-safe):
+`publicKeyMultibase` come from the DID-core + Multikey contexts. Term definitions live in a
+**hosted JSON-LD context document** at a fixed project URL (every deployment also serves a copy):
+
+```
+GET /ns/v1
+→ https://bazaar.whereditgo.diamonds/ns/v1
+Content-Type: application/ld+json
+```
 
 ```jsonc
-"@context": [
-  "https://www.w3.org/ns/did/v1",
-  "https://w3id.org/security/multikey/v1",
-  {
+{
+  "@context": {
     "keyHistory":   { "@id": "https://bazaar.whereditgo.diamonds/ns#keyHistory", "@container": "@list" },
     "supersededBy": { "@id": "https://bazaar.whereditgo.diamonds/ns#supersededBy", "@type": "@id" },
     "revoked":      { "@id": "https://bazaar.whereditgo.diamonds/ns#revoked",
                       "@type": "http://www.w3.org/2001/XMLSchema#boolean" }
   }
+}
+```
+
+The DID document's `@context` array is **string-only** (no inline objects — ATCute / Bluesky DID
+parsers reject non-string entries; DID Core permits objects, but ecosystem parsers often do not):
+
+```jsonc
+"@context": [
+  "https://www.w3.org/ns/did/v1",
+  "https://w3id.org/security/multikey/v1",
+  "https://bazaar.whereditgo.diamonds/ns/v1"
 ]
 ```
 
@@ -125,8 +140,8 @@ appended to the `@context` array (no second document to serve, offline-safe):
 link (hence the full-DID-URL values); `revoked` is explicitly typed `xsd:boolean`. The IRI
 namespace
 `https://bazaar.whereditgo.diamonds/ns#` is a **fixed Bazaar-project vocabulary URI**, identical
-for every deployment regardless of the operator's own `did:web` host; nothing needs to resolve
-there today.
+for every deployment regardless of the operator's own `did:web` host. Version the path (`/ns/v1`);
+breaking term changes get `/ns/v2` and a DID `@context` bump.
 
 #### 1c. Full example
 
@@ -185,7 +200,7 @@ non-`did:web` `APP_DID` is ignored with a warning.
 
 `loadServiceDidDocument()` (`packages/server/src/lib/serviceDidDocument.ts`) assembles:
 
-- `@context` — base array read from `config/did-document.template.json` + the inline object of §1b.
+- `@context` — base array read from `config/did-document.template.json` + the hosted context URL of §1b.
 - `verificationMethod` — the current key + every non-revoked `APP_MERCHANT_KEY_HISTORY` entry.
 - `assertionMethod` — `[ current key id ]`.
 - `keyHistory` — the full parsed `APP_MERCHANT_KEY_HISTORY` array.
@@ -300,7 +315,7 @@ Full write-up:
 | `authentication` | omitted |
 | `keyHistory` | every non-current key; ordered oldest→newest; `{ id, type, controller, publicKeyMultibase, supersededBy }` with `id` / `supersededBy` full DID URLs; optional `revoked: true` (`@context`-typed `xsd:boolean`) |
 | state | derived from field membership — no `status` in the document |
-| `keyHistory` vocab | inline `@context` object; IRI ns `https://bazaar.whereditgo.diamonds/ns#` (fixed, project-wide) |
+| `keyHistory` vocab | hosted at `https://bazaar.whereditgo.diamonds/ns/v1` (`GET /ns/v1`); IRI ns `https://bazaar.whereditgo.diamonds/ns#` (fixed, project-wide); DID `@context` is string-only |
 | Revocation | optional boolean `revoked: true` on the `keyHistory` entry; no timestamp is a verification input |
 | Source of truth | environment only (`APP_MERCHANT_PRIVATE_KEY` / `_KID` / `_PUBLIC_MULTIBASE` / `_KEY_HISTORY`) |
 | `app_keys` table | runtime cache + audit surface, rebuilt from env each boot; zero authority |
@@ -313,7 +328,7 @@ Full write-up:
 - Rotation is fully expressible via four environment variables — CI/CD-portable, no committed
   keys, no admin UI required for the core operation.
 - Standard `did:web` resolvers verify records signed by the current key or any retired key with no
-  Bazaar knowledge; the `keyHistory` extension (documented, inline-context) adds the `supersededBy`
+  Bazaar knowledge; the `keyHistory` extension (hosted context URL) adds the `supersededBy`
   chain and the revocation tombstones.
 - `app_keys` is derived state, so it can never be the thing that is wrong — the environment is.
 
@@ -325,10 +340,12 @@ Full write-up:
   extension — a bare Multikey resolver just sees "signature does not verify against any method".
 - The DER fallback and the `bazaarIdentifiers` DER signer linger until field-receipt migration.
 - DID document is built once at boot; rotation lands on redeploy (acceptable for a rare op).
+- Full JSON-LD consumers must fetch `/ns/v1` (or the fixed project URL) to expand `keyHistory`
+  terms; document-shape validators that only accept string `@context` entries (ATCute, Bluesky)
+  work without that fetch.
 
 **Deferred**
 - Key-rotation management UI.
 - `kid` on `bazaarIdentifier` instances (module deprecated; likely moot).
 - `actor.merchant` schema changes (§7) — future receipt-issuance pass.
 - Removing the DER fallback (its own ticket).
-- Promoting the inline `@context` to a hosted context document if the vocabulary grows.
