@@ -536,19 +536,29 @@ export function ItemDetailPage() {
     return m;
   }, [isCollection, listingUri, allArtistListings]);
 
-  /** Active per-item listings sold as singles under this product's own listing -- same parentListing convention as purchaseByTrackUri above. */
+  /**
+   * Active listing a buyer can follow to purchase a single product member --
+   * whether it's sold under this product's own listing or as the member's own
+   * standalone listing. A listing sold under the product wins if both exist.
+   */
   const purchaseByProductItemUri = useMemo(() => {
     const m = new Map<string, { listingUri: string; listing: Listing }>();
-    if (!isProduct || !listingUri) return m;
+    if (!isProduct || !item || !("items" in item)) return m;
+    const memberUris = new Set(item.items.map((r) => r.uri));
     for (const row of allArtistListings) {
       const L = row.listing;
       if (L.status !== "active") continue;
-      if (L.parentListing !== listingUri) continue;
-      if (new AtUri(L.item.uri).collection !== BAZAAR_COLLECTION.item) continue;
+      if (!memberUris.has(L.item.uri)) continue;
+      const prev = m.get(L.item.uri);
+      const prevIsChild =
+        prev != null &&
+        listingUri != null &&
+        prev.listing.parentListing === listingUri;
+      if (prevIsChild) continue;
       m.set(L.item.uri, { listingUri: row.uri, listing: L });
     }
     return m;
-  }, [isProduct, listingUri, allArtistListings]);
+  }, [isProduct, item, listingUri, allArtistListings]);
 
   if (legacySegment && rkeyParam) {
     try {
@@ -844,7 +854,7 @@ export function ItemDetailPage() {
           </Link>
         ) : ownsProduct ? (
           <span className="shrink-0 text-xs text-muted-foreground">
-            Added after your purchase — not sold separately yet
+            not sold separately *
           </span>
         ) : (
           <span className="shrink-0 text-xs text-muted-foreground">
@@ -1188,7 +1198,7 @@ export function ItemDetailPage() {
             <p className="text-xs italic text-muted-foreground">
               Merchant added {addedSincePurchase.length}{" "}
               {addedSincePurchase.length === 1 ? "item" : "items"} to this
-              product since your purchase.
+              product since your purchase. *
             </p>
           ) : null}
         </section>
