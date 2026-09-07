@@ -98,7 +98,6 @@ export function MerchantProductDetailPage() {
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [items, setItems] = useState<ItemRef[]>([]);
-  const [priceUsd, setPriceUsd] = useState("9.99");
   const [productType, setProductType] = useState<string | null>(null);
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(false);
 
@@ -168,11 +167,6 @@ export function MerchantProductDetailPage() {
       primary && !isTerminalStatus(primary.listing.status) ? primary : null;
     setListing(primaryActive?.listing ?? null);
     setListingUri(primaryActive?.uri ?? null);
-    setPriceUsd(
-      primaryActive
-        ? (primaryActive.listing.price.amount / 100).toFixed(2)
-        : "9.99",
-    );
     if (primaryActive?.listing.licenseUri) {
       const lt = await getRecordValueWithCid<LicenseTerms>(
         primaryActive.listing.licenseUri,
@@ -410,11 +404,6 @@ export function MerchantProductDetailPage() {
     }
   }, []);
 
-  const priceCents = useCallback((): number | null => {
-    const n = parseFloat(priceUsd);
-    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
-  }, [priceUsd]);
-
   const paramsChanged = useCallback((): boolean => {
     if (!product) return false;
     const sameItems =
@@ -429,25 +418,13 @@ export function MerchantProductDetailPage() {
   }, [product, title, description, tags, items]);
 
   /**
-   * One save path for every edit. Params write to the product record; if that
-   * invalidates the current listing's pinned CID, the listing is retired and a
-   * fresh one is published at the (possibly edited) price with the same license
-   * and parent. A price-only change patches the existing listing in place.
-   */
-  /**
-   * Save the product record, then patch its listing in place -- same listing
-   * URI. A metadata edit changes the product's CID, so the listing's pinned
-   * `item.cid` is re-pinned here (otherwise checkout rejects it as
-   * "item_changed"); a price edit is applied at the same time. Keeping the URI
-   * stable means child listings' `parentListing` never dangles.
+   * Save the product record. A metadata change re-pins the listing's
+   * `item.cid` in place (same URI) so checkout doesn't reject it as
+   * "item_changed" -- price and terms are edited from the listing tool, not
+   * here.
    */
   async function doSave() {
     if (!agent || !product) return;
-    const cents = priceCents();
-    if (listing && cents == null) {
-      toast.error("Invalid price");
-      return;
-    }
     setSaving(true);
     try {
       const repin = paramsChanged();
@@ -458,22 +435,16 @@ export function MerchantProductDetailPage() {
         items,
       });
 
-      let listingTouched = false;
-      if (listing && listingUri && cents != null) {
-        const priceChanged = cents !== listing.price.amount;
-        if (repin || priceChanged) {
-          const freshRef = await buildItemRefFromUri(uri);
-          await putListing(agent, listingUri, {
-            ...listing,
-            item: freshRef ?? listing.item,
-            price: { ...listing.price, amount: cents },
-          });
-          listingTouched = true;
-        }
+      if (repin && listing && listingUri) {
+        const freshRef = await buildItemRefFromUri(uri);
+        await putListing(agent, listingUri, {
+          ...listing,
+          item: freshRef ?? listing.item,
+        });
       }
 
       await syncCatalogProduct(uri);
-      toast.success(listingTouched ? "Saved — listing updated" : "Saved");
+      toast.success("Saved");
       await load();
       setEditing(false);
     } catch (e) {
@@ -491,10 +462,6 @@ export function MerchantProductDetailPage() {
       toast.error("A product needs at least one item");
       return;
     }
-    if (listing && priceCents() == null) {
-      toast.error("Invalid price");
-      return;
-    }
     await doSave();
   }
 
@@ -505,7 +472,6 @@ export function MerchantProductDetailPage() {
       setTags(product.tags ?? []);
       setItems(product.items as ItemRef[]);
     }
-    setPriceUsd(listing ? (listing.price.amount / 100).toFixed(2) : "9.99");
     setEditing(false);
   }
 
@@ -560,12 +526,12 @@ export function MerchantProductDetailPage() {
       label: "Download package",
       externalHref: catalogProductDownloadUrl(uri),
     },
-    ...(!editing && !listing
+    ...(!editing
       ? [
           {
             key: "list",
             Icon: Tag,
-            label: "Create listing",
+            label: listing ? "Manage listings" : "Create listing",
             href: `/merchant/listings/new?uri=${encodeURIComponent(uri)}`,
           },
         ]
@@ -784,18 +750,7 @@ export function MerchantProductDetailPage() {
             <DetailToolbar actions={toolActions} panelTitle="Product controls" />
           </div>
 
-          {editing && listing ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="prod-price">Price (USD)</Label>
-              <Input
-                id="prod-price"
-                inputMode="decimal"
-                value={priceUsd}
-                onChange={(e) => setPriceUsd(e.target.value)}
-                className="max-w-[10rem] text-lg font-medium"
-              />
-            </div>
-          ) : listing ? (
+          {listing ? (
             <p className="text-2xl font-medium">{formatMoney(listing.price)}</p>
           ) : (
             <p className="text-sm text-muted-foreground">Not listed yet</p>

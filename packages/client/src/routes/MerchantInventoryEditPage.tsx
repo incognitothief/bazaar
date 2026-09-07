@@ -1237,7 +1237,6 @@ function CatalogItemEditForm({
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
-  const [priceUsd, setPriceUsd] = useState("9.99");
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
@@ -1287,7 +1286,6 @@ function CatalogItemEditForm({
     );
     setListing(own?.listing ?? null);
     setListingUri(own?.uri ?? null);
-    setPriceUsd(own ? (own.listing.price.amount / 100).toFixed(2) : "9.99");
 
     const parentListing = parentProduct
       ? listings.find(
@@ -1323,11 +1321,6 @@ function CatalogItemEditForm({
     void load();
   }, [load]);
 
-  const priceCents = useCallback((): number | null => {
-    const n = parseFloat(priceUsd);
-    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
-  }, [priceUsd]);
-
   const paramsChanged = useCallback((): boolean => {
     if (!row) return false;
     return (
@@ -1339,24 +1332,12 @@ function CatalogItemEditForm({
   }, [row, title, category, description, tags]);
 
   /**
-   * One save path: params write to the item record; if that invalidates the
-   * current listing's pinned CID the listing is retired and re-published at
-   * the (possibly edited) price with the same license and parent. A
-   * price-only change patches the existing listing in place.
-   */
-  /**
-   * Save the item record, then patch its listing in place -- same listing
-   * URI, `parentListing` preserved. A metadata edit re-pins the item's
-   * current CID (checkout would otherwise reject it as "item_changed"); a
-   * price edit is applied at the same time.
+   * Save the item record. A metadata change re-pins the listing's `item.cid`
+   * in place (same URI) so checkout doesn't reject it as "item_changed" --
+   * price and terms are edited from the listing tool, not here.
    */
   async function doSave() {
     if (!row) return;
-    const cents = priceCents();
-    if (listing && cents == null) {
-      toast.error("Invalid price");
-      return;
-    }
     setSaving(true);
     try {
       const repin = paramsChanged();
@@ -1367,22 +1348,16 @@ function CatalogItemEditForm({
         tags: tags.length ? tags : undefined,
       });
 
-      let listingTouched = false;
-      if (listing && listingUri && cents != null) {
-        const priceChanged = cents !== listing.price.amount;
-        if (repin || priceChanged) {
-          const freshRef = await buildItemRefFromUri(uri);
-          await putListing(agent, listingUri, {
-            ...listing,
-            item: freshRef ?? listing.item,
-            price: { ...listing.price, amount: cents },
-          });
-          listingTouched = true;
-        }
+      if (repin && listing && listingUri) {
+        const freshRef = await buildItemRefFromUri(uri);
+        await putListing(agent, listingUri, {
+          ...listing,
+          item: freshRef ?? listing.item,
+        });
       }
 
       await syncCatalogItem(uri);
-      toast.success(listingTouched ? "Saved — listing updated" : "Saved");
+      toast.success("Saved");
       await load();
       setEditing(false);
     } catch (err) {
@@ -1400,10 +1375,6 @@ function CatalogItemEditForm({
       toast.error("Title is required");
       return;
     }
-    if (listing && priceCents() == null) {
-      toast.error("Invalid price");
-      return;
-    }
     await doSave();
   }
 
@@ -1414,7 +1385,6 @@ function CatalogItemEditForm({
       setDescription(row.description ?? "");
       setTags(row.tags ?? []);
     }
-    setPriceUsd(listing ? (listing.price.amount / 100).toFixed(2) : "9.99");
     setEditing(false);
   }
 
@@ -1549,18 +1519,7 @@ function CatalogItemEditForm({
             <DetailToolbar actions={toolActions} panelTitle="Item controls" />
           </div>
 
-          {editing && listing ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="ci-price">Price (USD)</Label>
-              <Input
-                id="ci-price"
-                inputMode="decimal"
-                value={priceUsd}
-                onChange={(e) => setPriceUsd(e.target.value)}
-                className="max-w-[10rem] text-lg font-medium"
-              />
-            </div>
-          ) : listing ? (
+          {listing ? (
             <p className="text-2xl font-medium">{formatMoney(listing.price)}</p>
           ) : (
             <p className="text-sm text-muted-foreground">
