@@ -37,6 +37,15 @@ function buyerDidValid(did: string): boolean {
   return did.startsWith("did:") && did.length > 8;
 }
 
+/** The DID hosting `uri`'s repo -- catalog.item/catalog.product carry no sellerDid field, the AT-URI's own hostname already is the seller. */
+function repoDidFromItemUri(uri: string): string | undefined {
+  try {
+    return new AtUri(uri).hostname || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function backoffMs(attempt: number): number {
   return Math.min(60_000 * 2 ** Math.min(Math.max(attempt, 0), 16), 3_600_000);
 }
@@ -558,29 +567,28 @@ export async function fulfillCheckoutSession(opts: {
   ) {
     item = buildDevStubItemJson(itemUri);
   }
-  const merchantDid =
-    (item?.sellerDid as string | undefined) ?? process.env.MERCHANT_DID ?? "";
+  const merchantDid = repoDidFromItemUri(itemUri) ?? process.env.MERCHANT_DID ?? "";
+
+  const ref = itemRefRaw;
+  const purchasedGood: Record<string, unknown> = { uri: itemRefUri };
+  const itemCid = ref.cid as string | undefined;
+  if (typeof itemCid === "string" && itemCid.length > 0) {
+    purchasedGood.cid = itemCid;
+  }
+  const variantSku = ref.variantSku as string | undefined;
+  if (typeof variantSku === "string" && variantSku.length > 0) {
+    purchasedGood.variantSku = variantSku;
+  }
 
   // Frozen download entitlement -- captured now, folded into appSig, and
   // written onto the receipt so later product edits can't move it.
-  const grantedItems = resolveGrantedItems(itemUri, item);
+  const grantedItems = resolveGrantedItems(itemUri, item, itemCid);
   const grantedDigest = grantedItems
     ? entitlementDigest(grantedItems)
     : undefined;
 
   const storefrontDid = process.env.STOREFRONT_DID ?? "";
   const privateKeyRaw = process.env.STOREFRONT_PRIVATE_KEY;
-
-  const ref = itemRefRaw;
-  const receiptItem: Record<string, unknown> = { uri: itemRefUri };
-  const itemCid = ref.cid as string | undefined;
-  if (typeof itemCid === "string" && itemCid.length > 0) {
-    receiptItem.cid = itemCid;
-  }
-  const variantSku = ref.variantSku as string | undefined;
-  if (typeof variantSku === "string" && variantSku.length > 0) {
-    receiptItem.variantSku = variantSku;
-  }
 
   let appSigReceipt = "";
   if (
@@ -609,18 +617,15 @@ export async function fulfillCheckoutSession(opts: {
 
   const receiptRecord: Record<string, unknown> = {
     $type: COL_RECEIPT,
-    item: receiptItem,
-    listingUri,
-    listingCid: resolvedListingCid,
+    purchasedGood,
+    listing: { uri: listingUri, cid: resolvedListingCid },
     pricePaid: {
       amount: pi.amount_received,
       currency: pi.currency.toUpperCase(),
     },
     paymentProcessor: "stripe",
     paymentRef,
-    licenseGrantUri,
-    licenseGrantCid,
-    buyerDid,
+    licenseGrant: { uri: licenseGrantUri, cid: licenseGrantCid },
     ...(grantedItems ? { grantedItems } : {}),
     storefrontDid,
     merchantDid,
@@ -773,9 +778,7 @@ export async function fulfillCheckoutSession(opts: {
     $type: COL_CONSENT,
     receiptUri,
     receiptCid: receiptCidStr,
-    licenseGrantUri,
-    licenseGrantCid,
-    buyerDid,
+    licenseGrant: { uri: licenseGrantUri, cid: licenseGrantCid },
     consentedAt: purchasedAt,
     appSig: consentSig,
     ...(consentKid ? { kid: consentKid } : {}),

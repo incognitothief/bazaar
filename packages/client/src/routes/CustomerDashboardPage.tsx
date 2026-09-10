@@ -77,7 +77,7 @@ export function CustomerDashboardPage() {
       const next: Record<string, string> = {};
       const failed = new Set<string>();
       for (const row of purchases) {
-        const uri = row.receipt.item.uri;
+        const uri = row.receipt.purchasedGood.uri;
         try {
           const item = await getRecordValue<CatalogItem>(uri);
           if (item?.title) {
@@ -176,19 +176,19 @@ export function CustomerDashboardPage() {
                       <div className="flex min-w-0 items-center gap-1">
                         <code
                           className="min-w-0 truncate text-[11px] text-muted-foreground"
-                          title={row.receipt.item.uri}
+                          title={row.receipt.purchasedGood.uri}
                         >
-                          {row.receipt.item.uri}
+                          {row.receipt.purchasedGood.uri}
                         </code>
                         <CopyButton
-                          value={row.receipt.item.uri}
+                          value={row.receipt.purchasedGood.uri}
                           label="Copy item URI"
                         />
                       </div>
                     </>
                   ) : (
                     <p className="font-medium truncate">
-                      {purchaseTitles[row.uri] ?? row.receipt.item.uri}
+                      {purchaseTitles[row.uri] ?? row.receipt.purchasedGood.uri}
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">

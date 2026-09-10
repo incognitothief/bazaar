@@ -47,14 +47,11 @@ async function validateReceiptUri(uri: string, buyerDid: string) {
   });
 
   const receipt = receiptRes.data.value as PurchaseReceipt;
-  const receiptListingCid = receipt.listingCid;
-  const receiptListingUri = receipt.listingUri;
+  const receiptListingCid = receipt.listing?.cid;
+  const receiptListingUri = receipt.listing?.uri;
 
   if (!receiptListingCid || !receiptListingUri) {
     throw new Error("Receipt is missing listing information.");
-  }
-  if (receipt.buyerDid && receipt.buyerDid !== buyerDid) {
-    throw new Error("Receipt buyerDid does not match your account.");
   }
 
   const listingAt = new AtUri(receiptListingUri);

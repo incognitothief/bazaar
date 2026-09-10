@@ -117,6 +117,23 @@
         }
       }
     },
+    "ref": {
+      "type": "object",
+      "description": "A plain AT-URI + CID pointer to another record, used where no item-specific fields (like itemRef's variantSku) apply -- e.g. purchase.receipt's listing, licenseGrant, and grantedItems entries.",
+      "required": [
+        "uri"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "cid": {
+          "type": "string",
+          "format": "cid"
+        }
+      }
+    },
     "address": {
       "type": "object",
       "required": [

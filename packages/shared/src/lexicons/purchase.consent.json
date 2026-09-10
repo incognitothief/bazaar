@@ -10,9 +10,7 @@
         "required": [
           "receiptUri",
           "receiptCid",
-          "licenseGrantUri",
-          "licenseGrantCid",
-          "buyerDid",
+          "licenseGrant",
           "consentedAt",
           "appSig"
         ],
@@ -27,20 +25,9 @@
             "format": "cid",
             "description": "CID of the receipt at time of consent. Links consent to a specific, immutable receipt state."
           },
-          "licenseGrantUri": {
-            "type": "string",
-            "format": "at-uri",
-            "description": "AT-URI of the license.terms record the buyer consented to."
-          },
-          "licenseGrantCid": {
-            "type": "string",
-            "format": "cid",
-            "description": "CID of the license.terms record at time of consent. The buyer agreed to these exact terms — not a future or past version."
-          },
-          "buyerDid": {
-            "type": "string",
-            "format": "did",
-            "description": "DID of the buyer. Names the consenting party explicitly, making this a buyer-addressed instrument rather than an anonymous terms snapshot."
+          "licenseGrant": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#ref",
+            "description": "License terms the buyer consented to. cid is the exact version agreed to — not a future or past version."
           },
           "consentedAt": {
             "type": "string",
@@ -49,7 +36,7 @@
           },
           "appSig": {
             "type": "string",
-            "description": "Base64url signature by the storefront service keypair (storefrontDid — see purchase.receipt) over SHA-256(buyerDid:licenseGrantCid:receiptCid:consentedAt). All four values are colon-delimited in the order listed. Prevents consent records being fabricated outside the app's trust boundary. Verifiers reconstruct this payload from the consent record's plaintext fields and verify against the public key resolved from storefrontDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
+            "description": "Base64url signature by the storefront service keypair (storefrontDid — see purchase.receipt) over SHA-256(buyerDid:licenseGrant.cid:receiptCid:consentedAt). All four values are colon-delimited in the order listed. buyerDid is the authenticated consenting party at mint time -- not a stored field, since the consent record's own repo already establishes whose consent this is; verifiers supply their own session DID when reconstructing the payload. Prevents consent records being fabricated outside the app's trust boundary. Verifiers reconstruct this payload from the consent record's plaintext fields and verify against the public key resolved from storefrontDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
           },
           "kid": {
             "type": "string",

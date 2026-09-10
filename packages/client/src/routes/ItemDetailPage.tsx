@@ -294,8 +294,8 @@ export function ItemDetailPage() {
             setOwnsCollection(
               receipts.some(
                 (r) =>
-                  r.receipt.item.uri === itemUri &&
-                  new AtUri(r.receipt.item.uri).collection ===
+                  r.receipt.purchasedGood.uri === itemUri &&
+                  new AtUri(r.receipt.purchasedGood.uri).collection ===
                     BAZAAR_COLLECTION.collection,
               ),
             );
@@ -314,7 +314,9 @@ export function ItemDetailPage() {
         ) {
           const receipts = await listPurchaseReceiptRows(session.did);
           if (!cancelled) {
-            setOwnsItem(receipts.some((r) => r.receipt.item.uri === itemUri));
+            setOwnsItem(
+              receipts.some((r) => r.receipt.purchasedGood.uri === itemUri),
+            );
           }
         } else if (!cancelled) {
           setOwnsItem(false);
@@ -323,13 +325,15 @@ export function ItemDetailPage() {
         if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.product) {
           if (buyerAgent && session?.did) {
             const receipts = await listPurchaseReceiptRows(session.did);
-            const mine = receipts.find((r) => r.receipt.item.uri === itemUri);
+            const mine = receipts.find(
+              (r) => r.receipt.purchasedGood.uri === itemUri,
+            );
             if (!cancelled) {
               setOwnsProduct(!!mine);
               setProductGrant(
                 Array.isArray(mine?.receipt.grantedItems) &&
                   mine.receipt.grantedItems.length > 0
-                  ? mine.receipt.grantedItems
+                  ? mine.receipt.grantedItems.map((g) => g.uri)
                   : null,
               );
             }
@@ -432,7 +436,9 @@ export function ItemDetailPage() {
   }, [relayAvatarUrl]);
 
   useEffect(() => {
-    const authorDid = (item ? catalogItemSellerDid(item) : undefined)?.trim();
+    const authorDid = (
+      item ? catalogItemSellerDid(item, itemUri) : undefined
+    )?.trim();
     if (!authorDid?.startsWith("did:")) {
       setRelayAvatarUrl(null);
       setAuthorDisplayName(null);
@@ -513,7 +519,7 @@ export function ItemDetailPage() {
         return null;
       });
     };
-  }, [agent, item ? catalogItemSellerDid(item) : undefined]);
+  }, [agent, item ? catalogItemSellerDid(item, itemUri) : undefined]);
 
   const isCollection =
     item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
@@ -630,7 +636,7 @@ export function ItemDetailPage() {
   const collectionTrackCount = isCollection
     ? item.items.filter((i) => i.role === "track").length
     : 0;
-  const authorDid = catalogItemSellerDid(item);
+  const authorDid = catalogItemSellerDid(item, itemUri);
   const authorInitial =
     authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
 

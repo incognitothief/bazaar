@@ -181,7 +181,7 @@ export function PurchaseDetailPage() {
         const match = consents.find((c) => c.consent.receiptUri === receiptUri);
         if (!cancelled && match) setConsent(match.consent);
 
-        const itemUri = rec.item.uri;
+        const itemUri = rec.purchasedGood.uri;
         const itemVal = await getRecordValue<CatalogItem>(itemUri);
         if (!cancelled) setItem(itemVal ?? null);
 
@@ -194,7 +194,9 @@ export function PurchaseDetailPage() {
           const metaUris = [
             ...new Set([
               ...itemVal.items.map((ref) => ref.uri),
-              ...(Array.isArray(rec.grantedItems) ? rec.grantedItems : []),
+              ...(Array.isArray(rec.grantedItems)
+                ? rec.grantedItems.map((g) => g.uri)
+                : []),
             ]),
           ];
           const [p, resolvedItems] = await Promise.all([
@@ -221,8 +223,8 @@ export function PurchaseDetailPage() {
           if (!cancelled) setCoverImages(it?.coverImages ?? []);
         }
 
-        if (rec.licenseGrantUri) {
-          const lt = await getRecordValue<LicenseTerms>(rec.licenseGrantUri);
+        if (rec.licenseGrant?.uri) {
+          const lt = await getRecordValue<LicenseTerms>(rec.licenseGrant.uri);
           if (!cancelled) setLicense(lt);
         }
       } catch {
@@ -379,20 +381,20 @@ export function PurchaseDetailPage() {
           ) : null}
           <TriageField
             label="Item URI (not found)"
-            value={receipt.item.uri}
-            href={pdslsRecordUrl(receipt.item.uri)}
+            value={receipt.purchasedGood.uri}
+            href={pdslsRecordUrl(receipt.purchasedGood.uri)}
           />
-          {receipt.item.cid ? (
+          {receipt.purchasedGood.cid ? (
             <TriageField
               label="Item CID (at purchase)"
-              value={receipt.item.cid}
+              value={receipt.purchasedGood.cid}
             />
           ) : null}
-          {receipt.listingUri ? (
+          {receipt.listing?.uri ? (
             <TriageField
               label="Listing URI"
-              value={receipt.listingUri}
-              href={pdslsRecordUrl(receipt.listingUri)}
+              value={receipt.listing.uri}
+              href={pdslsRecordUrl(receipt.listing.uri)}
             />
           ) : null}
         </div>
@@ -418,10 +420,10 @@ export function PurchaseDetailPage() {
   const entitledMemberUris =
     isProduct && "items" in item
       ? Array.isArray(receipt.grantedItems) && receipt.grantedItems.length > 0
-        ? receipt.grantedItems
+        ? receipt.grantedItems.map((g) => g.uri)
         : item.items.map((r) => r.uri)
       : [];
-  const blobDid = catalogItemSellerDid(item);
+  const blobDid = catalogItemSellerDid(item, receipt.purchasedGood.uri);
   const coverUrl = coverImages[0]?.url;
   const artworkCid = catalogItemArtworkCid(item);
   const hasArtwork = !!coverUrl || !!artworkCid;
@@ -457,7 +459,7 @@ export function PurchaseDetailPage() {
                 agent={agent}
                 did={blobDid}
                 cid={artworkCid}
-                itemUri={receipt.item.uri}
+                itemUri={receipt.purchasedGood.uri}
                 alt=""
                 className="h-full w-full"
               />
@@ -479,32 +481,32 @@ export function PurchaseDetailPage() {
               label="Receipt record CID:"
             />
           ) : null}
-          {receipt.licenseGrantCid && receipt.licenseGrantUri ? (
+          {receipt.licenseGrant?.cid && receipt.licenseGrant.uri ? (
             <PdslsCidLink
-              cid={receipt.licenseGrantCid}
-              recordUri={receipt.licenseGrantUri}
+              cid={receipt.licenseGrant.cid}
+              recordUri={receipt.licenseGrant.uri}
               label="License terms (at purchase) CID:"
             />
-          ) : receipt.licenseGrantCid ? (
+          ) : receipt.licenseGrant?.cid ? (
             <p className="text-xs text-muted-foreground">
               License terms (at purchase) CID:{" "}
               <code className="text-[11px] break-all">
-                {receipt.licenseGrantCid}
+                {receipt.licenseGrant.cid}
               </code>
             </p>
           ) : null}
           <hr className="my-3 border-border" />
-          {receipt.listingCid && receipt.listingUri ? (
+          {receipt.listing.cid && receipt.listing.uri ? (
             <PdslsCidLink
-              cid={receipt.listingCid}
-              recordUri={receipt.listingUri}
+              cid={receipt.listing.cid}
+              recordUri={receipt.listing.uri}
               label="Listing (at purchase) CID:"
             />
           ) : null}
-          {receipt.item.cid ? (
+          {receipt.purchasedGood.cid ? (
             <PdslsCidLink
-              cid={receipt.item.cid}
-              recordUri={receipt.item.uri}
+              cid={receipt.purchasedGood.cid}
+              recordUri={receipt.purchasedGood.uri}
               label="Item (at purchase) CID:"
             />
           ) : null}
@@ -570,7 +572,7 @@ export function PurchaseDetailPage() {
           <CollectionMemberDownloads
             collection={item as Collection}
             onDownloadItem={(u) => void downloadDigitalItemUri(u)}
-            onDownloadZip={() => void downloadCollectionZip(receipt.item.uri)}
+            onDownloadZip={() => void downloadCollectionZip(receipt.purchasedGood.uri)}
             zipBusy={zipBusy}
             itemBusyUri={itemDownloadingUri}
           />
@@ -585,7 +587,7 @@ export function PurchaseDetailPage() {
             variant="outline"
             size="sm"
             disabled={zipBusy}
-            onClick={() => void downloadProductZip(receipt.item.uri)}
+            onClick={() => void downloadProductZip(receipt.purchasedGood.uri)}
           >
             {zipBusy ? "Preparing…" : "Download all (.zip)"}
           </Button>
@@ -634,7 +636,7 @@ export function PurchaseDetailPage() {
           <Button
             type="button"
             disabled={itemDownloadingUri !== null}
-            onClick={() => void downloadDigitalItemUri(receipt.item.uri)}
+            onClick={() => void downloadDigitalItemUri(receipt.purchasedGood.uri)}
           >
             {itemDownloadingUri ? "Preparing…" : "Download"}
           </Button>
@@ -665,7 +667,7 @@ export function PurchaseDetailPage() {
                 agent={agent}
                 did={blobDid}
                 cid={artworkCid}
-                itemUri={receipt.item.uri}
+                itemUri={receipt.purchasedGood.uri}
                 alt=""
                 className="max-h-[85vh] max-w-[85vw]"
               />
