@@ -12,11 +12,7 @@ import type { Db } from "../../db";
 import { meta, paymentFulfillment } from "../../db/schema";
 import type { OAuthClient } from "../atproto/oauth";
 import { getAgentForDid } from "../atproto/resolvePds";
-import {
-  storefrontKidFromEnv,
-  signConsentPayload,
-  signReceiptPayload,
-} from "../atproto/sign";
+import { storefrontKidFromEnv, signReceiptPayload } from "../atproto/sign";
 import {
   entitlementDigest,
   resolveGrantedItems,
@@ -24,7 +20,6 @@ import {
 import { getStripe } from "./getStripe";
 
 const COL_RECEIPT = "diamonds.whereditgo.bazaar.purchase.receipt";
-const COL_CONSENT = "diamonds.whereditgo.bazaar.purchase.consent";
 
 const PROCESSING_STALE_MS = 120_000;
 const MAX_FULFILLMENT_ATTEMPTS = 30;
@@ -53,7 +48,6 @@ function backoffMs(attempt: number): number {
 function isRetryableFulfillmentError(e: unknown): boolean {
   const s = e instanceof Error ? e.message : String(e);
   if (/duplicate|already exists|invalid.*did|invalid.*uri/i.test(s)) return false;
-  if (/consent appsig empty/i.test(s)) return false;
   return true;
 }
 
@@ -64,7 +58,7 @@ function trimError(e: unknown): string {
 
 /**
  * Idempotent fulfillment: client /fulfill-session and the Stripe webhook can run concurrently;
- * both may pass the DB claim while status is receipt_written with consentUri still null.
+ * both may pass the DB claim while status is receipt_written.
  */
 async function findBuyerReceiptByPaymentRef(
   agent: Agent,
@@ -83,32 +77,6 @@ async function findBuyerReceiptByPaymentRef(
       const v = row.value as { paymentRef?: string };
       if (v?.paymentRef === paymentRef && row.uri) {
         return { uri: row.uri, cid: row.cid };
-      }
-    }
-    const cur = res.data.cursor as string | undefined;
-    if (!cur) break;
-    cursor = cur;
-  }
-  return null;
-}
-
-async function findBuyerConsentByReceiptUri(
-  agent: Agent,
-  buyerDid: string,
-  receiptUri: string,
-): Promise<{ uri: string } | null> {
-  let cursor: string | undefined;
-  for (;;) {
-    const res = await agent.com.atproto.repo.listRecords({
-      repo: buyerDid,
-      collection: COL_CONSENT,
-      limit: 100,
-      cursor,
-    });
-    for (const row of res.data.records) {
-      const v = row.value as { receiptUri?: string };
-      if (v?.receiptUri === receiptUri && row.uri) {
-        return { uri: row.uri };
       }
     }
     const cur = res.data.cursor as string | undefined;
@@ -278,10 +246,6 @@ function claimFulfillmentWork(
         return { action: "skip", reason: "dead_letter" };
       }
 
-      if (existing.consentUri) {
-        return { action: "skip", reason: "completed" };
-      }
-
       if (existing.status === "processing") {
         const age = nowMs - existing.updatedAt.getTime();
         if (age < PROCESSING_STALE_MS) {
@@ -420,8 +384,10 @@ async function readFulfillmentRow(
 }
 
 /**
- * Checkout.session.completed → verify PI + listing, write receipt then consent to buyer PDS.
- * Idempotent per PaymentIntent via payment_fulfillment + row claim.
+ * Checkout.session.completed → verify PI + listing, write receipt to buyer PDS.
+ * License terms are frozen atomically with the receipt (licenseGrant.cid folded
+ * into appSig) -- no separate consent record. Idempotent per PaymentIntent via
+ * payment_fulfillment + row claim.
  *
  * @returns When the row claim short-circuits, the skip reason (e.g. `locked`, `completed`);
  *   otherwise `undefined` after the handler runs (success, dead-letter, or early validation exit).
@@ -603,6 +569,7 @@ export async function fulfillCheckoutSession(opts: {
         itemUri,
         listingCid: resolvedListingCid,
         buyerDid,
+        licenseGrantCid,
         entitlementDigest: grantedDigest,
         privateKeyPem: privateKeyRaw,
       });
@@ -636,7 +603,6 @@ export async function fulfillCheckoutSession(opts: {
 
   const receiptPayload: Record<string, unknown> = {
     receiptUri: null,
-    consentUri: null,
     itemUri,
     listingUri,
     listingCid: resolvedListingCid,
@@ -752,87 +718,11 @@ export async function fulfillCheckoutSession(opts: {
   }
 
   receiptPayload.receiptUri = receiptUri;
-
-  const rowMid = await readFulfillmentRow(db, paymentRef);
-  let consentUri = rowMid?.consentUri?.trim() ?? "";
-
-  let consentSig = "";
-  if (privateKeyRaw && !privateKeyRaw.includes("PLACEHOLDER")) {
-    try {
-      consentSig = signConsentPayload({
-        buyerDid,
-        licenseGrantCid,
-        receiptCid: receiptCidStr,
-        consentedAt: purchasedAt,
-        privateKeyPem: privateKeyRaw,
-      });
-    } catch (e) {
-      console.warn("Consent signing failed:", e);
-    }
-  }
-
-  const consentKidEnv = storefrontKidFromEnv();
-  const consentKid = consentSig && consentKidEnv ? consentKidEnv : undefined;
-
-  const consentRecord: Record<string, unknown> = {
-    $type: COL_CONSENT,
-    receiptUri,
-    receiptCid: receiptCidStr,
-    licenseGrant: { uri: licenseGrantUri, cid: licenseGrantCid },
-    consentedAt: purchasedAt,
-    appSig: consentSig,
-    ...(consentKid ? { kid: consentKid } : {}),
-  };
-
-  if (!consentUri) {
-    const preConsent = await findBuyerConsentByReceiptUri(
-      writeAgent,
-      buyerDid,
-      receiptUri,
-    );
-    if (preConsent) {
-      consentUri = preConsent.uri;
-    } else {
-      try {
-        if (!consentSig) throw new Error("consent appSig empty");
-        const createdConsent = await writeAgent.com.atproto.repo.createRecord({
-          repo: buyerDid,
-          collection: COL_CONSENT,
-          record: consentRecord,
-        });
-        consentUri = createdConsent.data.uri;
-      } catch (e) {
-        const recovered = await findBuyerConsentByReceiptUri(
-          writeAgent,
-          buyerDid,
-          receiptUri,
-        );
-        if (recovered) {
-          consentUri = recovered.uri;
-        } else {
-          const msg = e instanceof Error ? e.message : String(e);
-          receiptPayload.pdsError = `consent createRecord failed: ${msg}`;
-          console.error(receiptPayload.pdsError);
-          await persistReceiptMeta(db, paymentRef, receiptPayload);
-          const ac = (await readFulfillmentRow(db, paymentRef))?.attemptCount ?? 1;
-          if (isRetryableFulfillmentError(e)) {
-            await markFailedRetryable(db, paymentRef, ac, trimError(e));
-          } else {
-            await markDeadLetter(db, paymentRef, trimError(e));
-          }
-          return;
-        }
-      }
-    }
-  }
-
-  receiptPayload.consentUri = consentUri;
   receiptPayload.pdsError = null;
 
   const now = new Date();
   db.update(paymentFulfillment)
     .set({
-      consentUri,
       status: "completed",
       lastError: null,
       nextRetryAt: null,
@@ -847,7 +737,6 @@ export async function fulfillCheckoutSession(opts: {
       value: JSON.stringify({
         receiptUri,
         receiptCid: receiptCidStr,
-        consentUri,
       }),
       updatedAt: now,
     })
@@ -857,7 +746,6 @@ export async function fulfillCheckoutSession(opts: {
         value: JSON.stringify({
           receiptUri,
           receiptCid: receiptCidStr,
-          consentUri,
         }),
         updatedAt: now,
       },
@@ -884,7 +772,6 @@ export async function sweepPaymentFulfillment(
     .from(paymentFulfillment)
     .where(
       and(
-        isNull(paymentFulfillment.consentUri),
         ne(paymentFulfillment.status, "dead_letter"),
         lt(paymentFulfillment.attemptCount, MAX_FULFILLMENT_ATTEMPTS),
         or(
@@ -934,7 +821,7 @@ export async function backfillPaymentFulfillmentFromMeta(db: Db): Promise<void> 
   for (const r of rows) {
     const pi = r.key.slice("purchase_pds:".length);
     if (!pi.startsWith("pi_")) continue;
-    let parsed: { receiptUri?: string; consentUri?: string; receiptCid?: string };
+    let parsed: { receiptUri?: string; receiptCid?: string };
     try {
       parsed = JSON.parse(r.value) as typeof parsed;
     } catch {
@@ -950,7 +837,6 @@ export async function backfillPaymentFulfillmentFromMeta(db: Db): Promise<void> 
         attemptCount: 1,
         receiptUri: parsed.receiptUri,
         receiptCid: parsed.receiptCid ?? null,
-        consentUri: parsed.consentUri ?? null,
         nextRetryAt: null,
         lastError: null,
         createdAt: now,

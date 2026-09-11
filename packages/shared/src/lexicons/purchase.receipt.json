@@ -13,6 +13,7 @@
           "pricePaid",
           "paymentProcessor",
           "paymentRef",
+          "licenseGrant",
           "storefrontDid",
           "merchantDid",
           "appSig",
@@ -41,7 +42,7 @@
           },
           "licenseGrant": {
             "$ref": "diamonds.whereditgo.bazaar.defs#ref",
-            "description": "License terms in effect at time of purchase. cid resolved from the listing's own licenseGrantCid."
+            "description": "License terms in effect at time of purchase. cid resolved from the listing's own licenseGrantCid. Required: every listing must carry license terms before it can be sold, so every receipt has one. cid is folded into appSig (see appSig's description) -- this is what freezes the license terms atomically with the purchase itself; there is no separate consent record."
           },
           "shippingAddress": {
             "$ref": "diamonds.whereditgo.bazaar.defs#address",
@@ -68,7 +69,7 @@
           },
           "appSig": {
             "type": "string",
-            "description": "Base64url signature by the storefront service keypair (storefrontDid) over SHA-256(purchasedAt:paymentRef:purchasedGood.uri:listing.cid:buyerDid), colon-delimited in that order. buyerDid is the authenticated buyer at mint time -- not a stored field, since the receipt's own repo already establishes whose purchase this is; verifiers supply their own session DID when reconstructing the payload. When grantedItems is present a sixth field is appended: ':' + base64url(SHA-256(canonical grantedItems joined by '\\n')), where each entry is canonicalized as 'uri|cid' (empty string for a missing cid), sorted by uri UTF-8 byte order and de-duplicated by uri -- '|' never occurs in an AT-URI or a CID, so the per-entry join is unambiguous, and '\\n' never occurs in either, so the overall join is too. Legacy receipts without grantedItems sign only the five-field payload. Verifiers reconstruct this payload from the receipt's plaintext fields (recomputing the grantedItems digest) and verify against the public key resolved from storefrontDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
+            "description": "Base64url signature by the storefront service keypair (storefrontDid) over SHA-256(purchasedAt:paymentRef:purchasedGood.uri:listing.cid:buyerDid), colon-delimited in that order. buyerDid is the authenticated buyer at mint time -- not a stored field, since the receipt's own repo already establishes whose purchase this is; verifiers supply their own session DID when reconstructing the payload. licenseGrant.cid is appended as a sixth field when present (every receipt from a listing gated by license.terms has one -- see licenseGrant's description). grantedItems, when present, is folded in as a further field: base64url(SHA-256(canonical grantedItems joined by '\\n')), where each entry is canonicalized as 'uri|cid' (empty string for a missing cid), sorted by uri UTF-8 byte order and de-duplicated by uri -- '|' never occurs in an AT-URI or a CID, so the per-entry join is unambiguous, and '\\n' never occurs in either, so the overall join is too. Each of licenseGrant.cid and the grantedItems digest is appended only when its source field is present on the receipt, in that fixed order -- legacy receipts from before either field existed sign only the five-field base payload. Verifiers reconstruct this payload from the receipt's plaintext fields (recomputing the grantedItems digest) and verify against the public key resolved from storefrontDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
           },
           "kid": {
             "type": "string",

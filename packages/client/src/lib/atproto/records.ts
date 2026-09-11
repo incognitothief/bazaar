@@ -20,7 +20,6 @@ import type {
   Listing,
   PhysicalItem,
   Product,
-  PurchaseConsent,
   PurchaseReceipt,
   Recording,
 } from "@/types/lexicons";
@@ -287,15 +286,6 @@ function isPurchaseReceipt(v: unknown): v is PurchaseReceipt {
   );
 }
 
-function isPurchaseConsent(v: unknown): v is PurchaseConsent {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as PurchaseConsent).$type ===
-      "diamonds.whereditgo.bazaar.purchase.consent"
-  );
-}
-
 export type PurchaseReceiptRow = {
   uri: string;
   cid: string;
@@ -343,51 +333,6 @@ export async function listPurchaseReceiptRows(
       receipt: r.value as PurchaseReceipt,
     }));
   return dedupePurchaseReceiptRows(rows);
-}
-
-export type PurchaseConsentRow = {
-  uri: string;
-  cid: string;
-  consent: PurchaseConsent;
-};
-
-/** One consent per receipt URI (latest consentedAt wins). */
-function dedupePurchaseConsentRows(
-  rows: PurchaseConsentRow[],
-): PurchaseConsentRow[] {
-  const byReceipt = new Map<string, PurchaseConsentRow>();
-  for (const row of rows) {
-    const ru = row.consent.receiptUri?.trim();
-    if (!ru) continue;
-    const prev = byReceipt.get(ru);
-    if (
-      !prev ||
-      new Date(row.consent.consentedAt).getTime() >=
-        new Date(prev.consent.consentedAt).getTime()
-    ) {
-      byReceipt.set(ru, row);
-    }
-  }
-  return Array.from(byReceipt.values());
-}
-
-export async function listPurchaseConsentRows(
-  did: string,
-): Promise<PurchaseConsentRow[]> {
-  const agent = await agentForRepo(did);
-  const res = (await agent.com.atproto.repo.listRecords({
-    repo: did,
-    collection: BAZAAR_COLLECTION.consent,
-    limit: 100,
-  })) as ListRecordsResponse;
-  const rows = res.data.records
-    .filter((r) => isPurchaseConsent(r.value))
-    .map((r) => ({
-      uri: r.uri,
-      cid: r.cid,
-      consent: r.value as PurchaseConsent,
-    }));
-  return dedupePurchaseConsentRows(rows);
 }
 
 export type DigitalItemRow = { uri: string; cid: string; item: DigitalItem };

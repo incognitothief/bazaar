@@ -30,9 +30,6 @@ describe("oauth-scope", () => {
       "repo:diamonds.whereditgo.bazaar.purchase.receipt?action=create",
     );
     expect(s).toContain(
-      "repo:diamonds.whereditgo.bazaar.purchase.consent?action=create",
-    );
-    expect(s).toContain(
       "repo:diamonds.whereditgo.bazaar.license.terms?action=create",
     );
   });
@@ -67,11 +64,10 @@ describe("oauth-scope", () => {
     );
   });
 
-  test("buyer scope is limited to purchase receipt/consent create", () => {
+  test("buyer scope is limited to purchase receipt create", () => {
     const scopes = buyerRepoOAuthScopes();
     expect(scopes).toEqual([
       "repo:diamonds.whereditgo.bazaar.purchase.receipt?action=create",
-      "repo:diamonds.whereditgo.bazaar.purchase.consent?action=create",
     ]);
   });
 

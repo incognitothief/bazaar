@@ -289,7 +289,6 @@ export function createMerchantRouter(db: Db) {
         lastError: row.lastError,
         receiptUri: row.receiptUri,
         receiptCid: row.receiptCid,
-        consentUri: row.consentUri,
         itemUri: row.itemUri,
         listingUri: row.listingUri,
         itemTitle: row.itemUri ? (titleByUri.get(row.itemUri) ?? null) : null,

@@ -127,6 +127,13 @@
       "when": 1788623049232,
       "tag": "0017_petite_supreme_intelligence",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1789169704771,
+      "tag": "0018_married_gambit",
+      "breakpoints": true
     }
   ]
 }

@@ -242,8 +242,8 @@ export type PurchaseReceipt = {
   pricePaid: Money;
   paymentProcessor: string;
   paymentRef: string;
-  /** License terms in effect at time of purchase. */
-  licenseGrant?: Ref;
+  /** License terms in effect at time of purchase. cid is folded into appSig -- freezes the license atomically with the purchase, no separate consent record. */
+  licenseGrant: Ref;
   shippingAddress?: Address;
   fulfillmentUri?: string;
   /**
@@ -257,15 +257,6 @@ export type PurchaseReceipt = {
   appSig: string;
   purchasedAt: string;
   note?: string;
-};
-
-export type PurchaseConsent = {
-  $type: "diamonds.whereditgo.bazaar.purchase.consent";
-  receiptUri: string;
-  receiptCid: string;
-  licenseGrant: Ref;
-  consentedAt: string;
-  appSig: string;
 };
 
 export type Recording = {

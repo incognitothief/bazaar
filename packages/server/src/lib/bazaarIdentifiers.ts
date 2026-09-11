@@ -4,8 +4,8 @@ import { normalizeStorefrontPrivateKey } from "./atproto/sign";
 /**
  * DEPRECATED: the self-issued `bazaarRid` / `bazaarWid` / `bazaarPid` identifier scheme is
  * slated for removal. Its `sig` is still a DER-encoded ECDSA signature (not the compact/low-S
- * `r || s` form used by `purchase.receipt` / `purchase.consent` as of the 2026-08 remediation).
- * Do not extend this module — new signed-record work targets receipt/consent only.
+ * `r || s` form used by `purchase.receipt` as of the 2026-08 remediation).
+ * Do not extend this module — new signed-record work targets receipt only.
  * See `docs/adr/0013-key-rotation-and-did-document-v2.md`.
  */
 

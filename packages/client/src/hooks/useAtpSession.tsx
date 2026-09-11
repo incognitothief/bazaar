@@ -118,7 +118,7 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
     // sign-in will land. A destination under /merchant/ is the merchant's own
     // dashboard flow (needs full catalog/listing/license/profile write scopes);
     // anything else is a buyer completing a purchase (only ever needs
-    // purchase.receipt/purchase.consent). Defaults to the narrower buyer scope
+    // purchase.receipt). Defaults to the narrower buyer scope
     // when ambiguous — the real DID/role isn't known until after OAuth completes.
     const role = (back ?? window.location.pathname).startsWith("/merchant/")
       ? "merchant"

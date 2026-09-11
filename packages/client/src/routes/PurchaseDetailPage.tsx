@@ -22,7 +22,6 @@ import {
   getCatalogItem,
   getCatalogProduct,
   getRecordValue,
-  listPurchaseConsentRows,
 } from "@/lib/atproto/records";
 import { createPublicAgent } from "@/lib/atproto/session";
 import { agentForRepo } from "@/lib/atproto/pdsResolve";
@@ -33,7 +32,6 @@ import {
   type CatalogItem,
   type Collection,
   type LicenseTerms,
-  type PurchaseConsent,
   type PurchaseReceipt,
 } from "@/types/lexicons";
 
@@ -129,7 +127,6 @@ export function PurchaseDetailPage() {
 
   const [receipt, setReceipt] = useState<PurchaseReceipt | null>(null);
   const [receiptCid, setReceiptCid] = useState<string | null>(null);
-  const [consent, setConsent] = useState<PurchaseConsent | null>(null);
   const [item, setItem] = useState<CatalogItem | null>(null);
   const [coverImages, setCoverImages] = useState<
     Array<{ objectId: string; url: string }>
@@ -176,10 +173,6 @@ export function PurchaseDetailPage() {
         const rec = res.data.value as PurchaseReceipt;
         setReceipt(rec);
         setReceiptCid(res.data.cid ?? null);
-
-        const consents = await listPurchaseConsentRows(session.did);
-        const match = consents.find((c) => c.consent.receiptUri === receiptUri);
-        if (!cancelled && match) setConsent(match.consent);
 
         const itemUri = rec.purchasedGood.uri;
         const itemVal = await getRecordValue<CatalogItem>(itemUri);
@@ -557,13 +550,6 @@ export function PurchaseDetailPage() {
         <p className="text-sm text-muted-foreground whitespace-pre-wrap">
           {license?.licenseText ?? "License terms could not be loaded."}
         </p>
-        {consent ? (
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-            <li>
-              Consented at: {new Date(consent.consentedAt).toLocaleString()}
-            </li>
-          </ul>
-        ) : null}
       </section>
 
       {isCollection ? (

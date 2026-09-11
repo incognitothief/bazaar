@@ -39,6 +39,7 @@ type ItemRef = {
 type PurchaseReceipt = {
   purchasedGood: ItemRef;
   listing: ItemRef;
+  licenseGrant?: ItemRef;
   paymentRef: string;
   purchasedAt: string;
   appSig: string;
@@ -450,6 +451,7 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
       itemUri: rec.purchasedGood.uri,
       listingCid: rec.listing.cid ?? "",
       buyerDid: sessionDid,
+      licenseGrantCid: rec.licenseGrant?.cid,
       entitlementDigest: digest,
       appSig: rec.appSig,
       publicKeyPem,

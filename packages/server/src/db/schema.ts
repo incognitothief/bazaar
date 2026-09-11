@@ -35,7 +35,7 @@ export const meta = sqliteTable("meta", {
     .$defaultFn(() => new Date()),
 });
 
-/** Stripe PaymentIntent → PDS receipt/consent fulfillment state machine. */
+/** Stripe PaymentIntent → PDS receipt fulfillment state machine. */
 /** Resumable inventory uploads + deferred PDS publish (digital first; discriminator for future physical). */
 export const inventoryUploadSession = sqliteTable("inventory_upload_session", {
   id: text("id").primaryKey(),
@@ -307,7 +307,6 @@ export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   lastError: text("last_error"),
   receiptUri: text("receipt_uri"),
   receiptCid: text("receipt_cid"),
-  consentUri: text("consent_uri"),
   /** From the Checkout Session metadata that seeded this row -- lets the Sales page show what was bought without a PDS round trip. */
   itemUri: text("item_uri"),
   listingUri: text("listing_uri"),

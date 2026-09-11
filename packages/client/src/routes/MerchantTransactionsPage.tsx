@@ -96,7 +96,6 @@ export type PaymentFulfillmentRow = {
   lastError: string | null;
   receiptUri: string | null;
   receiptCid: string | null;
-  consentUri: string | null;
   itemUri: string | null;
   listingUri: string | null;
   /** ERP-first (catalogItems/catalogProducts); null for rows predating this column or a legacy digital/physical/collection sale. */
@@ -383,7 +382,6 @@ export function MerchantTransactionsPage() {
                 <th className="px-3 py-2 font-medium">Attempts</th>
                 <th className="px-3 py-2 font-medium">Updated</th>
                 <th className="px-3 py-2 font-medium">Receipt</th>
-                <th className="px-3 py-2 font-medium">Consent</th>
                 <th className="px-3 py-2 font-medium">Last error</th>
               </tr>
             </thead>
@@ -471,24 +469,6 @@ export function MerchantTransactionsPage() {
                           title={r.receiptUri}
                         >
                           {r.receiptUri}
-                        </a>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-3 py-2 align-top">
-                    {(() => {
-                      if (!r.consentUri) return <Ellipsis text="" />;
-                      const href = pdslsRecordUrl(r.consentUri);
-                      if (!href) return <Ellipsis text={r.consentUri} />;
-                      return (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block max-w-[14rem] truncate font-mono text-xs text-primary underline-offset-2 hover:underline"
-                          title={r.consentUri}
-                        >
-                          {r.consentUri}
                         </a>
                       );
                     })()}

@@ -12,7 +12,6 @@ import catalogProduct from "./catalog.product.json" with { type: "json" };
 import catalogRecording from "./catalog.recording.json" with { type: "json" };
 import defs from "./defs.json" with { type: "json" };
 import licenseTerms from "./license.terms.json" with { type: "json" };
-import purchaseConsent from "./purchase.consent.json" with { type: "json" };
 import purchaseFulfillment from "./purchase.fulfillment.json" with { type: "json" };
 import purchaseReceipt from "./purchase.receipt.json" with { type: "json" };
 import purchaseStock from "./purchase.stock.json" with { type: "json" };
@@ -29,7 +28,6 @@ const RAW_DOCS = [
   catalogComposition,
   licenseTerms,
   purchaseReceipt,
-  purchaseConsent,
   purchaseStock,
   purchaseFulfillment,
   actorMerchant,

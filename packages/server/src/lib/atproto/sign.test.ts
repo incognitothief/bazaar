@@ -7,9 +7,7 @@ import { describe, expect, test } from "bun:test";
 import {
   storefrontKidFromEnv,
   normalizeStorefrontPrivateKey,
-  signConsentPayload,
   signReceiptPayload,
-  verifyConsentPayload,
   verifyReceiptPayload,
 } from "./sign";
 
@@ -131,6 +129,62 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
     ).toBe(false);
   });
 
+  test("licenseGrantCid is bound into the signature (atomic license freeze, no consent record)", () => {
+    const { privateKeyPem, publicKeyPem } = p256Pems();
+    const licenseGrantCid = "bafyreilicensegrantcid";
+    const appSig = signReceiptPayload({
+      ...params,
+      licenseGrantCid,
+      privateKeyPem,
+    });
+
+    expect(
+      verifyReceiptPayload({ ...params, licenseGrantCid, appSig, publicKeyPem }),
+    ).toBe(true);
+    // A buyer editing their own receipt's licenseGrant can't keep this valid.
+    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(false);
+    expect(
+      verifyReceiptPayload({
+        ...params,
+        licenseGrantCid: `${licenseGrantCid}x`,
+        appSig,
+        publicKeyPem,
+      }),
+    ).toBe(false);
+  });
+
+  test("licenseGrantCid and entitlementDigest compose (both bound, fixed order)", () => {
+    const { privateKeyPem, publicKeyPem } = p256Pems();
+    const licenseGrantCid = "bafyreilicensegrantcid";
+    const entitlementDigest = "Zm9vYmFyZW50aXRsZW1lbnRkaWdlc3RfXw";
+    const appSig = signReceiptPayload({
+      ...params,
+      licenseGrantCid,
+      entitlementDigest,
+      privateKeyPem,
+    });
+
+    expect(
+      verifyReceiptPayload({
+        ...params,
+        licenseGrantCid,
+        entitlementDigest,
+        appSig,
+        publicKeyPem,
+      }),
+    ).toBe(true);
+    // Order matters -- swapping which field is which value must not verify.
+    expect(
+      verifyReceiptPayload({
+        ...params,
+        licenseGrantCid: entitlementDigest,
+        entitlementDigest: licenseGrantCid,
+        appSig,
+        publicKeyPem,
+      }),
+    ).toBe(false);
+  });
+
   test("legacy five-field payload still round-trips when no digest is given", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
     const appSig = signReceiptPayload({ ...params, privateKeyPem });
@@ -221,20 +275,4 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
       ).toBe(true);
     },
   );
-});
-
-describe("signConsentPayload / verifyConsentPayload", () => {
-  const params = {
-    buyerDid: "did:plc:buyer",
-    licenseGrantCid: "bafyreiabc",
-    receiptCid: "bafyreixyz",
-    consentedAt: new Date().toISOString(),
-  };
-
-  test("round-trip with P-256 EC key (compact low-S appSig)", () => {
-    const { privateKeyPem, publicKeyPem } = p256Pems();
-    const appSig = signConsentPayload({ ...params, privateKeyPem });
-    expect(Buffer.from(appSig, "base64url").length).toBe(64);
-    expect(verifyConsentPayload({ ...params, appSig, publicKeyPem })).toBe(true);
-  });
 });

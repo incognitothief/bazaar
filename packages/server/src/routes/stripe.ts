@@ -309,10 +309,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     const row = fulfillmentRowForCheckoutSession(db, session);
     const buyerCookieOk = !!(cookieDid && cookieDid === buyerDid);
     const itemUriMeta = session.metadata?.itemUri;
-    const showPds =
-      buyerCookieOk &&
-      row &&
-      (row.receiptUri?.length || row.consentUri?.length);
+    const showPds = buyerCookieOk && row && row.receiptUri?.length;
     return c.json({
       ok: true,
       ...(skipReason ? { note: `claim_skipped:${skipReason}` } : {}),
@@ -325,7 +322,6 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
         ? {
             pds: {
               receiptUri: row.receiptUri ?? null,
-              consentUri: row.consentUri ?? null,
               receiptCid: row.receiptCid ?? null,
             },
           }

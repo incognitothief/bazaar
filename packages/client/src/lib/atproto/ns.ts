@@ -8,7 +8,6 @@ export const BAZAAR_COLLECTION = {
   listing: "diamonds.whereditgo.bazaar.catalog.listing",
   licenseTerms: "diamonds.whereditgo.bazaar.license.terms",
   receipt: "diamonds.whereditgo.bazaar.purchase.receipt",
-  consent: "diamonds.whereditgo.bazaar.purchase.consent",
   recording: "diamonds.whereditgo.bazaar.catalog.recording",
   composition: "diamonds.whereditgo.bazaar.catalog.composition",
   actorMerchant: "diamonds.whereditgo.bazaar.actor.merchant",
