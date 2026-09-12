@@ -294,7 +294,7 @@ export function ItemDetailPage() {
             setOwnsCollection(
               receipts.some(
                 (r) =>
-                  r.receipt.purchasedGood.uri === itemUri &&
+                  r.receipt.purchasedGood?.uri === itemUri &&
                   new AtUri(r.receipt.purchasedGood.uri).collection ===
                     BAZAAR_COLLECTION.collection,
               ),
@@ -315,7 +315,7 @@ export function ItemDetailPage() {
           const receipts = await listPurchaseReceiptRows(session.did);
           if (!cancelled) {
             setOwnsItem(
-              receipts.some((r) => r.receipt.purchasedGood.uri === itemUri),
+              receipts.some((r) => r.receipt.purchasedGood?.uri === itemUri),
             );
           }
         } else if (!cancelled) {
@@ -326,7 +326,7 @@ export function ItemDetailPage() {
           if (buyerAgent && session?.did) {
             const receipts = await listPurchaseReceiptRows(session.did);
             const mine = receipts.find(
-              (r) => r.receipt.purchasedGood.uri === itemUri,
+              (r) => r.receipt.purchasedGood?.uri === itemUri,
             );
             if (!cancelled) {
               setOwnsProduct(!!mine);
@@ -421,6 +421,11 @@ export function ItemDetailPage() {
         } else {
           setLicense(dummyTarget ? buildDummyLicenseTerms() : null);
           setLicenseCid(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error("ItemDetailPage: failed to load item data", e);
+          toast.error("Failed to load this item");
         }
       } finally {
         if (!cancelled) setLoading(false);
