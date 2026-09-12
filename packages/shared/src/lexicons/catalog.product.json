@@ -7,7 +7,7 @@
       "key": "tid",
       "record": {
         "type": "object",
-        "description": "The public declaration of a product's composition — one or more catalog.item records sold or released together (an album, a sample pack bundle, a box set, etc.). This is the part of a product that needs to be publicly verifiable; internal-only metadata (e.g. cover art, liner notes) that isn't essential to the product's identity is tracked separately in the merchant's own inventory records, not here. No sellerDid field: the record's own repo already identifies the seller (see catalog.item's record description) — a separate field would just duplicate that.",
+        "description": "The public declaration of a product's composition — one or more catalog.item records sold or released together (an album, a sample pack bundle, a box set, etc.). This is the part of a product that needs to be publicly verifiable; internal-only metadata (e.g. cover art, liner notes) that isn't essential to the product's identity is tracked separately in the merchant's own inventory records, not here. No merchantDid field: the record's own repo already identifies the merchant (see catalog.item's record description) — a separate field would just duplicate that.",
         "required": [
           "title",
           "items",

@@ -28,7 +28,7 @@ import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import { productTypeConfig } from "@/lib/productTypes";
 import {
   catalogItemArtworkCid,
-  catalogItemSellerDid,
+  catalogItemMerchantDid,
   type CatalogItem,
   type Collection,
   type LicenseTerms,
@@ -416,7 +416,7 @@ export function PurchaseDetailPage() {
         ? receipt.grantedItems.map((g) => g.uri)
         : item.items.map((r) => r.uri)
       : [];
-  const blobDid = catalogItemSellerDid(item, receipt.purchasedGood.uri);
+  const blobDid = catalogItemMerchantDid(item, receipt.purchasedGood.uri);
   const coverUrl = coverImages[0]?.url;
   const artworkCid = catalogItemArtworkCid(item);
   const hasArtwork = !!coverUrl || !!artworkCid;

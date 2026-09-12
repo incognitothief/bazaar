@@ -172,7 +172,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
           .from(catalogProducts)
           .where(eq(catalogProducts.uri, body.existingProductUri))
           .get();
-        if (!product || product.sellerDid !== sess.did) {
+        if (!product || product.merchantDid !== sess.did) {
           return c.json({ error: "product_not_found" }, 404);
         }
         let at: AtUri;
@@ -1352,7 +1352,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       const record: Record<string, unknown> = {
         $type: itemType,
         title: it.title.trim(),
-        sellerDid: sess.did,
+        merchantDid: sess.did,
         fileChecksum: mo.fileChecksum!,
         fileCid: mo.fileCid!,
         format: it.format?.trim() || inferFormat(mo.fileName, mo.contentType),
@@ -1376,7 +1376,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     const productRecord: Record<string, unknown> = {
       $type: productType,
       title: draft.product.title.trim(),
-      sellerDid: sess.did,
+      merchantDid: sess.did,
       items: createdItems.map((it) => ({ uri: it.uri, cid: it.cid })),
       createdAt: new Date().toISOString(),
     };
@@ -1498,7 +1498,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       const record: Record<string, unknown> = {
         $type: itemType,
         title: it.title.trim(),
-        sellerDid: sess.did,
+        merchantDid: sess.did,
         fileChecksum: mo.fileChecksum!,
         fileCid: mo.fileCid!,
         format: it.format?.trim() || inferFormat(mo.fileName, mo.contentType),

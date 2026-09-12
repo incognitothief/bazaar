@@ -7,7 +7,7 @@
       "key": "tid",
       "record": {
         "type": "object",
-        "description": "No sellerDid field: the record's own repo (at://did/{collection}/rkey) already identifies the seller, and OAuth write permission enforces that the repo owner is the only one who can create or update it here -- a separate field would just duplicate that without adding evidentiary value.",
+        "description": "No merchantDid field: the record's own repo (at://did/{collection}/rkey) already identifies the merchant, and OAuth write permission enforces that the repo owner is the only one who can create or update it here -- a separate field would just duplicate that without adding evidentiary value.",
         "required": [
           "title",
           "createdAt"

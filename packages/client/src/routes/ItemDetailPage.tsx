@@ -72,7 +72,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn, formatBytes } from "@/lib/utils";
 import {
   catalogItemArtworkCid,
-  catalogItemSellerDid,
+  catalogItemMerchantDid,
   type ActorMerchant,
   type BazaarItem,
   type CatalogItem,
@@ -442,7 +442,7 @@ export function ItemDetailPage() {
 
   useEffect(() => {
     const authorDid = (
-      item ? catalogItemSellerDid(item, itemUri) : undefined
+      item ? catalogItemMerchantDid(item, itemUri) : undefined
     )?.trim();
     if (!authorDid?.startsWith("did:")) {
       setRelayAvatarUrl(null);
@@ -524,7 +524,7 @@ export function ItemDetailPage() {
         return null;
       });
     };
-  }, [agent, item ? catalogItemSellerDid(item, itemUri) : undefined]);
+  }, [agent, item ? catalogItemMerchantDid(item, itemUri) : undefined]);
 
   const isCollection =
     item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
@@ -641,7 +641,7 @@ export function ItemDetailPage() {
   const collectionTrackCount = isCollection
     ? item.items.filter((i) => i.role === "track").length
     : 0;
-  const authorDid = catalogItemSellerDid(item, itemUri);
+  const authorDid = catalogItemMerchantDid(item, itemUri);
   const authorInitial =
     authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
 

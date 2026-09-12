@@ -176,7 +176,7 @@ export const licenses = sqliteTable("licenses", {
 export const catalogItems = sqliteTable("catalog_items", {
   uri: text("uri").primaryKey(),
   cid: text("cid").notNull(),
-  sellerDid: text("seller_did").notNull(),
+  merchantDid: text("merchant_did").notNull(),
   title: text("title").notNull(),
   category: text("category"),
   description: text("description"),
@@ -230,7 +230,7 @@ export const appKeys = sqliteTable("app_keys", {
 export const catalogProducts = sqliteTable("catalog_products", {
   uri: text("uri").primaryKey(),
   cid: text("cid").notNull(),
-  sellerDid: text("seller_did").notNull(),
+  merchantDid: text("merchant_did").notNull(),
   title: text("title").notNull(),
   description: text("description"),
   /** JSON-serialized string[] -- freeform, seller-authored, no taxonomy. Mirrors catalog.item's own tags field. */

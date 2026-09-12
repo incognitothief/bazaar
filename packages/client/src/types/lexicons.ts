@@ -350,10 +350,10 @@ export type CatalogItem = DigitalItem | Collection | PhysicalItem | BazaarItem |
 /**
  * The legacy types (DigitalItem, Collection, PhysicalItem) still carry their
  * own artistDid field. The current types (BazaarItem, Product) carry no
- * seller field at all -- their own repo (at://sellerDid/{collection}/rkey)
- * already identifies the seller, so it's derived from `itemUri` instead.
+ * merchant field at all -- their own repo (at://merchantDid/{collection}/rkey)
+ * already identifies the merchant, so it's derived from `itemUri` instead.
  */
-export function catalogItemSellerDid(item: CatalogItem, itemUri: string): string {
+export function catalogItemMerchantDid(item: CatalogItem, itemUri: string): string {
   if ("artistDid" in item) return item.artistDid;
   return repoDidFromAtUri(itemUri) ?? "";
 }

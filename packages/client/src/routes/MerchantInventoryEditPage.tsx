@@ -1201,7 +1201,7 @@ function PhysicalEditForm({
  * catalog.item is ERP-first (getCatalogItem), not PDS-direct like the
  * three legacy forms above -- consistent with "ERP-first everywhere."
  * Only title/category/description are editable; fileCid/fileChecksum/
- * format/sellerDid are preserved as-authored (see putCatalogItem).
+ * format/merchantDid are preserved as-authored (see putCatalogItem).
  */
 function CatalogItemEditForm({
   uri,
@@ -1269,7 +1269,7 @@ function CatalogItemEditForm({
     setTags(r.tags ?? []);
 
     const [listings, productRows] = await Promise.all([
-      listListingRows(r.sellerDid).catch(() => []),
+      listListingRows(r.merchantDid).catch(() => []),
       listCatalogProductRows().catch(() => []),
     ]);
 

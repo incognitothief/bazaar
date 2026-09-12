@@ -429,14 +429,14 @@ export function createMerchantRouter(db: Db) {
     const rows = db
       .select()
       .from(catalogItems)
-      .where(eq(catalogItems.sellerDid, owner))
+      .where(eq(catalogItems.merchantDid, owner))
       .orderBy(desc(catalogItems.capturedAt))
       .all();
 
     const productRows = db
       .select()
       .from(catalogProducts)
-      .where(eq(catalogProducts.sellerDid, owner))
+      .where(eq(catalogProducts.merchantDid, owner))
       .all();
     const productUriByItemUri = new Map<string, string>();
     for (const p of productRows) {
@@ -474,7 +474,7 @@ export function createMerchantRouter(db: Db) {
     const rows = db
       .select()
       .from(catalogProducts)
-      .where(eq(catalogProducts.sellerDid, owner))
+      .where(eq(catalogProducts.merchantDid, owner))
       .orderBy(desc(catalogProducts.capturedAt))
       .all();
     const products = await Promise.all(
@@ -591,7 +591,7 @@ export function createMerchantRouter(db: Db) {
       .from(catalogProducts)
       .where(eq(catalogProducts.uri, uri))
       .get();
-    if (!existing || existing.sellerDid !== owner) {
+    if (!existing || existing.merchantDid !== owner) {
       return c.json({ error: "not_found" }, 404);
     }
     const set: Partial<typeof catalogProducts.$inferInsert> = { updatedAt: new Date() };
@@ -642,7 +642,7 @@ export function createMerchantRouter(db: Db) {
     const uri = c.req.query("uri");
     if (!uri) return c.json({ error: "uri required" }, 400);
     const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
-    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
     return c.json(await loadProductAssets(uri));
   });
 
@@ -670,7 +670,7 @@ export function createMerchantRouter(db: Db) {
       return c.json({ error: "productUri_objectId_role_required" }, 400);
     }
     const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, productUri)).get();
-    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
     const obj = db
       .select({
         id: inventoryUploadObject.id,
@@ -732,7 +732,7 @@ export function createMerchantRouter(db: Db) {
       .from(catalogProducts)
       .where(eq(catalogProducts.uri, row.productUri))
       .get();
-    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
 
     db.delete(catalogProductAssets).where(eq(catalogProductAssets.id, id)).run();
 
@@ -792,7 +792,7 @@ export function createMerchantRouter(db: Db) {
     const uri = c.req.query("uri");
     if (!uri) return c.json({ error: "uri required" }, 400);
     const item = db.select().from(catalogItems).where(eq(catalogItems.uri, uri)).get();
-    if (!item || item.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!item || item.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
     if (!item.objectId) return c.json({ error: "no_file" }, 404);
     const obj = db
       .select()
@@ -826,7 +826,7 @@ export function createMerchantRouter(db: Db) {
     const uri = c.req.query("uri");
     if (!uri) return c.json({ error: "uri required" }, 400);
     const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
-    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
 
     const r2 = r2ConfigFromEnv();
     if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);

@@ -651,7 +651,7 @@ export function incrementLicenseVersion(version: string): string {
 export type CatalogItemRow = {
   uri: string;
   cid: string;
-  sellerDid: string;
+  merchantDid: string;
   title: string;
   category: string | null;
   description: string | null;
@@ -677,7 +677,7 @@ export type CatalogItemRow = {
 export type CatalogProductRow = {
   uri: string;
   cid: string;
-  sellerDid: string;
+  merchantDid: string;
   title: string;
   description: string | null;
   tags: string[] | null;
@@ -1205,7 +1205,7 @@ export async function putPhysicalItem(
   });
 }
 
-/** Only title/category/description are editable -- fileCid/fileChecksum/format/sellerDid are preserved as-authored. */
+/** Only title/category/description are editable -- fileCid/fileChecksum/format/merchantDid are preserved as-authored. */
 export async function putCatalogItem(
   agent: ATPRepoClient,
   uri: string,
@@ -1251,7 +1251,7 @@ export async function putCatalogItem(
   return { cid: res.cid };
 }
 
-/** title/description/tags/items are all editable -- items[] is mutable (see catalog.product.json). sellerDid/createdAt are preserved. */
+/** title/description/tags/items are all editable -- items[] is mutable (see catalog.product.json). merchantDid/createdAt are preserved. */
 export async function putCatalogProduct(
   agent: ATPRepoClient,
   uri: string,

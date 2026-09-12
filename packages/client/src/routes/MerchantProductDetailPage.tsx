@@ -152,7 +152,7 @@ export function MerchantProductDetailPage() {
       ),
     );
 
-    const rows = await listListingRows(p.sellerDid).catch(() => []);
+    const rows = await listListingRows(p.merchantDid).catch(() => []);
     const primary = rows
       .filter((r) => r.listing.item.uri === uri && !r.listing.parentListing)
       .sort((a, b) => {

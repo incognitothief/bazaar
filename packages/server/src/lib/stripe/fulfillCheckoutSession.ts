@@ -32,7 +32,7 @@ function buyerDidValid(did: string): boolean {
   return did.startsWith("did:") && did.length > 8;
 }
 
-/** The DID hosting `uri`'s repo -- catalog.item/catalog.product carry no sellerDid field, the AT-URI's own hostname already is the seller. */
+/** The DID hosting `uri`'s repo -- catalog.item/catalog.product carry no merchantDid field, the AT-URI's own hostname already is the merchant. */
 function repoDidFromItemUri(uri: string): string | undefined {
   try {
     return new AtUri(uri).hostname || undefined;

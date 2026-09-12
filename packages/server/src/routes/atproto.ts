@@ -90,7 +90,7 @@ async function captureLicenseTerms(
  */
 export async function captureCatalogItem(
   db: Db,
-  sellerDid: string,
+  merchantDid: string,
   record: unknown,
   uri: string,
   cid: string,
@@ -105,7 +105,7 @@ export async function captureCatalogItem(
   try {
     const updateSet = {
       cid,
-      sellerDid,
+      merchantDid,
       title,
       category: optionalString(r.category) ?? null,
       description: optionalString(r.description) ?? null,
@@ -137,7 +137,7 @@ export async function captureCatalogItem(
  */
 export async function captureCatalogProduct(
   db: Db,
-  sellerDid: string,
+  merchantDid: string,
   record: unknown,
   uri: string,
   cid: string,
@@ -154,7 +154,7 @@ export async function captureCatalogProduct(
   try {
     const updateSet = {
       cid,
-      sellerDid,
+      merchantDid,
       title,
       description,
       tags: Array.isArray(r.tags) ? JSON.stringify(r.tags) : null,
