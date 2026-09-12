@@ -174,6 +174,11 @@ jobs:
           fi
           pulumi up --yes --stack "${PULUMI_STACK}"
 
+      - name: TEMP debug secret length -- remove after diagnosing VITE_MERCHANT_DID
+        env:
+          VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
+        run: echo "VITE_MERCHANT_DID length: ${#VITE_MERCHANT_DID}"
+
       - name: Fly deploy (staging)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
