@@ -386,7 +386,7 @@ async function readFulfillmentRow(
 /**
  * Checkout.session.completed → verify PI + listing, write receipt to buyer PDS.
  * License terms are frozen atomically with the receipt (licenseGrant.cid folded
- * into appSig) -- no separate consent record. Idempotent per PaymentIntent via
+ * into storefrontSig) -- no separate consent record. Idempotent per PaymentIntent via
  * payment_fulfillment + row claim.
  *
  * @returns When the row claim short-circuits, the skip reason (e.g. `locked`, `completed`);
@@ -546,7 +546,7 @@ export async function fulfillCheckoutSession(opts: {
     purchasedGood.variantSku = variantSku;
   }
 
-  // Frozen download entitlement -- captured now, folded into appSig, and
+  // Frozen download entitlement -- captured now, folded into storefrontSig, and
   // written onto the receipt so later product edits can't move it.
   const grantedItems = resolveGrantedItems(itemUri, item, itemCid);
   const grantedDigest = grantedItems
@@ -556,14 +556,14 @@ export async function fulfillCheckoutSession(opts: {
   const storefrontDid = process.env.STOREFRONT_DID ?? "";
   const privateKeyRaw = process.env.STOREFRONT_PRIVATE_KEY;
 
-  let appSigReceipt = "";
+  let storefrontSig = "";
   if (
     privateKeyRaw &&
     !privateKeyRaw.includes("PLACEHOLDER") &&
     buyerDidValid(buyerDid)
   ) {
     try {
-      appSigReceipt = signReceiptPayload({
+      storefrontSig = signReceiptPayload({
         purchasedAt,
         paymentRef,
         itemUri,
@@ -580,7 +580,7 @@ export async function fulfillCheckoutSession(opts: {
 
   const receiptKidEnv = storefrontKidFromEnv();
   const receiptKid =
-    appSigReceipt && receiptKidEnv ? receiptKidEnv : undefined;
+    storefrontSig && receiptKidEnv ? receiptKidEnv : undefined;
 
   const receiptRecord: Record<string, unknown> = {
     $type: COL_RECEIPT,
@@ -595,7 +595,7 @@ export async function fulfillCheckoutSession(opts: {
     ...(grantedItems ? { grantedItems } : {}),
     storefrontDid,
     merchantDid,
-    appSig: appSigReceipt,
+    storefrontSig,
     purchasedAt,
     ...(receiptKid ? { kid: receiptKid } : {}),
   };
@@ -607,7 +607,7 @@ export async function fulfillCheckoutSession(opts: {
     listingCid: resolvedListingCid,
     paymentRef,
     purchasedAt,
-    appSig: appSigReceipt,
+    storefrontSig,
     merchantDid,
     amountTotal: session.amount_total,
     currency: session.currency,
@@ -633,7 +633,7 @@ export async function fulfillCheckoutSession(opts: {
     return;
   }
 
-  if (!appSigReceipt) {
+  if (!storefrontSig) {
     receiptPayload.pdsError =
       "STOREFRONT_PRIVATE_KEY missing or receipt signing failed";
     await persistReceiptMeta(db, paymentRef, receiptPayload);

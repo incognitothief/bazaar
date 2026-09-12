@@ -15,7 +15,7 @@
           "licenseGrant",
           "storefrontDid",
           "merchantDid",
-          "appSig",
+          "storefrontSig",
           "purchasedAt"
         ],
         "properties": {
@@ -35,7 +35,7 @@
           },
           "licenseGrant": {
             "$ref": "diamonds.whereditgo.bazaar.defs#ref",
-            "description": "License terms in effect at time of purchase. cid resolved from the listing's own licenseGrantCid. Required: every listing must carry license terms before it can be sold, so every receipt has one. cid is folded into appSig (see appSig's description) -- this is what freezes the license terms atomically with the purchase itself; there is no separate consent record."
+            "description": "License terms in effect at time of purchase. cid resolved from the listing's own licenseGrantCid. Required: every listing must carry license terms before it can be sold, so every receipt has one. cid is folded into storefrontSig (see storefrontSig's description) -- this is what freezes the license terms atomically with the purchase itself; there is no separate consent record."
           },
           "shippingAddress": {
             "$ref": "diamonds.whereditgo.bazaar.defs#address",
@@ -48,26 +48,26 @@
           "grantedItems": {
             "type": "array",
             "items": { "$ref": "diamonds.whereditgo.bazaar.defs#ref" },
-            "description": "The catalog.item refs (uri + cid) this purchase entitles the buyer to download, frozen at purchase time. Single-item purchase: the one item ref. Product purchase: the product's member item refs at time of sale — later edits to product.items do NOT change this grant (a removed item stays downloadable for this buyer; an added item is not). Sorted by uri UTF-8 byte order and de-duplicated by uri. Covered by appSig — see appSig's description for the digest algorithm. Freezes which items, not which bytes: re-uploading an item's master still serves the current file for that URI. Absent on legacy receipts and on collection purchases, which fall back to live membership resolution. Immutable."
+            "description": "The catalog.item refs (uri + cid) this purchase entitles the buyer to download, frozen at purchase time. Single-item purchase: the one item ref. Product purchase: the product's member item refs at time of sale — later edits to product.items do NOT change this grant (a removed item stays downloadable for this buyer; an added item is not). Sorted by uri UTF-8 byte order and de-duplicated by uri. Covered by storefrontSig — see storefrontSig's description for the digest algorithm. Freezes which items, not which bytes: re-uploading an item's master still serves the current file for that URI. Absent on legacy receipts and on collection purchases, which fall back to live membership resolution. Immutable."
           },
           "storefrontDid": {
             "type": "string",
             "format": "did",
-            "description": "DID of the storefront (Bazaar service instance) that issued this receipt. Verifiers resolve this to get the public key for appSig verification."
+            "description": "DID of the storefront (Bazaar service instance) that issued this receipt. Verifiers resolve this to get the public key for storefrontSig verification."
           },
           "merchantDid": {
             "type": "string",
             "format": "did",
             "description": "DID of the merchant this receipt was issued under — the ATProto identity hosting the catalog/storefront (actor.merchant)."
           },
-          "appSig": {
+          "storefrontSig": {
             "type": "string",
             "description": "Base64url signature by the storefront service keypair (storefrontDid) over SHA-256(purchasedAt:payment.ref:purchasedGood.uri:listing.cid:buyerDid), colon-delimited in that order. buyerDid is the authenticated buyer at mint time -- not a stored field, since the receipt's own repo already establishes whose purchase this is; verifiers supply their own session DID when reconstructing the payload. licenseGrant.cid is appended as a sixth field when present (every receipt from a listing gated by license.terms has one -- see licenseGrant's description). grantedItems, when present, is folded in as a further field: base64url(SHA-256(canonical grantedItems joined by '\\n')), where each entry is canonicalized as 'uri|cid' (empty string for a missing cid), sorted by uri UTF-8 byte order and de-duplicated by uri -- '|' never occurs in an AT-URI or a CID, so the per-entry join is unambiguous, and '\\n' never occurs in either, so the overall join is too. Each of licenseGrant.cid and the grantedItems digest is appended only when its source field is present on the receipt, in that fixed order -- legacy receipts from before either field existed sign only the five-field base payload. Verifiers reconstruct this payload from the receipt's plaintext fields (recomputing the grantedItems digest) and verify against the public key resolved from storefrontDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
           },
           "kid": {
             "type": "string",
             "maxLength": 64,
-            "description": "Key identifier for the storefront service keypair that produced appSig. Format: storefront-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. storefront-key-2026-08-29. Allows verifiers to select the correct historical key from the storefrontDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
+            "description": "Key identifier for the storefront service keypair that produced storefrontSig. Format: storefront-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. storefront-key-2026-08-29. Allows verifiers to select the correct historical key from the storefrontDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
           },
           "purchasedAt": {
             "type": "string",

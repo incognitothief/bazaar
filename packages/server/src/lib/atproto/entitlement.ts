@@ -16,7 +16,7 @@ export type GrantedItemRef = {
  * A `purchase.receipt` carries `grantedItems`: the exact `catalog.item` refs
  * (uri + cid) the buyer paid for, captured at checkout. Later edits to a
  * product's `items[]` never change it. The list is folded into the receipt
- * `appSig` via {@link entitlementDigest} so a remote verifier can confirm the
+ * `storefrontSig` via {@link entitlementDigest} so a remote verifier can confirm the
  * grant cryptographically from the receipt record alone.
  *
  * Canonical form: de-duplicated by uri, sorted by uri UTF-8 byte order. Every

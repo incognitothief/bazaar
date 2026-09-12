@@ -77,28 +77,28 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
     buyerDid: "did:plc:buyer",
   };
 
-  test("round-trip with P-256 EC key (compact low-S appSig)", () => {
+  test("round-trip with P-256 EC key (compact low-S storefrontSig)", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
-    const appSig = signReceiptPayload({ ...params, privateKeyPem });
+    const storefrontSig = signReceiptPayload({ ...params, privateKeyPem });
 
     // Current wire format: 64-byte IEEE-P1363 (r || s).
-    const raw = Buffer.from(appSig, "base64url");
+    const raw = Buffer.from(storefrontSig, "base64url");
     expect(raw.length).toBe(64);
     // Low-S: s <= n/2.
     const s = BigInt(`0x${raw.subarray(32).toString("hex")}`);
     expect(s <= P256_HALF_N).toBe(true);
 
-    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(true);
   });
 
   test("tampered field fails verification", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
-    const appSig = signReceiptPayload({ ...params, privateKeyPem });
+    const storefrontSig = signReceiptPayload({ ...params, privateKeyPem });
     expect(
       verifyReceiptPayload({
         ...params,
         paymentRef: "pi_tampered",
-        appSig,
+        storefrontSig,
         publicKeyPem,
       }),
     ).toBe(false);
@@ -107,23 +107,23 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
   test("entitlementDigest is bound into the signature", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
     const entitlementDigest = "Zm9vYmFyZW50aXRsZW1lbnRkaWdlc3RfXw";
-    const appSig = signReceiptPayload({
+    const storefrontSig = signReceiptPayload({
       ...params,
       entitlementDigest,
       privateKeyPem,
     });
 
     expect(
-      verifyReceiptPayload({ ...params, entitlementDigest, appSig, publicKeyPem }),
+      verifyReceiptPayload({ ...params, entitlementDigest, storefrontSig, publicKeyPem }),
     ).toBe(true);
     // Same fields, digest dropped -> five-field payload -> mismatch.
-    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(false);
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(false);
     // Same fields, different digest -> mismatch.
     expect(
       verifyReceiptPayload({
         ...params,
         entitlementDigest: `${entitlementDigest}x`,
-        appSig,
+        storefrontSig,
         publicKeyPem,
       }),
     ).toBe(false);
@@ -132,22 +132,22 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
   test("licenseGrantCid is bound into the signature (atomic license freeze, no consent record)", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
     const licenseGrantCid = "bafyreilicensegrantcid";
-    const appSig = signReceiptPayload({
+    const storefrontSig = signReceiptPayload({
       ...params,
       licenseGrantCid,
       privateKeyPem,
     });
 
     expect(
-      verifyReceiptPayload({ ...params, licenseGrantCid, appSig, publicKeyPem }),
+      verifyReceiptPayload({ ...params, licenseGrantCid, storefrontSig, publicKeyPem }),
     ).toBe(true);
     // A buyer editing their own receipt's licenseGrant can't keep this valid.
-    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(false);
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(false);
     expect(
       verifyReceiptPayload({
         ...params,
         licenseGrantCid: `${licenseGrantCid}x`,
-        appSig,
+        storefrontSig,
         publicKeyPem,
       }),
     ).toBe(false);
@@ -157,7 +157,7 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
     const licenseGrantCid = "bafyreilicensegrantcid";
     const entitlementDigest = "Zm9vYmFyZW50aXRsZW1lbnRkaWdlc3RfXw";
-    const appSig = signReceiptPayload({
+    const storefrontSig = signReceiptPayload({
       ...params,
       licenseGrantCid,
       entitlementDigest,
@@ -169,7 +169,7 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
         ...params,
         licenseGrantCid,
         entitlementDigest,
-        appSig,
+        storefrontSig,
         publicKeyPem,
       }),
     ).toBe(true);
@@ -179,7 +179,7 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
         ...params,
         licenseGrantCid: entitlementDigest,
         entitlementDigest: licenseGrantCid,
-        appSig,
+        storefrontSig,
         publicKeyPem,
       }),
     ).toBe(false);
@@ -187,8 +187,8 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
 
   test("legacy five-field payload still round-trips when no digest is given", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
-    const appSig = signReceiptPayload({ ...params, privateKeyPem });
-    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
+    const storefrontSig = signReceiptPayload({ ...params, privateKeyPem });
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(true);
   });
 
   test("SEC1 EC PRIVATE KEY collapsed to one line (typical .env)", () => {
@@ -203,8 +203,8 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
     }) as string;
     expect(normalizeStorefrontPrivateKey(oneLine)).toContain("\n");
 
-    const appSig = signReceiptPayload({ ...params, privateKeyPem: oneLine });
-    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
+    const storefrontSig = signReceiptPayload({ ...params, privateKeyPem: oneLine });
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(true);
   });
 
   test("TRANSITIONAL: verifies a legacy DER-encoded EC signature (pre-migration field receipts)", () => {
@@ -236,7 +236,7 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
     ).toString("base64url");
 
     expect(
-      verifyReceiptPayload({ ...params, appSig: derSig, publicKeyPem }),
+      verifyReceiptPayload({ ...params, storefrontSig: derSig, publicKeyPem }),
     ).toBe(true);
   });
 
@@ -271,7 +271,7 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
       ).toString("base64url");
 
       expect(
-        verifyReceiptPayload({ ...params, appSig: legacySig, publicKeyPem }),
+        verifyReceiptPayload({ ...params, storefrontSig: legacySig, publicKeyPem }),
       ).toBe(true);
     },
   );

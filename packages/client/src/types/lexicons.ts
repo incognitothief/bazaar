@@ -244,7 +244,7 @@ export type PurchaseReceipt = {
   listing: Ref;
   pricePaid: Money;
   payment: Payment;
-  /** License terms in effect at time of purchase. cid is folded into appSig -- freezes the license atomically with the purchase, no separate consent record. */
+  /** License terms in effect at time of purchase. cid is folded into storefrontSig -- freezes the license atomically with the purchase, no separate consent record. */
   licenseGrant: Ref;
   shippingAddress?: Address;
   fulfillmentUri?: string;
@@ -256,7 +256,7 @@ export type PurchaseReceipt = {
   grantedItems?: Ref[];
   storefrontDid: string;
   merchantDid: string;
-  appSig: string;
+  storefrontSig: string;
   purchasedAt: string;
   note?: string;
 };

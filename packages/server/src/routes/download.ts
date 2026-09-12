@@ -42,8 +42,8 @@ type PurchaseReceipt = {
   licenseGrant?: ItemRef;
   payment?: { processor: string; ref: string };
   purchasedAt: string;
-  appSig: string;
-  /** Hint for selecting the storefront key that produced `appSig` (ADR 0013). */
+  storefrontSig: string;
+  /** Hint for selecting the storefront key that produced `storefrontSig` (ADR 0013). */
   kid?: string;
   /**
    * Frozen entitlement: the catalog.item refs this purchase covers, captured
@@ -421,7 +421,7 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
 }
 
 /**
- * appSig covers `rec.purchasedGood.uri` (the purchased listing item), not an individual
+ * storefrontSig covers `rec.purchasedGood.uri` (the purchased listing item), not an individual
  * track URI. buyerDid is not a stored field -- the receipt lives in `sessionDid`'s own
  * repo (this is only ever called on rows from `sess.did`'s own listRecords), so that IS
  * the buyer, and it's what gets fed into the signed payload for reconstruction.
@@ -439,7 +439,7 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
       ? pems
       : [storefrontPublicKeyPemFromEnv()].filter((p): p is string => !!p);
 
-  // Current receipts fold the grantedItems digest into appSig as a sixth
+  // Current receipts fold the grantedItems digest into storefrontSig as a sixth
   // payload field; legacy receipts sign only the five-field payload.
   const grant = frozenGrant(rec);
   const digest = grant ? entitlementDigest(grant) : undefined;
@@ -453,7 +453,7 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
       buyerDid: sessionDid,
       licenseGrantCid: rec.licenseGrant?.cid,
       entitlementDigest: digest,
-      appSig: rec.appSig,
+      storefrontSig: rec.storefrontSig,
       publicKeyPem,
     }),
   );

@@ -243,7 +243,7 @@ export function resetStorefrontKeysCache(): void {
 }
 
 /**
- * Ordered public-key PEMs to try when verifying a record's `appSig`.
+ * Ordered public-key PEMs to try when verifying a record's `storefrontSig`.
  *
  * - `revoked: true` — the record's `kid` names a hard-revoked key. Reject outright,
  *   do not attempt any signature check.

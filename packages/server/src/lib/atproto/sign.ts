@@ -9,12 +9,12 @@ import {
  * Explicit digest for receipt signatures. OpenSSL 3 + some Bun builds throw
  * ERR_OSSL_NO_DEFAULT_DIGEST when verify(null, …) is used with SPKI public keys.
  */
-const APP_SIG_DIGEST = "sha256";
+const STOREFRONT_SIG_DIGEST = "sha256";
 
 const STOREFRONT_KID_MAX = 64;
 
 /**
- * `appSig` is a 64-byte IEEE-P1363 (raw `r || s`) ECDSA/P-256 signature, normalised to low-S,
+ * `storefrontSig` is a 64-byte IEEE-P1363 (raw `r || s`) ECDSA/P-256 signature, normalised to low-S,
  * base64url-encoded. This is the AT Protocol convention (`@atproto/crypto`, and the
  * `bazaar-vault/Demos/verify-receipt.ts` reference verifier). Older field receipts carry a
  * DER-encoded signature instead — see the fallback in `verifyCanonical` below.
@@ -87,7 +87,7 @@ export function normalizeStorefrontPrivateKey(raw: string): string {
 /** Sign `message` and return a base64url low-S IEEE-P1363 (`r || s`) ECDSA/P-256 signature. */
 function signCanonical(message: string, privateKeyPem: string): string {
   const key = createPrivateKey(normalizeStorefrontPrivateKey(privateKeyPem));
-  const raw = cryptoSign(APP_SIG_DIGEST, Buffer.from(message, "utf8"), {
+  const raw = cryptoSign(STOREFRONT_SIG_DIGEST, Buffer.from(message, "utf8"), {
     key,
     dsaEncoding: "ieee-p1363",
   });
@@ -107,15 +107,15 @@ function signCanonical(message: string, privateKeyPem: string): string {
  */
 function verifyCanonical(
   message: string,
-  appSig: string,
+  storefrontSig: string,
   publicKeyPem: string,
 ): boolean {
   const key = createPublicKey(publicKeyPem);
   const msg = Buffer.from(message, "utf8");
-  const sig = Buffer.from(appSig, "base64url");
+  const sig = Buffer.from(storefrontSig, "base64url");
   if (sig.length === P256_SIG_BYTES) {
     try {
-      if (cryptoVerify(APP_SIG_DIGEST, msg, { key, dsaEncoding: "ieee-p1363" }, sig)) {
+      if (cryptoVerify(STOREFRONT_SIG_DIGEST, msg, { key, dsaEncoding: "ieee-p1363" }, sig)) {
         return true;
       }
     } catch {
@@ -123,7 +123,7 @@ function verifyCanonical(
     }
   }
   try {
-    return cryptoVerify(APP_SIG_DIGEST, msg, key, sig);
+    return cryptoVerify(STOREFRONT_SIG_DIGEST, msg, key, sig);
   } catch {
     return false;
   }
@@ -182,12 +182,12 @@ export function verifyReceiptPayload(params: {
   buyerDid: string;
   licenseGrantCid?: string;
   entitlementDigest?: string;
-  appSig: string;
+  storefrontSig: string;
   publicKeyPem: string;
 }): boolean {
   return verifyCanonical(
     receiptPayloadString(params),
-    params.appSig,
+    params.storefrontSig,
     params.publicKeyPem,
   );
 }

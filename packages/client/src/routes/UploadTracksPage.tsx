@@ -1972,8 +1972,8 @@ export function UploadTracksPage() {
                               Add when registered. A{" "}
                               <code className="text-[10px]">bazaarRid</code> is
                               generated automatically at publish (signed by the
-                              Bazaar app key, like receipt{" "}
-                              <code className="text-[10px]">appSig</code>).
+                              Bazaar storefront key, like receipt{" "}
+                              <code className="text-[10px]">storefrontSig</code>).
                             </p>
                           </div>
                           <div className="space-y-1">
