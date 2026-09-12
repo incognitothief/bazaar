@@ -174,12 +174,6 @@ jobs:
           fi
           pulumi up --yes --stack "${PULUMI_STACK}"
 
-      - name: TEMP debug secret length -- remove after diagnosing VITE_MERCHANT_DID
-        env:
-          VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
-        run: |
-          echo "VITE_MERCHANT_DID length: ${#VITE_MERCHANT_DID}"
-
       - name: Fly deploy (staging)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -196,7 +190,7 @@ jobs:
             exit 1
           fi
 
-          flyctl deploy --remote-only --config fly.stg.toml \
+          flyctl deploy --remote-only --no-cache --config fly.stg.toml \
             --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
             --build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
