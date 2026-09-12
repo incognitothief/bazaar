@@ -4,6 +4,9 @@ import { repoDidFromAtUri } from "@/lib/atUri";
 
 export type Money = { amount: number; currency: string };
 
+/** Which payment system settled a receipt, plus its opaque reference in that system. */
+export type Payment = { processor: string; ref: string };
+
 export type Dimensions = {
   width?: number;
   height?: number;
@@ -240,8 +243,7 @@ export type PurchaseReceipt = {
   /** Listing purchased. cid is pinned at checkout as the immutable price anchor. */
   listing: Ref;
   pricePaid: Money;
-  paymentProcessor: string;
-  paymentRef: string;
+  payment: Payment;
   /** License terms in effect at time of purchase. cid is folded into appSig -- freezes the license atomically with the purchase, no separate consent record. */
   licenseGrant: Ref;
   shippingAddress?: Address;

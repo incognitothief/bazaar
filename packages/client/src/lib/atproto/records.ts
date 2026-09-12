@@ -298,7 +298,7 @@ function dedupePurchaseReceiptRows(
 ): PurchaseReceiptRow[] {
   const byKey = new Map<string, PurchaseReceiptRow>();
   for (const row of rows) {
-    const pr = row.receipt.paymentRef?.trim();
+    const pr = row.receipt.payment?.ref?.trim();
     const key = pr && pr.length > 0 ? pr : row.uri;
     const prev = byKey.get(key);
     if (

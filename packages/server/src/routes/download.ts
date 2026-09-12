@@ -40,7 +40,7 @@ type PurchaseReceipt = {
   purchasedGood: ItemRef;
   listing: ItemRef;
   licenseGrant?: ItemRef;
-  paymentRef: string;
+  payment?: { processor: string; ref: string };
   purchasedAt: string;
   appSig: string;
   /** Hint for selecting the storefront key that produced `appSig` (ADR 0013). */
@@ -447,7 +447,7 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
   return candidates.some((publicKeyPem) =>
     verifyReceiptPayload({
       purchasedAt: rec.purchasedAt,
-      paymentRef: rec.paymentRef,
+      paymentRef: rec.payment?.ref ?? "",
       itemUri: rec.purchasedGood.uri,
       listingCid: rec.listing.cid ?? "",
       buyerDid: sessionDid,

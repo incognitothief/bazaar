@@ -74,8 +74,8 @@ async function findBuyerReceiptByPaymentRef(
       cursor,
     });
     for (const row of res.data.records) {
-      const v = row.value as { paymentRef?: string };
-      if (v?.paymentRef === paymentRef && row.uri) {
+      const v = row.value as { payment?: { ref?: string } };
+      if (v?.payment?.ref === paymentRef && row.uri) {
         return { uri: row.uri, cid: row.cid };
       }
     }
@@ -590,8 +590,7 @@ export async function fulfillCheckoutSession(opts: {
       amount: pi.amount_received,
       currency: pi.currency.toUpperCase(),
     },
-    paymentProcessor: "stripe",
-    paymentRef,
+    payment: { processor: "stripe", ref: paymentRef },
     licenseGrant: { uri: licenseGrantUri, cid: licenseGrantCid },
     ...(grantedItems ? { grantedItems } : {}),
     storefrontDid,
