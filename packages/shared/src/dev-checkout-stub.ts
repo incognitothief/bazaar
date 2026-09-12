@@ -38,9 +38,10 @@ export function buildDevStubListingJson(itemUri: string): Record<string, unknown
     item: { uri: itemUri },
     price: { amount: 999, currency: "USD" },
     status: "active",
-    licenseUri:
-      "at://dev.bazaar.invalid/diamonds.whereditgo.bazaar.license.terms/dummy",
-    licenseGrantCid: "bafyreiccccccccccccccccccccccccccccccccccccccccccccccccc",
+    licenseGrant: {
+      uri: "at://dev.bazaar.invalid/diamonds.whereditgo.bazaar.license.terms/dummy",
+      cid: "bafyreiccccccccccccccccccccccccccccccccccccccccccccccccc",
+    },
     createdAt: now,
   };
 }

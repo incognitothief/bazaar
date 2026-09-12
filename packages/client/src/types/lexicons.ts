@@ -216,8 +216,7 @@ export type Listing = {
     | "scheduled"
     | "archived"
     | "superseded";
-  licenseUri: string;
-  licenseGrantCid: string;
+  licenseGrant: Ref;
   /** Parent collection listing AT-URI when this listing is a per-track single under that album. */
   parentListing?: string;
   supersededBy?: string;

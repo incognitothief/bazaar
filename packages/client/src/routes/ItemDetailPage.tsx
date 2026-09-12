@@ -402,7 +402,7 @@ export function ItemDetailPage() {
           setSingleFileMeta(null);
         }
 
-        let licUri = listingRow?.licenseUri;
+        let licUri = listingRow?.licenseGrant?.uri;
         if (
           !licUri &&
           v &&

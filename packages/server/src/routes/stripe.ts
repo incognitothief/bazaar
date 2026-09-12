@@ -76,13 +76,14 @@ async function getRecordJsonWithCid(
 }
 
 function listingHasV5License(listing: Record<string, unknown>): boolean {
-  const licUri = listing.licenseUri;
-  const licCid = listing.licenseGrantCid;
+  const licenseGrant = listing.licenseGrant as
+    | { uri?: unknown; cid?: unknown }
+    | undefined;
   return (
-    typeof licUri === "string" &&
-    licUri.length > 0 &&
-    typeof licCid === "string" &&
-    licCid.length > 0
+    typeof licenseGrant?.uri === "string" &&
+    licenseGrant.uri.length > 0 &&
+    typeof licenseGrant.cid === "string" &&
+    licenseGrant.cid.length > 0
   );
 }
 
@@ -148,7 +149,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     }
     if (!listingHasV5License(listing)) {
       return c.json(
-        { error: "Listing must include licenseUri and licenseGrantCid" },
+        { error: "Listing must include a licenseGrant (uri + cid)" },
         400,
       );
     }

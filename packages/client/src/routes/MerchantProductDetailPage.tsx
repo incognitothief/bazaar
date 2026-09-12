@@ -167,9 +167,9 @@ export function MerchantProductDetailPage() {
       primary && !isTerminalStatus(primary.listing.status) ? primary : null;
     setListing(primaryActive?.listing ?? null);
     setListingUri(primaryActive?.uri ?? null);
-    if (primaryActive?.listing.licenseUri) {
+    if (primaryActive?.listing.licenseGrant?.uri) {
       const lt = await getRecordValueWithCid<LicenseTerms>(
-        primaryActive.listing.licenseUri,
+        primaryActive.listing.licenseGrant.uri,
       ).catch(() => null);
       setLicense(lt?.value ?? null);
       setLicenseCid(lt?.cid ?? null);

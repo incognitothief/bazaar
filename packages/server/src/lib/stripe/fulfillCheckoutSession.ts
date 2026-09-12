@@ -126,13 +126,14 @@ async function getListingAtCid(
 }
 
 function listingHasV5License(listing: Record<string, unknown>): boolean {
-  const licUri = listing.licenseUri;
-  const licCid = listing.licenseGrantCid;
+  const licenseGrant = listing.licenseGrant as
+    | { uri?: unknown; cid?: unknown }
+    | undefined;
   return (
-    typeof licUri === "string" &&
-    licUri.length > 0 &&
-    typeof licCid === "string" &&
-    licCid.length > 0
+    typeof licenseGrant?.uri === "string" &&
+    licenseGrant.uri.length > 0 &&
+    typeof licenseGrant.cid === "string" &&
+    licenseGrant.cid.length > 0
   );
 }
 
@@ -522,8 +523,9 @@ export async function fulfillCheckoutSession(opts: {
     return;
   }
 
-  const licenseGrantUri = listing.licenseUri as string;
-  const licenseGrantCid = listing.licenseGrantCid as string;
+  const listingLicenseGrant = listing.licenseGrant as { uri: string; cid: string };
+  const licenseGrantUri = listingLicenseGrant.uri;
+  const licenseGrantCid = listingLicenseGrant.cid;
 
   let item = await getRecordJson(itemUri);
   if (

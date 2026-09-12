@@ -35,7 +35,7 @@
           },
           "licenseGrant": {
             "$ref": "diamonds.whereditgo.bazaar.defs#ref",
-            "description": "License terms in effect at time of purchase. cid resolved from the listing's own licenseGrantCid. Required: every listing must carry license terms before it can be sold, so every receipt has one. cid is folded into storefrontSig (see storefrontSig's description) -- this is what freezes the license terms atomically with the purchase itself; there is no separate consent record."
+            "description": "License terms in effect at time of purchase. cid resolved from the listing's own licenseGrant.cid. Required: every listing must carry license terms before it can be sold, so every receipt has one. cid is folded into storefrontSig (see storefrontSig's description) -- this is what freezes the license terms atomically with the purchase itself; there is no separate consent record."
           },
           "shippingAddress": {
             "$ref": "diamonds.whereditgo.bazaar.defs#address",

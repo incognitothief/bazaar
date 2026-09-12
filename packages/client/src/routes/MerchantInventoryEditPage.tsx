@@ -1299,8 +1299,9 @@ function CatalogItemEditForm({
     // Defer to the item's own license; otherwise inherit the parent product
     // listing's license (an item with no listing of its own still sells under
     // the product, under the product's terms).
-    const licUri = own?.listing.licenseUri ?? parentListing?.listing.licenseUri;
-    const inherited = !own && !!parentListing?.listing.licenseUri;
+    const licUri =
+      own?.listing.licenseGrant?.uri ?? parentListing?.listing.licenseGrant?.uri;
+    const inherited = !own && !!parentListing?.listing.licenseGrant?.uri;
     if (licUri) {
       const lt = await getRecordValueWithCid<LicenseTerms>(licUri).catch(
         () => null,

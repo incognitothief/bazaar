@@ -11,8 +11,7 @@
           "item",
           "price",
           "status",
-          "licenseUri",
-          "licenseGrantCid",
+          "licenseGrant",
           "createdAt"
         ],
         "properties": {
@@ -36,15 +35,9 @@
               "superseded"
             ]
           },
-          "licenseUri": {
-            "type": "string",
-            "format": "at-uri",
-            "description": "AT-URI of the license.terms record governing this listing. Required. Takes precedence over defaultLicenseUri on the item or collection. Different listings for the same item may reference different license.terms records, enabling per-tier pricing (e.g. personal vs. commercial)."
-          },
-          "licenseGrantCid": {
-            "type": "string",
-            "format": "cid",
-            "description": "CID of the license.terms record at time of listing creation. Anchors the offered terms so that receipt and consent record resolution is consistent even if the license.terms record is later updated."
+          "licenseGrant": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#ref",
+            "description": "The license.terms record governing this listing, pinned at listing creation. Required. Takes precedence over defaultLicenseUri on the item or collection. Different listings for the same item may reference different license.terms records, enabling per-tier pricing (e.g. personal vs. commercial). cid anchors the offered terms so that receipt resolution is consistent even if the license.terms record is later updated."
           },
           "parentListing": {
             "type": "string",
