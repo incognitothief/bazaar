@@ -13,6 +13,7 @@ import { catalogItems, catalogProductAssets, catalogProducts, inventoryUploadObj
 import { getR2S3Client } from "./r2/s3Client";
 import { newProductPackageZipKey } from "./r2/inventoryKey";
 import { r2ConfigFromEnv } from "./r2/env";
+import { clearZipProgress, setZipProgress } from "./zipProgress";
 
 const MAX_PRODUCT_ZIP_TOTAL_BYTES = 250 * 1024 * 1024;
 /** R2/S3 requires every multipart part except the last to be >= 5MiB; this gives headroom. */
@@ -183,6 +184,33 @@ function takeBytes(chunks: Uint8Array[], n: number): Uint8Array {
 }
 
 /**
+ * Per-call ceiling on any single R2 operation or stream read. Without this,
+ * a stalled network read just hangs forever with nothing to catch and
+ * nothing to log -- exactly what happened on staging (a request silently
+ * stuck, no crash, no error, until Fly's proxy gave up and dropped the
+ * connection). A timeout turns that into a normal, logged, recoverable
+ * failure -- rebuildProductZipCache already handles thrown errors by
+ * marking packageZipStatus "failed", so this just ensures it can actually
+ * get there instead of hanging indefinitely.
+ */
+const R2_OP_TIMEOUT_MS = 30_000;
+
+async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${R2_OP_TIMEOUT_MS}ms`)),
+      R2_OP_TIMEOUT_MS,
+    );
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer!);
+  }
+}
+
+/**
  * Same package contents as assembleProductZipBytes, but never holds more
  * than one file's raw bytes (streamed straight from R2's GetObject response
  * body) or one multipart part's worth of compressed output in memory at a
@@ -198,11 +226,16 @@ async function streamProductZipToR2(
   client: ReturnType<typeof getR2S3Client>,
   product: CatalogProductRow,
   key: string,
+  onProgress?: (current: number, total: number, fileName: string) => void,
 ): Promise<{ ok: true } | { error: string; status: 400 | 413 }> {
   const objectIds = resolveProductZipObjectIds(db, product);
 
-  const created = await client.send(
-    new CreateMultipartUploadCommand({ Bucket: r2.bucket, Key: key, ContentType: "application/zip" }),
+  const created = await withTimeout(
+    client.send(
+      new CreateMultipartUploadCommand({ Bucket: r2.bucket, Key: key, ContentType: "application/zip" }),
+      { abortSignal: AbortSignal.timeout(R2_OP_TIMEOUT_MS) },
+    ),
+    "multipart create",
   );
   const uploadId = created.UploadId;
   if (!uploadId) throw new Error("multipart_init_failed");
@@ -219,14 +252,18 @@ async function streamProductZipToR2(
 
   async function uploadPart(body: Uint8Array): Promise<void> {
     partNumber += 1;
-    const out = await client.send(
-      new UploadPartCommand({
-        Bucket: r2.bucket,
-        Key: key,
-        UploadId: uploadId,
-        PartNumber: partNumber,
-        Body: body,
-      }),
+    const out = await withTimeout(
+      client.send(
+        new UploadPartCommand({
+          Bucket: r2.bucket,
+          Key: key,
+          UploadId: uploadId,
+          PartNumber: partNumber,
+          Body: body,
+        }),
+        { abortSignal: AbortSignal.timeout(R2_OP_TIMEOUT_MS) },
+      ),
+      `multipart upload part ${partNumber}`,
     );
     if (!out.ETag) throw new Error("multipart_missing_etag");
     parts.push({ PartNumber: partNumber, ETag: out.ETag });
@@ -266,17 +303,26 @@ async function streamProductZipToR2(
     const usedNames = new Set<string>();
     let total = 0;
     let sawFile = false;
+    let index = 0;
 
     for (const objectId of objectIds) {
+      index += 1;
       const obj = db
         .select()
         .from(inventoryUploadObject)
         .where(eq(inventoryUploadObject.id, objectId))
         .get();
       if (!obj || obj.status !== "completed") continue;
+      onProgress?.(index, objectIds.length, obj.fileName);
       let got;
       try {
-        got = await client.send(new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }));
+        got = await withTimeout(
+          client.send(
+            new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }),
+            { abortSignal: AbortSignal.timeout(R2_OP_TIMEOUT_MS) },
+          ),
+          `get object ${obj.fileName}`,
+        );
       } catch (e) {
         console.warn("product zip stream: skip object", objectId, e);
         continue;
@@ -291,7 +337,7 @@ async function streamProductZipToR2(
       const reader = got.Body.transformToWebStream().getReader();
       let tooLarge = false;
       for (;;) {
-        const { done, value } = await reader.read();
+        const { done, value } = await withTimeout(reader.read(), `read ${obj.fileName}`);
         if (done) break;
         if (!value?.length) continue;
         total += value.length;
@@ -318,13 +364,17 @@ async function streamProductZipToR2(
 
     zip.end();
     await flushPart(true);
-    await client.send(
-      new CompleteMultipartUploadCommand({
-        Bucket: r2.bucket,
-        Key: key,
-        UploadId: uploadId,
-        MultipartUpload: { Parts: parts },
-      }),
+    await withTimeout(
+      client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: r2.bucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: { Parts: parts },
+        }),
+        { abortSignal: AbortSignal.timeout(R2_OP_TIMEOUT_MS) },
+      ),
+      "multipart complete",
     );
     return { ok: true };
   } catch (e) {
@@ -396,7 +446,9 @@ export async function rebuildProductZipCache(
     const rkey = new AtUri(product.uri).rkey;
     const key = newProductPackageZipKey(product.merchantDid, rkey);
     const client = getR2S3Client(r2);
-    const result = await streamProductZipToR2(db, r2, client, product, key);
+    const result = await streamProductZipToR2(db, r2, client, product, key, (current, total, fileName) =>
+      setZipProgress(product.uri, { current, total, fileName }),
+    );
     if ("error" in result) {
       console.warn("rebuildProductZipCache: assembly failed", product.uri, result.error);
       await db
@@ -420,6 +472,8 @@ export async function rebuildProductZipCache(
       // Best-effort -- if even the status update fails, the stale/absent
       // key is still gated off since download.ts requires status "ready".
     }
+  } finally {
+    clearZipProgress(product.uri);
   }
 }
 

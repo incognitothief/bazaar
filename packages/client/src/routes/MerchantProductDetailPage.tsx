@@ -33,6 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DetailToolbar, type ToolAction } from "@/components/merchant/detailTools";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useElapsedSeconds } from "@/hooks/useElapsedSeconds";
+import { useZipProgress } from "@/hooks/useZipProgress";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
   addCatalogProductAsset,
@@ -108,6 +109,8 @@ export function MerchantProductDetailPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const savingElapsed = useElapsedSeconds(saving);
   const settingsElapsed = useElapsedSeconds(savingSettings);
+  const savingZipProgress = useZipProgress(uri, saving);
+  const settingsZipProgress = useZipProgress(uri, savingSettings);
   const [assets, setAssets] = useState<CatalogProductAssets>({
     coverImages: [],
     includedAssets: [],
@@ -669,9 +672,11 @@ export function MerchantProductDetailPage() {
             <div className="flex items-center gap-2">
               <Button onClick={() => void onSave()} disabled={saving}>
                 {saving
-                  ? savingElapsed >= 2
-                    ? `Saving… (${savingElapsed}s)`
-                    : "Saving…"
+                  ? savingZipProgress
+                    ? `Zipping ${savingZipProgress.current}/${savingZipProgress.total}…`
+                    : savingElapsed >= 2
+                      ? `Saving… (${savingElapsed}s)`
+                      : "Saving…"
                   : "Save"}
               </Button>
               <Button
@@ -685,8 +690,9 @@ export function MerchantProductDetailPage() {
             </div>
             {saving && items.length > 0 ? (
               <p className="text-xs text-muted-foreground">
-                Repackaging the download bundle for buyers — this can take
-                longer for larger products.
+                {savingZipProgress
+                  ? `Repackaging ${savingZipProgress.fileName}`
+                  : "Repackaging the download bundle for buyers — this can take longer for larger products."}
               </p>
             ) : null}
           </div>
@@ -963,8 +969,9 @@ export function MerchantProductDetailPage() {
             </label>
             {savingSettings ? (
               <p className="text-xs text-muted-foreground">
-                Saving{settingsElapsed >= 2 ? ` (${settingsElapsed}s)` : "…"} —
-                repackaging the download bundle for buyers.
+                {settingsZipProgress
+                  ? `Zipping ${settingsZipProgress.current}/${settingsZipProgress.total} — ${settingsZipProgress.fileName}`
+                  : `Saving${settingsElapsed >= 2 ? ` (${settingsElapsed}s)` : "…"} — repackaging the download bundle for buyers.`}
               </p>
             ) : null}
           </div>

@@ -26,6 +26,7 @@ import {
 } from "@/lib/itemContentClass";
 import { probeImageSize, probeVideoDuration } from "@/lib/media/probe";
 import { useElapsedSeconds } from "@/hooks/useElapsedSeconds";
+import { useZipProgress } from "@/hooks/useZipProgress";
 import {
   GENERIC_PRODUCT_TYPE,
   PRODUCT_TYPE_OPTIONS,
@@ -146,11 +147,14 @@ export function AddProductPage() {
   const [assets, setAssets] = useState<AssetDraftRow[]>([]);
   const [publishing, setPublishing] = useState(false);
   const publishingElapsed = useElapsedSeconds(publishing);
+  const [productUri, setProductUri] = useState<string | null>(null);
+  const zipProgress = useZipProgress(productUri, publishing);
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (sessionId) return sessionId;
-    const { sessionId: id } = await createInventorySession("product");
+    const { sessionId: id, productUri: uri } = await createInventorySession("product");
     setSessionId(id);
+    setProductUri(uri);
     return id;
   }, [sessionId]);
 
@@ -793,15 +797,18 @@ export function AddProductPage() {
                 disabled={publishing || !allAssetsReady || !allCoverImagesReady}
               >
                 {publishing
-                  ? publishingElapsed >= 2
-                    ? `Publishing… (${publishingElapsed}s)`
-                    : "Publishing…"
+                  ? zipProgress
+                    ? `Zipping ${zipProgress.current}/${zipProgress.total}…`
+                    : publishingElapsed >= 2
+                      ? `Publishing… (${publishingElapsed}s)`
+                      : "Publishing…"
                   : "Publish"}
               </Button>
               {publishing && items.length > 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Packaging the download bundle for buyers — this can take
-                  longer for larger products.
+                  {zipProgress
+                    ? `Packaging ${zipProgress.fileName}`
+                    : "Packaging the download bundle for buyers — this can take longer for larger products."}
                 </p>
               ) : null}
             </div>

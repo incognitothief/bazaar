@@ -197,7 +197,15 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       status: "active",
       productRkey,
     });
-    return c.json({ sessionId: id });
+    // For a brand-new product, hand back the URI it'll be created at --
+    // productRkey is minted here, before the record exists, so the client
+    // has no other way to know it. Lets the merchant UI poll zip-progress
+    // for this product from the moment publishing starts, not just after
+    // the response comes back.
+    const productUri = productRkey
+      ? (body.existingProductUri ?? `at://${sess.did}/${col("catalog.product")}/${productRkey}`)
+      : null;
+    return c.json({ sessionId: id, productUri });
   });
 
   r.get("/prefill/latest", async (c) => {
