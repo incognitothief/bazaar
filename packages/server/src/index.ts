@@ -15,7 +15,7 @@ import {
   sweepPaymentFulfillment,
 } from "./lib/stripe/fulfillCheckoutSession";
 import { getStripe } from "./lib/stripe/getStripe";
-import { waitForInFlightZipRebuilds } from "./lib/productZip";
+import { markInterruptedZipRebuildsFailed, waitForInFlightZipRebuilds } from "./lib/productZip";
 import { lexicons } from "@bazaar/shared";
 import { ns } from "./routes/ns";
 import { wellKnown } from "./routes/wellKnown";
@@ -38,6 +38,8 @@ try {
   console.error("Migration failed:", e);
   process.exit(1);
 }
+
+markInterruptedZipRebuildsFailed(db);
 
 try {
   await reconcileStorefrontKeys(db);

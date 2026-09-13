@@ -7,7 +7,7 @@ import {
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { Zip, ZipDeflate } from "fflate";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, isNotNull } from "drizzle-orm";
 import type { Db } from "../db";
 import { catalogItems, catalogProductAssets, catalogProducts, inventoryUploadObject } from "../db/schema";
 import { getR2S3Client } from "./r2/s3Client";
@@ -15,7 +15,7 @@ import { newProductPackageZipKey } from "./r2/inventoryKey";
 import { r2ConfigFromEnv } from "./r2/env";
 import { clearZipProgress, setZipProgress } from "./zipProgress";
 
-export const MAX_PRODUCT_ZIP_TOTAL_BYTES = 250 * 1024 * 1024;
+export const MAX_PRODUCT_ZIP_TOTAL_BYTES = 50 * 1024 * 1024 * 1024;
 /** R2/S3 requires every multipart part except the last to be >= 5MiB; this gives headroom. */
 const MULTIPART_PART_SIZE = 8 * 1024 * 1024;
 
@@ -547,7 +547,7 @@ async function streamProductZipToR2(
  * rebuildProductZipCache and download.ts's entitlementMatchesCurrentItems)
  * -- same package either way, only the caller's access check differs.
  *
- * The 250MB cap is summed from inventoryUploadObject.byteSize *before* the
+ * The 50GB cap is summed from inventoryUploadObject.byteSize *before* the
  * Response body opens, so an over-cap package is still a clean 413. The
  * body itself is a backpressured TransformStream of compressed chunks --
  * not an in-memory zipSync of every file at once.
@@ -634,6 +634,10 @@ async function runRebuildProductZipCache(
     const rkey = new AtUri(product.uri).rkey;
     const key = newProductPackageZipKey(product.merchantDid, rkey);
     const client = getR2S3Client(r2);
+    await db
+      .update(catalogProducts)
+      .set({ packageZipRebuildStartedAt: new Date() })
+      .where(eq(catalogProducts.uri, product.uri));
     setZipProgress(product.uri, { current: 0, total: 1, fileName: "Preparing package…" });
     const result = await streamProductZipToR2(db, r2, client, product, key, (current, total, fileName) =>
       setZipProgress(product.uri, { current, total, fileName }),
@@ -642,20 +646,25 @@ async function runRebuildProductZipCache(
       console.warn("rebuildProductZipCache: assembly failed", product.uri, result.error);
       await db
         .update(catalogProducts)
-        .set({ packageZipStatus: "failed" })
+        .set({ packageZipStatus: "failed", packageZipRebuildStartedAt: null })
         .where(eq(catalogProducts.uri, product.uri));
       return;
     }
     await db
       .update(catalogProducts)
-      .set({ packageZipKey: key, packageZipStatus: "ready", packageZipUpdatedAt: new Date() })
+      .set({
+        packageZipKey: key,
+        packageZipStatus: "ready",
+        packageZipUpdatedAt: new Date(),
+        packageZipRebuildStartedAt: null,
+      })
       .where(eq(catalogProducts.uri, product.uri));
   } catch (e) {
     console.warn("rebuildProductZipCache: failed", product.uri, e);
     try {
       await db
         .update(catalogProducts)
-        .set({ packageZipStatus: "failed" })
+        .set({ packageZipStatus: "failed", packageZipRebuildStartedAt: null })
         .where(eq(catalogProducts.uri, product.uri));
     } catch {
       // Best-effort -- if even the status update fails, the stale/absent
@@ -664,6 +673,27 @@ async function runRebuildProductZipCache(
   } finally {
     clearZipProgress(product.uri);
   }
+}
+
+/**
+ * Boot hook: any rebuild that was in flight when the process last died is
+ * marked failed. Does not start a new rebuild — a machine that crashes
+ * mid-zip would otherwise boot-loop the same job forever.
+ */
+export function markInterruptedZipRebuildsFailed(db: Db): void {
+  const rows = db
+    .select({ uri: catalogProducts.uri })
+    .from(catalogProducts)
+    .where(isNotNull(catalogProducts.packageZipRebuildStartedAt))
+    .all();
+  if (rows.length === 0) return;
+  console.warn(
+    `markInterruptedZipRebuildsFailed: ${rows.length} rebuild(s) were in flight when the process last died; marking failed (not restarting)`,
+  );
+  db.update(catalogProducts)
+    .set({ packageZipStatus: "failed", packageZipRebuildStartedAt: null })
+    .where(isNotNull(catalogProducts.packageZipRebuildStartedAt))
+    .run();
 }
 
 /** Convenience wrapper for write-path handlers that only have a product URI in hand right after a mutation. No-ops if the product isn't found. Never throws -- same best-effort contract as rebuildProductZipCache itself, since callers await this bare, with no try/catch of their own. */

@@ -839,6 +839,21 @@ export type ZipProgress = {
   updatedAt: number;
 };
 
+export type ZipActivityJob = ZipProgress & {
+  uri: string;
+  title: string;
+};
+
+export type ZipActivityFailed = {
+  uri: string;
+  title: string;
+};
+
+export type ZipActivity = {
+  jobs: ZipActivityJob[];
+  failed: ZipActivityFailed[];
+};
+
 /** Kick a package-zip rebuild without re-syncing the PDS record. Returns immediately; poll getZipProgress / getCatalogProduct for status. */
 export async function rebuildCatalogProductZip(uri: string): Promise<boolean> {
   const res = await fetch(
@@ -864,6 +879,20 @@ export async function getZipProgress(productUri: string): Promise<ZipProgress | 
   if (!res.ok) return null;
   const data = (await res.json()) as { progress: ZipProgress | null };
   return data.progress;
+}
+
+/** All in-flight package rebuilds in this process, plus products whose last rebuild failed. */
+export async function listZipActivity(): Promise<ZipActivity> {
+  const res = await fetch(
+    browserApiUrl("/api/merchant/catalog/products/zip-progress"),
+    { credentials: "include" },
+  );
+  if (!res.ok) return { jobs: [], failed: [] };
+  const data = (await res.json()) as Partial<ZipActivity>;
+  return {
+    jobs: Array.isArray(data.jobs) ? data.jobs : [],
+    failed: Array.isArray(data.failed) ? data.failed : [],
+  };
 }
 
 export type CatalogProductAssets = {

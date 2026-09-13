@@ -274,6 +274,16 @@ export const catalogProducts = sqliteTable("catalog_products", {
   /** null = never built. "ready" = packageZipKey is current and safe to presign. "failed" = last rebuild attempt errored (e.g. hit MAX_PRODUCT_ZIP_TOTAL_BYTES); packageZipKey (if any) is stale and must not be served. */
   packageZipStatus: text("package_zip_status"),
   packageZipUpdatedAt: integer("package_zip_updated_at", { mode: "timestamp" }),
+  /**
+   * Set when a package rebuild starts, cleared on ready/failed. Survives a
+   * process death so boot can mark the job failed instead of silently looking
+   * like it never ran (or still looking "ready" from a previous zip). Never
+   * used to auto-restart — that would boot-loop on a machine that keeps
+   * dying mid-rebuild.
+   */
+  packageZipRebuildStartedAt: integer("package_zip_rebuild_started_at", {
+    mode: "timestamp",
+  }),
 });
 
 /**

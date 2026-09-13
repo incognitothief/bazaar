@@ -3,7 +3,7 @@ import { getCookie } from "hono/cookie";
 import { AtUri } from "@atproto/syntax";
 import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db";
@@ -30,7 +30,7 @@ import {
 import { getR2S3Client } from "../lib/r2/s3Client";
 import { resolveCoverImages } from "../lib/productAssets";
 import { buildProductZip, rebuildProductZipCache, rebuildProductZipCacheByUri } from "../lib/productZip";
-import { getZipProgress } from "../lib/zipProgress";
+import { getZipProgress, listZipProgress } from "../lib/zipProgress";
 import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import {
@@ -642,18 +642,43 @@ export function createMerchantRouter(db: Db) {
 
   /**
    * Store-owner: live "zipping item N of M" progress for an in-flight
-   * package rebuild, for the merchant UI to poll while a save/publish
-   * request is in flight (see lib/zipProgress.ts). `uri` may name a product
-   * that doesn't exist yet -- the very first publish captures the PDS
-   * record before the zip step runs, so early polls during that window are
-   * expected and just get {progress: null}, same as "nothing in progress."
+   * package rebuild. `uri` may name a product that doesn't exist yet -- the
+   * very first publish captures the PDS record before the zip step runs, so
+   * early polls during that window are expected and just get {progress: null}.
+   * Omit `uri` to list every in-flight job in this process plus products
+   * whose last rebuild failed (for the merchant-shell activity banner).
    */
   r.get("/catalog/products/zip-progress", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
     const owner = process.env.MERCHANT_DID!.trim();
     const uri = c.req.query("uri");
-    if (!uri) return c.json({ error: "uri required" }, 400);
+    if (!uri) {
+      const inflight = listZipProgress();
+      const inflightUris = new Set(inflight.map((j) => j.productUri));
+      const jobs = inflight.map((j) => {
+        const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, j.productUri)).get();
+        if (product && product.merchantDid !== owner) return null;
+        return {
+          uri: j.productUri,
+          title: product?.title ?? j.productUri,
+          current: j.current,
+          total: j.total,
+          fileName: j.fileName,
+          updatedAt: j.updatedAt,
+        };
+      }).filter((j): j is NonNullable<typeof j> => j != null);
+      const failedRows = db
+        .select({ uri: catalogProducts.uri, title: catalogProducts.title })
+        .from(catalogProducts)
+        .where(and(eq(catalogProducts.merchantDid, owner), eq(catalogProducts.packageZipStatus, "failed")))
+        .all()
+        .filter((r) => !inflightUris.has(r.uri));
+      return c.json({
+        jobs,
+        failed: failedRows.map((r) => ({ uri: r.uri, title: r.title })),
+      });
+    }
     const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
     if (product && product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
     return c.json({ progress: getZipProgress(uri) });

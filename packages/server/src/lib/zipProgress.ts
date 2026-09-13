@@ -5,8 +5,8 @@
  * one Bun process, one machine (see productZip.ts, r2/inventoryKey.ts), so
  * there's no cross-process state to reconcile. Entries are inherently
  * ephemeral: a stale one just means the client polls until the next
- * rebuild overwrites or clears it, and a process restart clears the map
- * entirely with no persistence needed.
+ * rebuild overwrites or clears it, and a process restart clears the map.
+ * Durable "this job was running" lives on catalogProducts.packageZipRebuildStartedAt.
  */
 type ZipProgress = {
   current: number;
@@ -30,4 +30,9 @@ export function clearZipProgress(productUri: string): void {
 
 export function getZipProgress(productUri: string): ZipProgress | null {
   return progress.get(productUri) ?? null;
+}
+
+/** Every in-flight rebuild in this process. Empty after a crash — durable failure is packageZipStatus / packageZipRebuildStartedAt, not this map. */
+export function listZipProgress(): Array<{ productUri: string } & ZipProgress> {
+  return [...progress.entries()].map(([productUri, p]) => ({ productUri, ...p }));
 }
