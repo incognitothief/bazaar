@@ -108,7 +108,7 @@ jobs:
             exit 1
           fi
 
-          flyctl deploy --remote-only \
+          flyctl deploy --remote-only --no-cache \
             --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
             --build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
