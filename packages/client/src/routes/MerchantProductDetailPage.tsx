@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DetailToolbar, type ToolAction } from "@/components/merchant/detailTools";
 import { useAtpSession } from "@/hooks/useAtpSession";
+import { useElapsedSeconds } from "@/hooks/useElapsedSeconds";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import {
   addCatalogProductAsset,
@@ -105,6 +106,8 @@ export function MerchantProductDetailPage() {
   const [saving, setSaving] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const savingElapsed = useElapsedSeconds(saving);
+  const settingsElapsed = useElapsedSeconds(savingSettings);
   const [assets, setAssets] = useState<CatalogProductAssets>({
     coverImages: [],
     includedAssets: [],
@@ -662,18 +665,30 @@ export function MerchantProductDetailPage() {
           Back to inventory
         </Link>
         {editing ? (
-          <div className="flex items-center gap-2">
-            <Button onClick={() => void onSave()} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={cancelEditing}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-2">
+              <Button onClick={() => void onSave()} disabled={saving}>
+                {saving
+                  ? savingElapsed >= 2
+                    ? `Saving… (${savingElapsed}s)`
+                    : "Saving…"
+                  : "Save"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={cancelEditing}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+            </div>
+            {saving && items.length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Repackaging the download bundle for buyers — this can take
+                longer for larger products.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -946,6 +961,12 @@ export function MerchantProductDetailPage() {
               />
               Include cover art in the buyer's download package
             </label>
+            {savingSettings ? (
+              <p className="text-xs text-muted-foreground">
+                Saving{settingsElapsed >= 2 ? ` (${settingsElapsed}s)` : "…"} —
+                repackaging the download bundle for buyers.
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-2">

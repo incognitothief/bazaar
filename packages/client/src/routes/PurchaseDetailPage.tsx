@@ -261,6 +261,14 @@ export function PurchaseDetailPage() {
       if (!res.ok) {
         throw new Error(await inventoryHttpErrorMessage(res));
       }
+      // A precomputed package answers as JSON with a presigned R2 URL (server
+      // is out of the data path); otherwise this is the live-rebuilt zip
+      // bytes directly, same as before.
+      if ((res.headers.get("Content-Type") ?? "").includes("application/json")) {
+        const { url: signed } = (await res.json()) as { url: string };
+        window.location.href = signed;
+        return;
+      }
       const blob = await res.blob();
       const dispo = res.headers.get("Content-Disposition");
       const match = dispo?.match(/filename="([^"]+)"/);

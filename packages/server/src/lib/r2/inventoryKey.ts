@@ -93,3 +93,19 @@ export function newProductAssetKey(
   const safe = sanitizeInventoryFilename(filename);
   return `inventory/${merchantDid}/${productRkey}/assets/${objectId}/${safe}`;
 }
+
+/**
+ * R2 key for a product's precomputed download package (see
+ * productZip.ts's rebuildProductZipCache). One object per product,
+ * overwritten in place on every rebuild -- unlike items/assets there's
+ * nothing to key by objectId, the whole point is a single current-state
+ * cache entry.
+ */
+export function newProductPackageZipKey(
+  merchantDid: string,
+  productRkey: string,
+): string {
+  if (!merchantDid.startsWith("did:")) throw new Error("Invalid merchant DID");
+  if (!productRkey) throw new Error("Invalid product rkey");
+  return `inventory/${merchantDid}/${productRkey}/package.zip`;
+}

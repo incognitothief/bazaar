@@ -20,7 +20,7 @@ import {
   sanitizeInventoryFilename,
 } from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
-import { buildProductZip } from "../lib/productZip";
+import { buildProductZip, entitlementMatchesCurrentItems, zipFilenameFor } from "../lib/productZip";
 import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 
 function lexiconNs(): string {
@@ -407,12 +407,38 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
     // Current receipts package exactly the frozen grant; legacy receipts
     // package the live product.
     const grant = frozenGrant(entitledReceipt);
-    const result = await buildProductZip(
-      db,
-      cfg,
-      product,
-      grant?.map((g) => g.uri),
-    );
+    const entitledUris = grant?.map((g) => g.uri);
+
+    // Precomputed cache always represents the product's *current* contents,
+    // so it can only answer for a buyer whose entitlement still matches
+    // that exactly (see entitlementMatchesCurrentItems). Anyone whose grant
+    // has drifted (items added/removed since their purchase) falls back to
+    // the live per-request rebuild below, unchanged from today.
+    if (
+      product.packageZipStatus === "ready" &&
+      product.packageZipKey &&
+      entitlementMatchesCurrentItems(product, entitledUris)
+    ) {
+      const zipFilename = `${zipFilenameFor(product)}.zip`;
+      try {
+        const client = getR2S3Client(cfg);
+        const url = await getSignedUrl(
+          client,
+          new GetObjectCommand({
+            Bucket: cfg.bucket,
+            Key: product.packageZipKey,
+            ResponseContentDisposition: `attachment; filename="${zipFilename.replace(/"/g, "")}"`,
+          }),
+          { expiresIn: 900 },
+        );
+        const expiresAt = new Date(Date.now() + 900_000).toISOString();
+        return c.json({ url, expiresAt, filename: zipFilename });
+      } catch (e) {
+        console.warn("product-zip: cache presign failed, falling back to live rebuild", e);
+      }
+    }
+
+    const result = await buildProductZip(db, cfg, product, entitledUris);
     if (result instanceof Response) return result;
     return c.json({ error: result.error }, result.status);
   });

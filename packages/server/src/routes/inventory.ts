@@ -42,6 +42,7 @@ import {
 } from "../lib/r2/diagnostics";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import { generateWebpDerivative } from "../lib/webpDerivative";
+import { rebuildProductZipCacheByUri } from "../lib/productZip";
 import {
   buildBazaarPid,
   buildBazaarRid,
@@ -1420,6 +1421,11 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         role,
       });
     }
+
+    // After the asset inserts above, not right after captureCatalogProduct --
+    // the cover art / included assets rows don't exist yet at that point, so
+    // building the first cache entry there would miss them.
+    await rebuildProductZipCacheByUri(db, productRes.data.uri);
 
     const snapshot = {
       productUri: productRes.data.uri,

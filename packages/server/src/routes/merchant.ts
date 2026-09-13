@@ -29,7 +29,7 @@ import {
 } from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import { resolveCoverImages } from "../lib/productAssets";
-import { buildProductZip } from "../lib/productZip";
+import { buildProductZip, rebuildProductZipCache, rebuildProductZipCacheByUri } from "../lib/productZip";
 import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import {
@@ -554,6 +554,7 @@ export function createMerchantRouter(db: Db) {
         rkey: at.rkey,
       });
       await captureCatalogProduct(db, owner, res.data.value, res.data.uri, res.data.cid!);
+      await rebuildProductZipCacheByUri(db, res.data.uri);
     } catch {
       return c.json({ error: "sync_failed" }, 502);
     }
@@ -601,6 +602,10 @@ export function createMerchantRouter(db: Db) {
     }
     db.update(catalogProducts).set(set).where(eq(catalogProducts.uri, uri)).run();
     const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
+    // Only artIncludedInDownload affects zip contents -- a productType-only edit needn't rebuild.
+    if (row && "artIncludedInDownload" in (body ?? {})) {
+      await rebuildProductZipCache(db, row);
+    }
     return c.json({
       product: row
         ? {
@@ -705,6 +710,7 @@ export function createMerchantRouter(db: Db) {
         position,
       })
       .run();
+    await rebuildProductZipCache(db, product);
     return c.json(await loadProductAssets(productUri));
   });
 
@@ -735,6 +741,7 @@ export function createMerchantRouter(db: Db) {
     if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
 
     db.delete(catalogProductAssets).where(eq(catalogProductAssets.id, id)).run();
+    await rebuildProductZipCache(db, product);
 
     const stillLinked =
       db
