@@ -264,16 +264,27 @@ export const catalogProducts = sqliteTable("catalog_products", {
     .notNull()
     .$defaultFn(() => new Date()),
   /**
-   * R2 key of the precomputed download package.zip for this product's
-   * *current* contents (see productZip.ts's rebuildProductZipCache). Only
-   * trustworthy when packageZipStatus is "ready" -- a buyer download falls
-   * back to live assembly whenever it isn't, so a stale/missing key here
-   * never results in wrong bytes being served, just a slower request.
+   * R2 key of the precomputed download for this product's *current*
+   * contents (see productZip.ts's rebuildProductZipCache). Usually
+   * `…/package.zip`. When the product is a single already-zipped file and
+   * nothing else is bundled, this is that file's own inventory key — we
+   * do not wrap a zip in another zip. Only trustworthy when
+   * packageZipStatus is "ready".
    */
   packageZipKey: text("package_zip_key"),
   /** null = never built. "ready" = packageZipKey is current and safe to presign. "failed" = last rebuild attempt errored (e.g. hit MAX_PRODUCT_ZIP_TOTAL_BYTES); packageZipKey (if any) is stale and must not be served. */
   packageZipStatus: text("package_zip_status"),
   packageZipUpdatedAt: integer("package_zip_updated_at", { mode: "timestamp" }),
+  /**
+   * Set when a package rebuild starts, cleared on ready/failed. Survives a
+   * process death so boot can mark the job failed instead of silently looking
+   * like it never ran (or still looking "ready" from a previous zip). Never
+   * used to auto-restart — that would boot-loop on a machine that keeps
+   * dying mid-rebuild.
+   */
+  packageZipRebuildStartedAt: integer("package_zip_rebuild_started_at", {
+    mode: "timestamp",
+  }),
 });
 
 /**

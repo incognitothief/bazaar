@@ -16,11 +16,13 @@ import { Label } from "@/components/ui/label";
 import { listingStatusBadgeVariant } from "@/components/merchant/merchantItemDisplay";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
+import { useZipProgress } from "@/hooks/useZipProgress";
 import { fetchLatestInventoryPrefill } from "@/lib/api/inventoryApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   buildItemRefFromUri,
   createListing,
+  getCatalogProduct,
   hasCompletedSale,
   isTerminalListingStatus,
   listCatalogItemRows,
@@ -100,6 +102,9 @@ export function CreateListingPage() {
    * entitlement is frozen and can't reach a new unlisted member.
    */
   const [productHasSales, setProductHasSales] = useState(false);
+  const [packageZipStatus, setPackageZipStatus] = useState<
+    "ready" | "failed" | null
+  >(null);
 
   const load = useCallback(async () => {
     if (!agent || !session?.did) return;
@@ -124,6 +129,7 @@ export function CreateListingPage() {
       }
       if (!targetUri) {
         setEntity(null);
+        setPackageZipStatus(null);
         setLoading(false);
         return;
       }
@@ -159,6 +165,7 @@ export function CreateListingPage() {
 
       if (kind === "product") {
         const p = productRows.find((x) => x.uri === targetUri);
+        setPackageZipStatus(p?.packageZipStatus ?? null);
         const members = (p?.items ?? []).map((ref) => ({
           uri: ref.uri,
           title: tb[ref.uri] ?? ref.uri,
@@ -187,6 +194,7 @@ export function CreateListingPage() {
         setProductItems([]);
         setChildStandalone({});
         setProductHasSales(false);
+        setPackageZipStatus(null);
       }
 
       const parentUri = pbi.get(targetUri);
@@ -266,6 +274,37 @@ export function CreateListingPage() {
   const productListing = manageMode ? existingListing : undefined;
   const productListingActive = productListing?.listing.status === "active";
 
+  /** New product listing only -- item listings and edits of existing listings are not gated. */
+  const gatingNewProductListing =
+    entity?.kind === "product" && !existingListing;
+  const waitingForPackage =
+    !!gatingNewProductListing && packageZipStatus !== "ready";
+  const packageZipProgress = useZipProgress(
+    entity?.uri ?? null,
+    waitingForPackage,
+  );
+
+  useEffect(() => {
+    if (!gatingNewProductListing || !entity || packageZipStatus === "ready") {
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const p = await getCatalogProduct(entity.uri);
+        if (!cancelled && p) setPackageZipStatus(p.packageZipStatus ?? null);
+      } catch {
+        // Next tick retries; a failed poll never unblocks or blocks listing.
+      }
+    };
+    void poll();
+    const id = setInterval(() => void poll(), 700);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [gatingNewProductListing, entity, packageZipStatus]);
+
   const memberListing = useCallback(
     (itemUri: string) =>
       listingRows.find(
@@ -342,7 +381,8 @@ export function CreateListingPage() {
     !attachBlocked &&
     priceValid &&
     batchValid &&
-    Boolean(licenseUri && licenseCid);
+    Boolean(licenseUri && licenseCid) &&
+    (!gatingNewProductListing || packageZipStatus === "ready");
 
   async function submit() {
     if (!entity || !agent || !canSubmit) return;
@@ -1052,6 +1092,29 @@ export function CreateListingPage() {
 
             {licensePicker}
 
+            {gatingNewProductListing &&
+            packageZipStatus === "failed" &&
+            !packageZipProgress ? (
+              <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <p>
+                  This product's download package failed to build — customers
+                  will get a slower first download until this is fixed.
+                </p>
+                <Link
+                  to={`/merchant/inventory/products?uri=${encodeURIComponent(entity.uri)}`}
+                  className="inline-block underline underline-offset-2"
+                >
+                  Retry from the product page
+                </Link>
+              </div>
+            ) : gatingNewProductListing && packageZipStatus !== "ready" ? (
+              <p className="text-sm text-muted-foreground">
+                {packageZipProgress
+                  ? `Zipping ${packageZipProgress.current}/${packageZipProgress.total}… Repackaging ${packageZipProgress.fileName}`
+                  : "Waiting for the download package to finish building…"}
+              </p>
+            ) : null}
+
             <div className="space-y-2">
               <Label htmlFor="create-listing-price">
                 {entity.kind === "product"
@@ -1164,11 +1227,17 @@ export function CreateListingPage() {
                   ? editMode
                     ? "Saving…"
                     : "Creating…"
-                  : editMode
-                    ? "Save listing"
-                    : entity.kind === "product" && batchEnabled
-                      ? "Create listings"
-                      : "Create listing"}
+                  : waitingForPackage
+                    ? packageZipProgress
+                      ? `Zipping ${packageZipProgress.current}/${packageZipProgress.total}…`
+                      : packageZipStatus === "failed"
+                        ? "Package failed"
+                        : "Waiting for package…"
+                    : editMode
+                      ? "Save listing"
+                      : entity.kind === "product" && batchEnabled
+                        ? "Create listings"
+                        : "Create listing"}
               </Button>
               <Link
                 to="/merchant/inventory"

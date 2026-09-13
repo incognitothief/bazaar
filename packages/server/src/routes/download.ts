@@ -20,7 +20,12 @@ import {
   sanitizeInventoryFilename,
 } from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
-import { buildProductZip, entitlementMatchesCurrentItems, zipFilenameFor } from "../lib/productZip";
+import {
+  buildProductZip,
+  entitlementMatchesCurrentItems,
+  rebuildProductZipCacheByUri,
+  presignCachedProductPackage,
+} from "../lib/productZip";
 import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 
 function lexiconNs(): string {
@@ -419,23 +424,24 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       product.packageZipKey &&
       entitlementMatchesCurrentItems(product, entitledUris)
     ) {
-      const zipFilename = `${zipFilenameFor(product)}.zip`;
-      try {
-        const client = getR2S3Client(cfg);
-        const url = await getSignedUrl(
-          client,
-          new GetObjectCommand({
-            Bucket: cfg.bucket,
-            Key: product.packageZipKey,
-            ResponseContentDisposition: `attachment; filename="${zipFilename.replace(/"/g, "")}"`,
-          }),
-          { expiresIn: 900 },
-        );
-        const expiresAt = new Date(Date.now() + 900_000).toISOString();
-        return c.json({ url, expiresAt, filename: zipFilename });
-      } catch (e) {
-        console.warn("product-zip: cache presign failed, falling back to live rebuild", e);
+      const signed = await presignCachedProductPackage(db, cfg, product, 900);
+      if (signed) {
+        return c.json({
+          url: signed.url,
+          expiresAt: signed.expiresAt,
+          filename: signed.filename,
+        });
       }
+      console.warn("product-zip: cache presign failed, falling back to live rebuild");
+    }
+
+    // Self-heal a broken/missing cache so the next buyer can hit the
+    // presign path. Don't rebuild when status is already "ready" -- that
+    // case is entitlement drift (a different zip than the cache) or a
+    // transient presign failure, neither of which means the current-contents
+    // cache is wrong.
+    if (product.packageZipStatus !== "ready" || !product.packageZipKey) {
+      void rebuildProductZipCacheByUri(db, product.uri);
     }
 
     const result = await buildProductZip(db, cfg, product, entitledUris);

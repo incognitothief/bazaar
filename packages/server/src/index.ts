@@ -15,7 +15,7 @@ import {
   sweepPaymentFulfillment,
 } from "./lib/stripe/fulfillCheckoutSession";
 import { getStripe } from "./lib/stripe/getStripe";
-import { waitForInFlightZipRebuilds } from "./lib/productZip";
+import { markInterruptedZipRebuildsFailed, waitForInFlightZipRebuilds } from "./lib/productZip";
 import { lexicons } from "@bazaar/shared";
 import { ns } from "./routes/ns";
 import { wellKnown } from "./routes/wellKnown";
@@ -38,6 +38,8 @@ try {
   console.error("Migration failed:", e);
   process.exit(1);
 }
+
+markInterruptedZipRebuildsFailed(db);
 
 try {
   await reconcileStorefrontKeys(db);
@@ -187,9 +189,9 @@ console.log(`Listening on :${port}`);
  * Product zip rebuilds now run in the background after their triggering
  * request already responded (see productZip.ts's rebuildProductZipCache*).
  * Fly's scale-to-zero (and a plain redeploy) only track HTTP connections,
- * not that in-process work, so a stop/restart signal could otherwise land
- * mid-rebuild -- wait for any in-flight ones (bounded, so a stuck rebuild
- * can't block shutdown forever) before actually exiting.
+ * not that in-process work. Zip rebuilds open a proxy-visible hold
+ * (flyZipAutostopHold) so autostop should not fire during a package.
+ * A deploy/stop still can; wait (bounded) before exiting.
  */
 let shuttingDown = false;
 async function shutdown(signal: string) {

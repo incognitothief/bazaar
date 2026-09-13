@@ -1,0 +1,1 @@
+ALTER TABLE `catalog_products` ADD `package_zip_rebuild_started_at` integer;

@@ -17,7 +17,7 @@ import { TagsInput } from "@/components/shared/TagsInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
+import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { parseAudioFile } from "@/lib/audio/parse";
 import {
@@ -33,7 +33,7 @@ import {
   productTypeConfig,
   type ProductType,
 } from "@/lib/productTypes";
-import { cn, moveArrayItem } from "@/lib/utils";
+import { cn, formatBytes, moveArrayItem } from "@/lib/utils";
 
 type ItemDraftRow = {
   id: string;
@@ -51,8 +51,50 @@ type ItemDraftRow = {
   objectId: string | null;
   status: "pending" | "uploading" | "completed" | "error";
   progress: number;
+  /** Set while `status === "uploading"`. Finalizing is the post-upload checksum. */
+  phase: "uploading" | "finalizing";
   error: string | null;
 };
+
+/**
+ * Copy for the step-2 footer while Review is locked. Files leave the
+ * browser first, then the server hashes the stored object — that second
+ * pass looks idle if we only show a 100% bar.
+ */
+function itemsUploadHint(items: ItemDraftRow[]): { line: string; detail?: string } | null {
+  if (items.length === 0) return null;
+  if (items.every((r) => r.status === "completed")) return null;
+
+  const failed = items.filter((r) => r.status === "error").length;
+  const current = items.find((r) => r.status === "uploading");
+  const ordinal = items.findIndex((r) => r.status === "uploading") + 1;
+
+  if (current?.phase === "finalizing") {
+    return {
+      line: `Checking file ${ordinal} of ${items.length}`,
+      detail:
+        "The file is already uploaded. This confirms it arrived intact — large files can take a minute.",
+    };
+  }
+
+  if (current) {
+    return {
+      line: `Uploading ${ordinal} of ${items.length} · ${current.progress}%`,
+    };
+  }
+
+  if (items.some((r) => r.status === "pending")) {
+    return { line: `Preparing ${items.length} file${items.length === 1 ? "" : "s"}…` };
+  }
+
+  if (failed) {
+    return {
+      line: `${failed} file${failed === 1 ? "" : "s"} failed to upload.`,
+    };
+  }
+
+  return { line: `${items.filter((r) => r.status === "completed").length} of ${items.length} files ready` };
+}
 
 const AUDIO_EXTENSIONS = new Set([
   "flac",
@@ -149,6 +191,10 @@ export function AddProductPage() {
   const publishingElapsed = useElapsedSeconds(publishing);
   const [productUri, setProductUri] = useState<string | null>(null);
   const zipProgress = useZipProgress(productUri, publishing);
+  const checkingFile = items.some(
+    (r) => r.status === "uploading" && r.phase === "finalizing",
+  );
+  const checkingElapsed = useElapsedSeconds(checkingFile);
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (sessionId) return sessionId;
@@ -251,6 +297,7 @@ export function AddProductPage() {
           objectId: null,
           status: "pending",
           progress: 0,
+          phase: "uploading",
           error: null,
         };
       });
@@ -287,7 +334,15 @@ export function AddProductPage() {
                   ? Math.round((progress.loaded / progress.total) * 100)
                   : 0;
                 setItems((prev) =>
-                  prev.map((r) => (r.id === entry.id ? { ...r, progress: pct } : r)),
+                  prev.map((r) =>
+                    r.id === entry.id
+                      ? {
+                          ...r,
+                          progress: pct,
+                          phase: progress.phase ?? "uploading",
+                        }
+                      : r,
+                  ),
                 );
               },
             );
@@ -336,6 +391,7 @@ export function AddProductPage() {
 
   const allItemsReady =
     items.length > 0 && items.every((r) => r.status === "completed");
+  const uploadHint = itemsUploadHint(items);
 
   const handleAssetBatch = useCallback(
     async (entries: BatchFileEntry[]) => {
@@ -730,15 +786,45 @@ export function AddProductPage() {
                     </p>
                   </div>
                   {row.status === "uploading" ? (
-                    <Progress value={row.progress} />
+                    <Progress
+                      value={row.phase === "finalizing" ? 100 : row.progress}
+                    >
+                      <ProgressLabel>
+                        {row.phase === "finalizing"
+                          ? "Checking file"
+                          : `Uploading ${formatBytes(row.file.size)}`}
+                      </ProgressLabel>
+                      <ProgressValue>
+                        {row.phase === "finalizing" ? "…" : `${row.progress}%`}
+                      </ProgressValue>
+                    </Progress>
                   ) : row.status === "error" ? (
                     <p className="text-xs text-destructive">{row.error}</p>
                   ) : row.status === "completed" ? (
                     <p className="text-xs text-muted-foreground">Uploaded</p>
+                  ) : row.status === "pending" ? (
+                    <p className="text-xs text-muted-foreground">Waiting to upload</p>
                   ) : null}
                 </div>
               ))}
             </div>
+          ) : null}
+          {uploadHint ? (
+            <p
+              className="text-right text-xs text-muted-foreground"
+              aria-live="polite"
+            >
+              {uploadHint.line}
+              {checkingFile && checkingElapsed >= 2
+                ? ` · ${checkingElapsed}s`
+                : ""}
+              {uploadHint.detail ? (
+                <>
+                  <br />
+                  {uploadHint.detail}
+                </>
+              ) : null}
+            </p>
           ) : null}
           <div className="flex justify-between">
             <Button variant="outline" onClick={() => setStep(1)}>

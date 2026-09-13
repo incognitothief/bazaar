@@ -6,16 +6,18 @@ import {
   GetObjectCommand,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
-import { Zip, ZipDeflate, zipSync } from "fflate";
-import { eq, inArray } from "drizzle-orm";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { Zip, ZipDeflate, ZipPassThrough } from "fflate";
+import { eq, inArray, isNotNull } from "drizzle-orm";
 import type { Db } from "../db";
 import { catalogItems, catalogProductAssets, catalogProducts, inventoryUploadObject } from "../db/schema";
 import { getR2S3Client } from "./r2/s3Client";
 import { newProductPackageZipKey } from "./r2/inventoryKey";
 import { r2ConfigFromEnv } from "./r2/env";
 import { clearZipProgress, setZipProgress } from "./zipProgress";
+import { ensureZipAutostopHold, releaseZipAutostopHold } from "./flyZipAutostopHold";
 
-const MAX_PRODUCT_ZIP_TOTAL_BYTES = 250 * 1024 * 1024;
+export const MAX_PRODUCT_ZIP_TOTAL_BYTES = 50 * 1024 * 1024 * 1024;
 /** R2/S3 requires every multipart part except the last to be >= 5MiB; this gives headroom. */
 const MULTIPART_PART_SIZE = 8 * 1024 * 1024;
 
@@ -26,11 +28,12 @@ const MULTIPART_PART_SIZE = 8 * 1024 * 1024;
  * rebuild can take long enough to trip a proxy/tunnel timeout well before
  * it's actually done, which then reads as a false failure to the merchant
  * and invites a retry that collides with the still-in-flight original (see
- * the ticket's staging incident). But a background promise is invisible to
- * Fly's scale-to-zero, which tracks HTTP connections, not our in-process
- * work -- once the response is sent it can decide the machine is idle and
- * signal it to stop mid-rebuild. Tracking in-flight rebuilds here lets
- * index.ts's shutdown handler wait for them first.
+ * the ticket's staging incident). Fly Proxy autostop only counts inbound
+ * edge connections, so a background promise looks like an idle machine
+ * (staging: SIGINT mid-zip, then SIGKILL ~5s later). ensureZipAutostopHold
+ * keeps a proxy-visible SSE open for the duration. Tracking in-flight
+ * rebuilds here also lets index.ts wait on SIGINT/SIGTERM (deploys), which
+ * is a 5s default kill_timeout and cannot finish a multi-GB zip on its own.
  */
 const inFlightRebuilds = new Set<Promise<void>>();
 
@@ -121,61 +124,179 @@ function resolveProductZipObjectIds(
   ];
 }
 
+export type ZipObjectSize = {
+  status: string;
+  byteSize: number | null;
+};
+
+export type ProductZipCapResult = { ok: true } | { error: string; status: 400 | 413 };
+
 /**
- * Fetches every file a product's package should contain and zips them in
- * memory -- every file's raw bytes, plus the final compressed zip, resident
- * at once. Used by buildProductZip (buyer live-rebuild fallback + merchant
- * incident-response tool): both are low-frequency (entitlement drift or
- * manual support, not routine merchant edits), and streaming a
- * variable-length HTTP response can't cleanly reject an over-cap package
- * once bytes have already started flowing to the client, so this stays
- * simple rather than adopting streamProductZipToR2's approach below.
- * rebuildProductZipCache (the hot path -- fires on every merchant edit)
- * uses that streaming version instead. Always reads
- * inventoryUploadObject.r2Key, never webpR2Key -- the download is the
- * original file, the webp derivative is display-only.
+ * Decide whether a set of inventory objects can be packaged, using
+ * already-known byteSize so callers can reject with a clean 413/400
+ * before opening an HTTP stream or starting a multipart upload.
+ * Incomplete objects are ignored. Null byteSize on a completed object
+ * counts as 0 (completed objects are reconciled to real size by
+ * download time; a missing value just doesn't contribute to the sum).
+ * The caller is responsible for passing the entitled subset when the
+ * live fallback is assembling a frozen grant rather than the full product.
  */
-async function assembleProductZipBytes(
+export function checkProductZipCap(objects: ZipObjectSize[]): ProductZipCapResult {
+  const completed = objects.filter((o) => o.status === "completed");
+  if (completed.length === 0) {
+    return { error: "no_downloadable_files", status: 400 };
+  }
+  let total = 0;
+  for (const o of completed) {
+    total += o.byteSize ?? 0;
+  }
+  if (total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
+    return { error: "package_too_large", status: 413 };
+  }
+  return { ok: true };
+}
+
+type ZipSourceObject = ZipObjectSize & {
+  id: string;
+  r2Key: string;
+  fileName: string;
+  contentType: string | null;
+};
+
+export function isAlreadyZipFile(fileName: string, contentType?: string | null): boolean {
+  const name = fileName.toLowerCase();
+  if (name.endsWith(".zip")) return true;
+  const ct = (contentType ?? "").toLowerCase().split(";")[0]?.trim();
+  return (
+    ct === "application/zip" ||
+    ct === "application/x-zip-compressed" ||
+    ct === "application/zip-compressed"
+  );
+}
+
+/**
+ * Members that are already compressed: ZIP STORE (fflate ZipPassThrough,
+ * method 0) instead of deflate. Deflating mp3/mp4/zip/jpeg burns CPU for
+ * almost no size win — that was the 20-minute wrap of a 2.5GB zip.
+ * Uncompressed masters (wav, tiff, txt) still use ZipDeflate level 6.
+ */
+const STORE_EXTENSIONS = new Set([
+  "zip",
+  "gz",
+  "tgz",
+  "bz2",
+  "xz",
+  "7z",
+  "rar",
+  "zst",
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "heic",
+  "heif",
+  "avif",
+  "jxl",
+  "mp3",
+  "aac",
+  "m4a",
+  "ogg",
+  "oga",
+  "opus",
+  "wma",
+  "flac",
+  "mp4",
+  "m4v",
+  "mov",
+  "webm",
+  "mkv",
+  "avi",
+  "pdf",
+  "docx",
+  "xlsx",
+  "pptx",
+]);
+
+const STORE_CONTENT_TYPES = new Set([
+  "application/gzip",
+  "application/x-gzip",
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "image/avif",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/mp4",
+  "audio/aac",
+  "audio/ogg",
+  "audio/opus",
+  "audio/flac",
+  "audio/x-flac",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-matroska",
+  "video/x-msvideo",
+]);
+
+export function shouldStoreZipMember(fileName: string, contentType?: string | null): boolean {
+  if (isAlreadyZipFile(fileName, contentType)) return true;
+  const ext = fileName.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (ext && STORE_EXTENSIONS.has(ext)) return true;
+  const ct = (contentType ?? "").toLowerCase().split(";")[0]?.trim();
+  return !!ct && STORE_CONTENT_TYPES.has(ct);
+}
+
+function zipEntryFor(nameInZip: string, fileName: string, contentType?: string | null): ZipDeflate | ZipPassThrough {
+  if (shouldStoreZipMember(fileName, contentType)) {
+    return new ZipPassThrough(nameInZip);
+  }
+  return new ZipDeflate(nameInZip, { level: 6 });
+}
+
+/**
+ * A product whose downloadable set is exactly one already-zipped file
+ * (one item, no extra assets in the package). Wrapping that in another
+ * zip is zip-in-zip: slower to build, no smaller, worse for the buyer.
+ */
+export function passthroughExistingZip<T extends { status: string; fileName: string; contentType?: string | null }>(
+  objects: T[],
+): T | null {
+  const completed = objects.filter((o) => o.status === "completed");
+  if (completed.length !== 1) return null;
+  const only = completed[0]!;
+  return isAlreadyZipFile(only.fileName, only.contentType) ? only : null;
+}
+
+function loadZipSourceObjects(
   db: Db,
-  r2: R2Config,
   product: CatalogProductRow,
   entitledItemUris?: string[],
-): Promise<{ bytes: Uint8Array } | { error: string; status: 400 | 413 }> {
-  const client = getR2S3Client(r2);
+): ZipSourceObject[] {
   const objectIds = resolveProductZipObjectIds(db, product, entitledItemUris);
-
-  const zipEntries: Record<string, Uint8Array> = {};
-  const usedNames = new Set<string>();
-  let total = 0;
+  const out: ZipSourceObject[] = [];
   for (const objectId of objectIds) {
     const obj = db
       .select()
       .from(inventoryUploadObject)
       .where(eq(inventoryUploadObject.id, objectId))
       .get();
-    if (!obj || obj.status !== "completed") continue;
-    let got;
-    try {
-      got = await client.send(new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }));
-    } catch (e) {
-      console.warn("product zip: skip object", objectId, e);
-      continue;
-    }
-    if (!got.Body) continue;
-    const buf = await got.Body.transformToByteArray();
-    total += buf.byteLength;
-    if (total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
-      return { error: "package_too_large", status: 413 };
-    }
-    const nameInZip = uniqueZipEntryName(usedNames, safeZipEntryName(obj.fileName));
-    zipEntries[nameInZip] = new Uint8Array(buf);
+    if (!obj) continue;
+    out.push({
+      id: obj.id,
+      status: obj.status,
+      byteSize: obj.byteSize,
+      r2Key: obj.r2Key,
+      fileName: obj.fileName,
+      contentType: obj.contentType,
+    });
   }
-
-  if (Object.keys(zipEntries).length === 0) {
-    return { error: "no_downloadable_files", status: 400 };
-  }
-
-  return { bytes: zipSync(zipEntries, { level: 6 }) };
+  return out;
 }
 
 /**
@@ -209,14 +330,16 @@ function takeBytes(chunks: Uint8Array[], n: number): Uint8Array {
 }
 
 /**
- * Per-call ceiling on any single R2 operation or stream read. Without this,
- * a stalled network read just hangs forever with nothing to catch and
- * nothing to log -- exactly what happened on staging (a request silently
- * stuck, no crash, no error, until Fly's proxy gave up and dropped the
- * connection). A timeout turns that into a normal, logged, recoverable
- * failure -- rebuildProductZipCache already handles thrown errors by
- * marking packageZipStatus "failed", so this just ensures it can actually
- * get there instead of hanging indefinitely.
+ * Per-call ceiling on a discrete R2 command (multipart create / upload
+ * part / complete) or on one idle gap between GetObject body chunks.
+ * Without this, a stalled network read hangs forever -- staging saw a
+ * request silently stuck until Fly's proxy dropped it.
+ *
+ * This must NOT wrap an entire GetObject (headers + body) in
+ * AbortSignal.timeout: that aborts a healthy multi-GB download after 30s
+ * (`aborted` / ECONNRESET) even though chunks are still flowing. GetObject
+ * send() is timed until headers arrive; each body chunk is timed
+ * separately so a stall still fails and a long file can finish.
  */
 const R2_OP_TIMEOUT_MS = 30_000;
 
@@ -235,29 +358,193 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   }
 }
 
+type ZipSink = {
+  write(chunk: Uint8Array): Promise<void>;
+  finalize(): Promise<void>;
+  abort(): Promise<void>;
+};
+
 /**
- * Same package contents as assembleProductZipBytes, but never holds more
- * than one file's raw bytes (streamed straight from R2's GetObject response
- * body) or one multipart part's worth of compressed output in memory at a
- * time -- regardless of how many files are in the product or how large the
- * total package is. This is what actually fixes the OOM: the old
- * buffer-everything-then-zipSync approach held every file simultaneously,
- * which crashed a 512MB machine on a real 10-item product (confirmed via
- * Fly's oom_killed=true machine event). Used only by rebuildProductZipCache.
+ * Shared fetch-stream-compress loop. Never holds more than one file's raw
+ * bytes (streamed straight from R2's GetObject response body) plus whatever
+ * the sink itself buffers -- for R2 that's one multipart part; for HTTP
+ * that's TransformStream backpressure. Cap is checked by the caller via
+ * checkProductZipCap *before* creating the sink so an over-size package
+ * can still be a clean 413. abortOnOverCap is a running-total backstop for
+ * the R2 sink only (null byteSize on a completed object, or a lie); HTTP
+ * cannot change the status code once the body has started.
  */
-async function streamProductZipToR2(
-  db: Db,
-  r2: R2Config,
+type ZipBuildProgress = {
+  current: number;
+  total: number;
+  fileName: string;
+  bytesRead: number;
+  bytesTotal: number;
+};
+
+async function streamIntoSink(
   client: ReturnType<typeof getR2S3Client>,
-  product: CatalogProductRow,
-  key: string,
-  onProgress?: (current: number, total: number, fileName: string) => void,
+  r2: R2Config,
+  objects: ZipSourceObject[],
+  sink: ZipSink,
+  opts: {
+    abortOnOverCap: boolean;
+    onProgress?: (p: ZipBuildProgress) => void;
+    log: (msg: string) => void;
+  },
 ): Promise<{ ok: true } | { error: string; status: 400 | 413 }> {
-  const log = (msg: string) => console.log(`[zip ${key}]`, msg);
+  const { abortOnOverCap, onProgress, log } = opts;
+  const pending: Uint8Array[] = [];
+  const bytesTotal = objects
+    .filter((o) => o.status === "completed")
+    .reduce((n, o) => n + (o.byteSize ?? 0), 0);
+  let lastProgressAt = 0;
 
-  const objectIds = resolveProductZipObjectIds(db, product);
-  log(`starting: ${objectIds.length} object(s) to package`);
+  function report(
+    p: Omit<ZipBuildProgress, "bytesRead" | "bytesTotal"> & { bytesRead: number },
+    force: boolean,
+  ): void {
+    const now = Date.now();
+    if (!force && now - lastProgressAt < 250) return;
+    lastProgressAt = now;
+    onProgress?.({ ...p, bytesTotal });
+  }
 
+  async function drain(): Promise<void> {
+    while (pending.length) {
+      const chunk = pending.shift()!;
+      await sink.write(chunk);
+    }
+  }
+
+  // fflate's Zip/ZipDeflate.push() is synchronous and calls this callback
+  // inline -- it only ever queues chunks. The async code below drains that
+  // queue (awaiting the sink, which applies backpressure) right after each
+  // push() returns.
+  const zip = new Zip((err, chunk) => {
+    if (err) throw err;
+    if (chunk?.length) pending.push(chunk);
+  });
+
+  try {
+    const usedNames = new Set<string>();
+    let total = 0;
+    let sawFile = false;
+    let index = 0;
+
+    for (const obj of objects) {
+      index += 1;
+      if (obj.status !== "completed") continue;
+      report(
+        { current: index, total: objects.length, fileName: obj.fileName, bytesRead: total },
+        true,
+      );
+      log(`fetching ${index}/${objects.length}: ${obj.fileName}`);
+      let got;
+      try {
+        // No abortSignal on GetObject: the SDK applies it to the whole
+        // download, not just the header round-trip. A 2.5GB source is a
+        // many-minute read; 30s wall-clock abort is what marked this
+        // package failed with ECONNRESET after ~32 healthy 8MB parts.
+        got = await withTimeout(
+          client.send(new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key })),
+          `get object ${obj.fileName}`,
+        );
+      } catch (e) {
+        console.warn(`product zip: get object failed, skipping`, obj.fileName, e);
+        continue;
+      }
+      if (!got.Body) continue;
+      log(`got response for ${obj.fileName} (contentLength=${got.ContentLength ?? "unknown"}), reading...`);
+
+      const nameInZip = uniqueZipEntryName(usedNames, safeZipEntryName(obj.fileName));
+      const store = shouldStoreZipMember(obj.fileName, obj.contentType);
+      const entry = zipEntryFor(nameInZip, obj.fileName, obj.contentType);
+      zip.add(entry);
+      sawFile = true;
+      log(
+        `packing ${obj.fileName} as ${store ? "store (already compressed)" : "deflate"}`,
+      );
+
+      // Iterate got.Body directly as the async-iterable stream the SDK
+      // already gives us (a Node Readable under Bun/Node) rather than going
+      // through transformToWebStream().getReader() -- that conversion layer
+      // is the leading suspect for a real staging hang: no crash, no
+      // timeout ever tripped, just a request that silently never finished,
+      // which fits a stream that never resolves `done` rather than any
+      // single slow operation.
+      const iterator = (got.Body as unknown as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
+      let tooLarge = false;
+      let emptyReadsInARow = 0;
+      try {
+        for (;;) {
+          const { done, value } = await withTimeout(iterator.next(), `read ${obj.fileName}`);
+          if (done) break;
+          if (!value?.length) {
+            // Defense in depth: a stream that yields empty chunks forever
+            // without ever signaling done would spin past the size cap
+            // and past any single-read timeout without ever failing --
+            // this bounds that specific failure mode too.
+            emptyReadsInARow += 1;
+            if (emptyReadsInARow > 1000) {
+              throw new Error(`stream for ${obj.fileName} stalled: 1000 consecutive empty reads`);
+            }
+            continue;
+          }
+          emptyReadsInARow = 0;
+          total += value.length;
+          if (abortOnOverCap && total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
+            tooLarge = true;
+            break;
+          }
+          entry.push(value, false);
+          await drain();
+          report(
+            { current: index, total: objects.length, fileName: obj.fileName, bytesRead: total },
+            false,
+          );
+        }
+      } finally {
+        await iterator.return?.(undefined).catch(() => {});
+      }
+      if (tooLarge) {
+        log(`aborting: total exceeded MAX_PRODUCT_ZIP_TOTAL_BYTES at ${obj.fileName}`);
+        await sink.abort();
+        return { error: "package_too_large", status: 413 };
+      }
+      entry.push(new Uint8Array(0), true);
+      await drain();
+      report(
+        { current: index, total: objects.length, fileName: obj.fileName, bytesRead: total },
+        true,
+      );
+      log(`finished ${obj.fileName} (${total} bytes read so far)`);
+    }
+
+    if (!sawFile) {
+      log("no downloadable files found, aborting");
+      await sink.abort();
+      return { error: "no_downloadable_files", status: 400 };
+    }
+
+    zip.end();
+    await drain();
+    await sink.finalize();
+    log(`done (${total} raw bytes read)`);
+    return { ok: true };
+  } catch (e) {
+    log(`failed: ${e instanceof Error ? e.message : String(e)}`);
+    await sink.abort();
+    throw e;
+  }
+}
+
+async function createR2MultipartSink(
+  client: ReturnType<typeof getR2S3Client>,
+  r2: R2Config,
+  key: string,
+  log: (msg: string) => void,
+): Promise<ZipSink> {
   const created = await withTimeout(
     client.send(
       new CreateMultipartUploadCommand({ Bucket: r2.bucket, Key: key, ContentType: "application/zip" }),
@@ -269,15 +556,11 @@ async function streamProductZipToR2(
   if (!uploadId) throw new Error("multipart_init_failed");
   log(`multipart upload ${uploadId} created`);
 
-  const abort = () =>
-    client
-      .send(new AbortMultipartUploadCommand({ Bucket: r2.bucket, Key: key, UploadId: uploadId }))
-      .catch((e) => console.warn("streamProductZipToR2: abort failed", key, e));
-
   const parts: Array<{ PartNumber: number; ETag: string }> = [];
   let partNumber = 0;
   const pending: Uint8Array[] = [];
   let pendingLen = 0;
+  let settled = false;
 
   async function uploadPart(body: Uint8Array): Promise<void> {
     partNumber += 1;
@@ -318,129 +601,95 @@ async function streamProductZipToR2(
     }
   }
 
-  // fflate's Zip/ZipDeflate.push() is synchronous and calls this callback
-  // inline -- it only ever queues chunks. The async code below drains that
-  // queue (awaiting uploads as needed) right after each push() returns.
-  const zip = new Zip((err, chunk) => {
-    if (err) throw err;
-    if (chunk?.length) {
+  return {
+    async write(chunk) {
       pending.push(chunk);
       pendingLen += chunk.length;
-    }
-  });
-
-  try {
-    const usedNames = new Set<string>();
-    let total = 0;
-    let sawFile = false;
-    let index = 0;
-
-    for (const objectId of objectIds) {
-      index += 1;
-      const obj = db
-        .select()
-        .from(inventoryUploadObject)
-        .where(eq(inventoryUploadObject.id, objectId))
-        .get();
-      if (!obj || obj.status !== "completed") continue;
-      onProgress?.(index, objectIds.length, obj.fileName);
-      log(`fetching ${index}/${objectIds.length}: ${obj.fileName}`);
-      let got;
-      try {
-        got = await withTimeout(
-          client.send(
-            new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }),
-            { abortSignal: AbortSignal.timeout(R2_OP_TIMEOUT_MS) },
-          ),
-          `get object ${obj.fileName}`,
-        );
-      } catch (e) {
-        console.warn(`[zip ${key}] get object failed, skipping`, obj.fileName, e);
-        continue;
-      }
-      if (!got.Body) continue;
-      log(`got response for ${obj.fileName} (contentLength=${got.ContentLength ?? "unknown"}), reading...`);
-
-      const nameInZip = uniqueZipEntryName(usedNames, safeZipEntryName(obj.fileName));
-      const entry = new ZipDeflate(nameInZip, { level: 6 });
-      zip.add(entry);
-      sawFile = true;
-
-      // Iterate got.Body directly as the async-iterable stream the SDK
-      // already gives us (a Node Readable under Bun/Node) rather than going
-      // through transformToWebStream().getReader() -- that conversion layer
-      // is the leading suspect for a real staging hang: no crash, no
-      // timeout ever tripped, just a request that silently never finished,
-      // which fits a stream that never resolves `done` rather than any
-      // single slow operation.
-      const iterator = (got.Body as unknown as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
-      let tooLarge = false;
-      let emptyReadsInARow = 0;
-      try {
-        for (;;) {
-          const { done, value } = await withTimeout(iterator.next(), `read ${obj.fileName}`);
-          if (done) break;
-          if (!value?.length) {
-            // Defense in depth: a stream that yields empty chunks forever
-            // without ever signaling done would spin past the size cap
-            // and past any single-read timeout without ever failing --
-            // this bounds that specific failure mode too.
-            emptyReadsInARow += 1;
-            if (emptyReadsInARow > 1000) {
-              throw new Error(`stream for ${obj.fileName} stalled: 1000 consecutive empty reads`);
-            }
-            continue;
-          }
-          emptyReadsInARow = 0;
-          total += value.length;
-          if (total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
-            tooLarge = true;
-            break;
-          }
-          entry.push(value, false);
-          await flushPart(false);
-        }
-      } finally {
-        await iterator.return?.(undefined).catch(() => {});
-      }
-      if (tooLarge) {
-        log(`aborting: total exceeded MAX_PRODUCT_ZIP_TOTAL_BYTES at ${obj.fileName}`);
-        await abort();
-        return { error: "package_too_large", status: 413 };
-      }
-      entry.push(new Uint8Array(0), true);
       await flushPart(false);
-      log(`finished ${obj.fileName} (${total} bytes read so far)`);
-    }
+    },
+    async finalize() {
+      await flushPart(true);
+      log(`completing multipart upload: ${parts.length} part(s)`);
+      await withTimeout(
+        client.send(
+          new CompleteMultipartUploadCommand({
+            Bucket: r2.bucket,
+            Key: key,
+            UploadId: uploadId,
+            MultipartUpload: { Parts: parts },
+          }),
+          { abortSignal: AbortSignal.timeout(R2_OP_TIMEOUT_MS) },
+        ),
+        "multipart complete",
+      );
+      settled = true;
+    },
+    async abort() {
+      if (settled) return;
+      settled = true;
+      await client
+        .send(new AbortMultipartUploadCommand({ Bucket: r2.bucket, Key: key, UploadId: uploadId }))
+        .catch((e) => console.warn("streamProductZipToR2: abort failed", key, e));
+    },
+  };
+}
 
-    if (!sawFile) {
-      log("no downloadable files found, aborting");
-      await abort();
-      return { error: "no_downloadable_files", status: 400 };
-    }
+function createHttpZipSink(): { sink: ZipSink; readable: ReadableStream<Uint8Array> } {
+  const transform = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = transform.writable.getWriter();
+  let settled = false;
+  return {
+    readable: transform.readable,
+    sink: {
+      async write(chunk) {
+        // Copy: fflate may reuse the callback buffer; the stream consumer
+        // reads asynchronously and TransformStream write() applies backpressure
+        // so a slow client cannot balloon process memory.
+        await writer.write(chunk.slice());
+      },
+      async finalize() {
+        if (settled) return;
+        settled = true;
+        await writer.close();
+      },
+      async abort() {
+        if (settled) return;
+        settled = true;
+        try {
+          await writer.abort();
+        } catch {
+          // already closed
+        }
+      },
+    },
+  };
+}
 
-    zip.end();
-    await flushPart(true);
-    log(`completing multipart upload: ${parts.length} part(s), ${total} raw bytes read`);
-    await withTimeout(
-      client.send(
-        new CompleteMultipartUploadCommand({
-          Bucket: r2.bucket,
-          Key: key,
-          UploadId: uploadId,
-          MultipartUpload: { Parts: parts },
-        }),
-        { abortSignal: AbortSignal.timeout(R2_OP_TIMEOUT_MS) },
-      ),
-      "multipart complete",
-    );
-    log("done");
-    return { ok: true };
-  } catch (e) {
-    log(`failed: ${e instanceof Error ? e.message : String(e)}`);
-    await abort();
-    throw e;
-  }
+/**
+ * Same package contents as the live HTTP path, streamed into R2 via
+ * multipart upload so a cache rebuild never holds more than one file's
+ * raw bytes or one multipart part of compressed output at a time.
+ */
+async function streamProductZipToR2(
+  db: Db,
+  r2: R2Config,
+  client: ReturnType<typeof getR2S3Client>,
+  product: CatalogProductRow,
+  key: string,
+  onProgress?: (p: ZipBuildProgress) => void,
+): Promise<{ ok: true } | { error: string; status: 400 | 413 }> {
+  const log = (msg: string) => console.log(`[zip ${key}]`, msg);
+  const objects = loadZipSourceObjects(db, product);
+  log(`starting: ${objects.length} object(s) to package`);
+  const cap = checkProductZipCap(objects);
+  if ("error" in cap) return cap;
+
+  const sink = await createR2MultipartSink(client, r2, key, log);
+  return streamIntoSink(client, r2, objects, sink, {
+    abortOnOverCap: true,
+    onProgress,
+    log,
+  });
 }
 
 /**
@@ -452,6 +701,11 @@ async function streamProductZipToR2(
  * cache in catalogProducts.packageZipKey doesn't apply -- see
  * rebuildProductZipCache and download.ts's entitlementMatchesCurrentItems)
  * -- same package either way, only the caller's access check differs.
+ *
+ * The 50GB cap is summed from inventoryUploadObject.byteSize *before* the
+ * Response body opens, so an over-cap package is still a clean 413. The
+ * body itself is a backpressured TransformStream of compressed chunks --
+ * not an in-memory zipSync of every file at once.
  */
 export async function buildProductZip(
   db: Db,
@@ -465,17 +719,66 @@ export async function buildProductZip(
    */
   entitledItemUris?: string[],
 ): Promise<Response | { error: string; status: 400 | 413 }> {
-  const result = await assembleProductZipBytes(db, r2, product, entitledItemUris);
-  if ("error" in result) return result;
+  const objects = loadZipSourceObjects(db, product, entitledItemUris);
+  const cap = checkProductZipCap(objects);
+  if ("error" in cap) return cap;
+
+  const client = getR2S3Client(r2);
+  const pass = passthroughExistingZip(objects);
+  if (pass) {
+    return streamOriginalZipResponse(client, r2, pass);
+  }
+
+  const { sink, readable } = createHttpZipSink();
+  const log = (msg: string) => console.log(`[zip live ${product.uri}]`, msg);
+  void streamIntoSink(client, r2, objects, sink, { abortOnOverCap: false, log }).then(
+    (result) => {
+      if ("error" in result) {
+        console.warn("buildProductZip: stream ended with", result.error, product.uri);
+      }
+    },
+    (e) => {
+      console.warn("buildProductZip: stream failed", product.uri, e);
+    },
+  );
 
   const zipFilename = zipFilenameFor(product);
-  return new Response(result.bytes, {
+  return new Response(readable, {
     status: 200,
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${zipFilename}.zip"`,
       "Cache-Control": "private, no-store",
     },
+  });
+}
+
+async function streamOriginalZipResponse(
+  client: ReturnType<typeof getR2S3Client>,
+  r2: R2Config,
+  obj: ZipSourceObject,
+): Promise<Response | { error: string; status: 400 | 413 }> {
+  let got;
+  try {
+    got = await withTimeout(
+      client.send(new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key })),
+      `get object ${obj.fileName}`,
+    );
+  } catch (e) {
+    console.warn("buildProductZip: passthrough get object failed", obj.fileName, e);
+    return { error: "no_downloadable_files", status: 400 };
+  }
+  if (!got.Body) return { error: "no_downloadable_files", status: 400 };
+  const filename = safeZipEntryName(obj.fileName).replaceAll('"', "");
+  const headers: Record<string, string> = {
+    "Content-Type": obj.contentType || "application/zip",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "private, no-store",
+  };
+  if (got.ContentLength != null) headers["Content-Length"] = String(got.ContentLength);
+  return new Response(got.Body as ReadableStream<Uint8Array>, {
+    status: 200,
+    headers,
   });
 }
 
@@ -499,10 +802,12 @@ export async function rebuildProductZipCache(
 ): Promise<void> {
   const p = runRebuildProductZipCache(db, product);
   inFlightRebuilds.add(p);
+  ensureZipAutostopHold();
   try {
     await p;
   } finally {
     inFlightRebuilds.delete(p);
+    if (inFlightRebuilds.size === 0) releaseZipAutostopHold();
   }
 }
 
@@ -517,30 +822,74 @@ async function runRebuildProductZipCache(
     return;
   }
   try {
+    const objects = loadZipSourceObjects(db, product);
+    const cap = checkProductZipCap(objects);
+    if ("error" in cap) {
+      console.warn("rebuildProductZipCache: assembly failed", product.uri, cap.error);
+      await db
+        .update(catalogProducts)
+        .set({ packageZipStatus: "failed", packageZipRebuildStartedAt: null })
+        .where(eq(catalogProducts.uri, product.uri));
+      return;
+    }
+
+    const pass = passthroughExistingZip(objects);
+    if (pass) {
+      console.log(
+        `rebuildProductZipCache: passthrough existing zip ${pass.fileName} for ${product.uri}`,
+      );
+      await db
+        .update(catalogProducts)
+        .set({
+          packageZipKey: pass.r2Key,
+          packageZipStatus: "ready",
+          packageZipUpdatedAt: new Date(),
+          packageZipRebuildStartedAt: null,
+        })
+        .where(eq(catalogProducts.uri, product.uri));
+      return;
+    }
+
     const rkey = new AtUri(product.uri).rkey;
     const key = newProductPackageZipKey(product.merchantDid, rkey);
     const client = getR2S3Client(r2);
-    const result = await streamProductZipToR2(db, r2, client, product, key, (current, total, fileName) =>
-      setZipProgress(product.uri, { current, total, fileName }),
+    await db
+      .update(catalogProducts)
+      .set({ packageZipRebuildStartedAt: new Date() })
+      .where(eq(catalogProducts.uri, product.uri));
+    setZipProgress(product.uri, {
+      current: 0,
+      total: 1,
+      fileName: "Preparing package…",
+      bytesRead: 0,
+      bytesTotal: 0,
+    });
+    const result = await streamProductZipToR2(db, r2, client, product, key, (p) =>
+      setZipProgress(product.uri, p),
     );
     if ("error" in result) {
       console.warn("rebuildProductZipCache: assembly failed", product.uri, result.error);
       await db
         .update(catalogProducts)
-        .set({ packageZipStatus: "failed" })
+        .set({ packageZipStatus: "failed", packageZipRebuildStartedAt: null })
         .where(eq(catalogProducts.uri, product.uri));
       return;
     }
     await db
       .update(catalogProducts)
-      .set({ packageZipKey: key, packageZipStatus: "ready", packageZipUpdatedAt: new Date() })
+      .set({
+        packageZipKey: key,
+        packageZipStatus: "ready",
+        packageZipUpdatedAt: new Date(),
+        packageZipRebuildStartedAt: null,
+      })
       .where(eq(catalogProducts.uri, product.uri));
   } catch (e) {
     console.warn("rebuildProductZipCache: failed", product.uri, e);
     try {
       await db
         .update(catalogProducts)
-        .set({ packageZipStatus: "failed" })
+        .set({ packageZipStatus: "failed", packageZipRebuildStartedAt: null })
         .where(eq(catalogProducts.uri, product.uri));
     } catch {
       // Best-effort -- if even the status update fails, the stale/absent
@@ -549,6 +898,27 @@ async function runRebuildProductZipCache(
   } finally {
     clearZipProgress(product.uri);
   }
+}
+
+/**
+ * Boot hook: any rebuild that was in flight when the process last died is
+ * marked failed. Does not start a new rebuild — a machine that crashes
+ * mid-zip would otherwise boot-loop the same job forever.
+ */
+export function markInterruptedZipRebuildsFailed(db: Db): void {
+  const rows = db
+    .select({ uri: catalogProducts.uri })
+    .from(catalogProducts)
+    .where(isNotNull(catalogProducts.packageZipRebuildStartedAt))
+    .all();
+  if (rows.length === 0) return;
+  console.warn(
+    `markInterruptedZipRebuildsFailed: ${rows.length} rebuild(s) were in flight when the process last died; marking failed (not restarting)`,
+  );
+  db.update(catalogProducts)
+    .set({ packageZipStatus: "failed", packageZipRebuildStartedAt: null })
+    .where(isNotNull(catalogProducts.packageZipRebuildStartedAt))
+    .run();
 }
 
 /** Convenience wrapper for write-path handlers that only have a product URI in hand right after a mutation. No-ops if the product isn't found. Never throws -- same best-effort contract as rebuildProductZipCache itself, since callers await this bare, with no try/catch of their own. */
@@ -587,3 +957,48 @@ export function entitlementMatchesCurrentItems(
 }
 
 export { zipFilenameFor };
+
+/** Buyer/merchant attachment name: original upload name when the cache *is* that file (passthrough zip), otherwise `{title}.zip`. */
+export function packageAttachmentFilename(
+  product: Pick<CatalogProductRow, "title">,
+  storedFileName?: string | null,
+): string {
+  if (storedFileName?.trim()) return safeZipEntryName(storedFileName).replaceAll('"', "");
+  return `${zipFilenameFor(product)}.zip`;
+}
+
+/** Presign the cached package when status is ready. Null if missing, not ready, or R2 errors (caller falls back to live assembly). */
+export async function presignCachedProductPackage(
+  db: Db,
+  r2: R2Config,
+  product: CatalogProductRow,
+  expiresInSec: number,
+): Promise<{ url: string; filename: string; expiresAt: string } | null> {
+  if (product.packageZipStatus !== "ready" || !product.packageZipKey) return null;
+  const stored = db
+    .select({ fileName: inventoryUploadObject.fileName })
+    .from(inventoryUploadObject)
+    .where(eq(inventoryUploadObject.r2Key, product.packageZipKey))
+    .get();
+  const filename = packageAttachmentFilename(product, stored?.fileName);
+  try {
+    const client = getR2S3Client(r2);
+    const url = await getSignedUrl(
+      client,
+      new GetObjectCommand({
+        Bucket: r2.bucket,
+        Key: product.packageZipKey,
+        ResponseContentDisposition: `attachment; filename="${filename.replaceAll('"', "")}"`,
+      }),
+      { expiresIn: expiresInSec },
+    );
+    return {
+      url,
+      filename,
+      expiresAt: new Date(Date.now() + expiresInSec * 1000).toISOString(),
+    };
+  } catch (e) {
+    console.warn("presignCachedProductPackage failed", product.uri, e);
+    return null;
+  }
+}
