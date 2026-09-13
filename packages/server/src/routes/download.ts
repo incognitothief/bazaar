@@ -24,7 +24,7 @@ import {
   buildProductZip,
   entitlementMatchesCurrentItems,
   rebuildProductZipCacheByUri,
-  zipFilenameFor,
+  presignCachedProductPackage,
 } from "../lib/productZip";
 import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 
@@ -424,23 +424,15 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       product.packageZipKey &&
       entitlementMatchesCurrentItems(product, entitledUris)
     ) {
-      const zipFilename = `${zipFilenameFor(product)}.zip`;
-      try {
-        const client = getR2S3Client(cfg);
-        const url = await getSignedUrl(
-          client,
-          new GetObjectCommand({
-            Bucket: cfg.bucket,
-            Key: product.packageZipKey,
-            ResponseContentDisposition: `attachment; filename="${zipFilename.replace(/"/g, "")}"`,
-          }),
-          { expiresIn: 900 },
-        );
-        const expiresAt = new Date(Date.now() + 900_000).toISOString();
-        return c.json({ url, expiresAt, filename: zipFilename });
-      } catch (e) {
-        console.warn("product-zip: cache presign failed, falling back to live rebuild", e);
+      const signed = await presignCachedProductPackage(db, cfg, product, 900);
+      if (signed) {
+        return c.json({
+          url: signed.url,
+          expiresAt: signed.expiresAt,
+          filename: signed.filename,
+        });
       }
+      console.warn("product-zip: cache presign failed, falling back to live rebuild");
     }
 
     // Self-heal a broken/missing cache so the next buyer can hit the

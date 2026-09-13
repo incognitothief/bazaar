@@ -6,7 +6,8 @@ import {
   GetObjectCommand,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
-import { Zip, ZipDeflate } from "fflate";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { Zip, ZipDeflate, ZipPassThrough } from "fflate";
 import { eq, inArray, isNotNull } from "drizzle-orm";
 import type { Db } from "../db";
 import { catalogItems, catalogProductAssets, catalogProducts, inventoryUploadObject } from "../db/schema";
@@ -159,7 +160,118 @@ type ZipSourceObject = ZipObjectSize & {
   id: string;
   r2Key: string;
   fileName: string;
+  contentType: string | null;
 };
+
+export function isAlreadyZipFile(fileName: string, contentType?: string | null): boolean {
+  const name = fileName.toLowerCase();
+  if (name.endsWith(".zip")) return true;
+  const ct = (contentType ?? "").toLowerCase().split(";")[0]?.trim();
+  return (
+    ct === "application/zip" ||
+    ct === "application/x-zip-compressed" ||
+    ct === "application/zip-compressed"
+  );
+}
+
+/**
+ * Members that are already compressed: ZIP STORE (fflate ZipPassThrough,
+ * method 0) instead of deflate. Deflating mp3/mp4/zip/jpeg burns CPU for
+ * almost no size win — that was the 20-minute wrap of a 2.5GB zip.
+ * Uncompressed masters (wav, tiff, txt) still use ZipDeflate level 6.
+ */
+const STORE_EXTENSIONS = new Set([
+  "zip",
+  "gz",
+  "tgz",
+  "bz2",
+  "xz",
+  "7z",
+  "rar",
+  "zst",
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "heic",
+  "heif",
+  "avif",
+  "jxl",
+  "mp3",
+  "aac",
+  "m4a",
+  "ogg",
+  "oga",
+  "opus",
+  "wma",
+  "flac",
+  "mp4",
+  "m4v",
+  "mov",
+  "webm",
+  "mkv",
+  "avi",
+  "pdf",
+  "docx",
+  "xlsx",
+  "pptx",
+]);
+
+const STORE_CONTENT_TYPES = new Set([
+  "application/gzip",
+  "application/x-gzip",
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "image/avif",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/mp4",
+  "audio/aac",
+  "audio/ogg",
+  "audio/opus",
+  "audio/flac",
+  "audio/x-flac",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-matroska",
+  "video/x-msvideo",
+]);
+
+export function shouldStoreZipMember(fileName: string, contentType?: string | null): boolean {
+  if (isAlreadyZipFile(fileName, contentType)) return true;
+  const ext = fileName.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (ext && STORE_EXTENSIONS.has(ext)) return true;
+  const ct = (contentType ?? "").toLowerCase().split(";")[0]?.trim();
+  return !!ct && STORE_CONTENT_TYPES.has(ct);
+}
+
+function zipEntryFor(nameInZip: string, fileName: string, contentType?: string | null): ZipDeflate | ZipPassThrough {
+  if (shouldStoreZipMember(fileName, contentType)) {
+    return new ZipPassThrough(nameInZip);
+  }
+  return new ZipDeflate(nameInZip, { level: 6 });
+}
+
+/**
+ * A product whose downloadable set is exactly one already-zipped file
+ * (one item, no extra assets in the package). Wrapping that in another
+ * zip is zip-in-zip: slower to build, no smaller, worse for the buyer.
+ */
+export function passthroughExistingZip<T extends { status: string; fileName: string; contentType?: string | null }>(
+  objects: T[],
+): T | null {
+  const completed = objects.filter((o) => o.status === "completed");
+  if (completed.length !== 1) return null;
+  const only = completed[0]!;
+  return isAlreadyZipFile(only.fileName, only.contentType) ? only : null;
+}
 
 function loadZipSourceObjects(
   db: Db,
@@ -181,6 +293,7 @@ function loadZipSourceObjects(
       byteSize: obj.byteSize,
       r2Key: obj.r2Key,
       fileName: obj.fileName,
+      contentType: obj.contentType,
     });
   }
   return out;
@@ -345,9 +458,13 @@ async function streamIntoSink(
       log(`got response for ${obj.fileName} (contentLength=${got.ContentLength ?? "unknown"}), reading...`);
 
       const nameInZip = uniqueZipEntryName(usedNames, safeZipEntryName(obj.fileName));
-      const entry = new ZipDeflate(nameInZip, { level: 6 });
+      const store = shouldStoreZipMember(obj.fileName, obj.contentType);
+      const entry = zipEntryFor(nameInZip, obj.fileName, obj.contentType);
       zip.add(entry);
       sawFile = true;
+      log(
+        `packing ${obj.fileName} as ${store ? "store (already compressed)" : "deflate"}`,
+      );
 
       // Iterate got.Body directly as the async-iterable stream the SDK
       // already gives us (a Node Readable under Bun/Node) rather than going
@@ -607,6 +724,11 @@ export async function buildProductZip(
   if ("error" in cap) return cap;
 
   const client = getR2S3Client(r2);
+  const pass = passthroughExistingZip(objects);
+  if (pass) {
+    return streamOriginalZipResponse(client, r2, pass);
+  }
+
   const { sink, readable } = createHttpZipSink();
   const log = (msg: string) => console.log(`[zip live ${product.uri}]`, msg);
   void streamIntoSink(client, r2, objects, sink, { abortOnOverCap: false, log }).then(
@@ -628,6 +750,35 @@ export async function buildProductZip(
       "Content-Disposition": `attachment; filename="${zipFilename}.zip"`,
       "Cache-Control": "private, no-store",
     },
+  });
+}
+
+async function streamOriginalZipResponse(
+  client: ReturnType<typeof getR2S3Client>,
+  r2: R2Config,
+  obj: ZipSourceObject,
+): Promise<Response | { error: string; status: 400 | 413 }> {
+  let got;
+  try {
+    got = await withTimeout(
+      client.send(new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key })),
+      `get object ${obj.fileName}`,
+    );
+  } catch (e) {
+    console.warn("buildProductZip: passthrough get object failed", obj.fileName, e);
+    return { error: "no_downloadable_files", status: 400 };
+  }
+  if (!got.Body) return { error: "no_downloadable_files", status: 400 };
+  const filename = safeZipEntryName(obj.fileName).replaceAll('"', "");
+  const headers: Record<string, string> = {
+    "Content-Type": obj.contentType || "application/zip",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "private, no-store",
+  };
+  if (got.ContentLength != null) headers["Content-Length"] = String(got.ContentLength);
+  return new Response(got.Body as ReadableStream<Uint8Array>, {
+    status: 200,
+    headers,
   });
 }
 
@@ -671,6 +822,34 @@ async function runRebuildProductZipCache(
     return;
   }
   try {
+    const objects = loadZipSourceObjects(db, product);
+    const cap = checkProductZipCap(objects);
+    if ("error" in cap) {
+      console.warn("rebuildProductZipCache: assembly failed", product.uri, cap.error);
+      await db
+        .update(catalogProducts)
+        .set({ packageZipStatus: "failed", packageZipRebuildStartedAt: null })
+        .where(eq(catalogProducts.uri, product.uri));
+      return;
+    }
+
+    const pass = passthroughExistingZip(objects);
+    if (pass) {
+      console.log(
+        `rebuildProductZipCache: passthrough existing zip ${pass.fileName} for ${product.uri}`,
+      );
+      await db
+        .update(catalogProducts)
+        .set({
+          packageZipKey: pass.r2Key,
+          packageZipStatus: "ready",
+          packageZipUpdatedAt: new Date(),
+          packageZipRebuildStartedAt: null,
+        })
+        .where(eq(catalogProducts.uri, product.uri));
+      return;
+    }
+
     const rkey = new AtUri(product.uri).rkey;
     const key = newProductPackageZipKey(product.merchantDid, rkey);
     const client = getR2S3Client(r2);
@@ -778,3 +957,48 @@ export function entitlementMatchesCurrentItems(
 }
 
 export { zipFilenameFor };
+
+/** Buyer/merchant attachment name: original upload name when the cache *is* that file (passthrough zip), otherwise `{title}.zip`. */
+export function packageAttachmentFilename(
+  product: Pick<CatalogProductRow, "title">,
+  storedFileName?: string | null,
+): string {
+  if (storedFileName?.trim()) return safeZipEntryName(storedFileName).replaceAll('"', "");
+  return `${zipFilenameFor(product)}.zip`;
+}
+
+/** Presign the cached package when status is ready. Null if missing, not ready, or R2 errors (caller falls back to live assembly). */
+export async function presignCachedProductPackage(
+  db: Db,
+  r2: R2Config,
+  product: CatalogProductRow,
+  expiresInSec: number,
+): Promise<{ url: string; filename: string; expiresAt: string } | null> {
+  if (product.packageZipStatus !== "ready" || !product.packageZipKey) return null;
+  const stored = db
+    .select({ fileName: inventoryUploadObject.fileName })
+    .from(inventoryUploadObject)
+    .where(eq(inventoryUploadObject.r2Key, product.packageZipKey))
+    .get();
+  const filename = packageAttachmentFilename(product, stored?.fileName);
+  try {
+    const client = getR2S3Client(r2);
+    const url = await getSignedUrl(
+      client,
+      new GetObjectCommand({
+        Bucket: r2.bucket,
+        Key: product.packageZipKey,
+        ResponseContentDisposition: `attachment; filename="${filename.replaceAll('"', "")}"`,
+      }),
+      { expiresIn: expiresInSec },
+    );
+    return {
+      url,
+      filename,
+      expiresAt: new Date(Date.now() + expiresInSec * 1000).toISOString(),
+    };
+  } catch (e) {
+    console.warn("presignCachedProductPackage failed", product.uri, e);
+    return null;
+  }
+}

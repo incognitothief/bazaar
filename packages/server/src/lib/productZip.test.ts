@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import {
   checkProductZipCap,
   entitlementMatchesCurrentItems,
+  isAlreadyZipFile,
   MAX_PRODUCT_ZIP_TOTAL_BYTES,
+  passthroughExistingZip,
+  shouldStoreZipMember,
 } from "./productZip";
 
 function productWithItems(uris: string[]) {
@@ -94,5 +97,69 @@ describe("checkProductZipCap", () => {
         { status: "completed", byteSize: 12 },
       ]),
     ).toEqual({ ok: true });
+  });
+});
+
+describe("passthroughExistingZip", () => {
+  it("passes through a single completed zip", () => {
+    const obj = {
+      status: "completed",
+      fileName: "2023-5 recap.zip",
+      contentType: "application/zip",
+    };
+    expect(passthroughExistingZip([obj])).toEqual(obj);
+  });
+
+  it("recognizes zip by extension even without contentType", () => {
+    expect(isAlreadyZipFile("pack.ZIP", null)).toBe(true);
+    expect(
+      passthroughExistingZip([{ status: "completed", fileName: "a.ZIP" }]),
+    ).not.toBeNull();
+  });
+
+  it("does not passthrough a single non-zip file", () => {
+    expect(
+      passthroughExistingZip([
+        { status: "completed", fileName: "master.flac", contentType: "audio/flac" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("does not passthrough a zip plus another packaged file", () => {
+    expect(
+      passthroughExistingZip([
+        { status: "completed", fileName: "release.zip" },
+        { status: "completed", fileName: "cover.jpg" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("ignores incomplete objects when deciding passthrough", () => {
+    const zip = { status: "completed", fileName: "release.zip" };
+    expect(
+      passthroughExistingZip([
+        zip,
+        { status: "initiated", fileName: "notes.pdf" },
+      ]),
+    ).toEqual(zip);
+  });
+});
+
+describe("shouldStoreZipMember", () => {
+  it("stores typical already-compressed delivery formats", () => {
+    expect(shouldStoreZipMember("film.mp4", "video/mp4")).toBe(true);
+    expect(shouldStoreZipMember("clip.mov", null)).toBe(true);
+    expect(shouldStoreZipMember("track.mp3", "audio/mpeg")).toBe(true);
+    expect(shouldStoreZipMember("track.flac", null)).toBe(true);
+    expect(shouldStoreZipMember("cover.jpg", "image/jpeg")).toBe(true);
+    expect(shouldStoreZipMember("notes.pdf", null)).toBe(true);
+    expect(shouldStoreZipMember("bundle.zip", null)).toBe(true);
+  });
+
+  it("deflates uncompressed masters", () => {
+    expect(shouldStoreZipMember("master.wav", "audio/wav")).toBe(false);
+    expect(shouldStoreZipMember("scan.tiff", "image/tiff")).toBe(false);
+    expect(shouldStoreZipMember("liner.txt", "text/plain")).toBe(false);
+    expect(shouldStoreZipMember("data.csv", null)).toBe(false);
   });
 });

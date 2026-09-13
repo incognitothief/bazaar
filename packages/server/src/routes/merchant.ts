@@ -29,7 +29,7 @@ import {
 } from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import { resolveCoverImages } from "../lib/productAssets";
-import { buildProductZip, rebuildProductZipCache, rebuildProductZipCacheByUri } from "../lib/productZip";
+import { buildProductZip, rebuildProductZipCache, rebuildProductZipCacheByUri, presignCachedProductPackage } from "../lib/productZip";
 import { getZipProgress, listZipProgress } from "../lib/zipProgress";
 import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 import { captureCatalogItem, captureCatalogProduct } from "./atproto";
@@ -885,12 +885,10 @@ export function createMerchantRouter(db: Db) {
   });
 
   /**
-   * Store-owner: the same package a buyer would receive for this product,
-   * assembled on demand -- for handing a customer their purchase directly
-   * during support/incident triage, without needing a working purchase
-   * flow. Assembly itself lives in lib/productZip.ts, shared with the
-   * buyer-facing /api/download/product-zip route -- this endpoint's only
-   * job is the ownership check, not entitlement.
+   * Store-owner: the same package a buyer would receive for this product.
+   * When the cache is ready, 302 to a presigned R2 URL (same bytes, Bun
+   * off the data path). Otherwise live-assemble and kick a rebuild so
+   * the next click can presign. Ownership check only — not entitlement.
    */
   r.get("/catalog/products/download", async (c) => {
     const denied = merchantGuard(c);
@@ -903,6 +901,9 @@ export function createMerchantRouter(db: Db) {
 
     const r2 = r2ConfigFromEnv();
     if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
+
+    const signed = await presignCachedProductPackage(db, r2, product, 3600);
+    if (signed) return c.redirect(signed.url, 302);
 
     if (product.packageZipStatus !== "ready" || !product.packageZipKey) {
       void rebuildProductZipCacheByUri(db, product.uri);
