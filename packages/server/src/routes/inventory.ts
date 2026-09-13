@@ -55,6 +55,50 @@ const MULTIPART_MIN_BYTES = Number(
   process.env.BAZAAR_INVENTORY_MULTIPART_MIN_BYTES ?? `${8 * 1024 * 1024}`,
 );
 const SINGLE_PUT_MAX_BYTES = MULTIPART_MIN_BYTES - 1;
+/** Don't buffer a whole master file just to make a cover-art webp. */
+const WEBP_COLLECT_MAX_BYTES = 32 * 1024 * 1024;
+
+/**
+ * SHA-256 + byte count over an R2 GetObject body without holding the
+ * object in RAM. Buffering the whole file here is what OOM-killed staging
+ * (512MB) on a 2.5GB multipart complete. Optionally collect bytes only
+ * when the object is small enough to be cover-art webp input.
+ */
+async function digestR2Body(
+  body: AsyncIterable<Uint8Array>,
+  collectMaxBytes: number | null,
+): Promise<{ digest: Buffer; byteSize: number; collected: Buffer | null }> {
+  const hash = createHash("sha256");
+  let byteSize = 0;
+  const chunks: Buffer[] = [];
+  let collecting = collectMaxBytes != null;
+  const iterator = body[Symbol.asyncIterator]();
+  try {
+    for (;;) {
+      const { done, value } = await iterator.next();
+      if (done) break;
+      if (!value?.length) continue;
+      const buf = Buffer.isBuffer(value) ? value : Buffer.from(value);
+      hash.update(buf);
+      byteSize += buf.length;
+      if (collecting && collectMaxBytes != null) {
+        if (byteSize > collectMaxBytes) {
+          collecting = false;
+          chunks.length = 0;
+        } else {
+          chunks.push(buf);
+        }
+      }
+    }
+  } finally {
+    await iterator.return?.(undefined).catch(() => {});
+  }
+  return {
+    digest: hash.digest(),
+    byteSize,
+    collected: collecting && chunks.length > 0 ? Buffer.concat(chunks) : null,
+  };
+}
 
 function lexiconNs(): string {
   return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
@@ -698,11 +742,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         new GetObjectCommand({ Bucket: cfg.bucket, Key: obj.r2Key }),
       );
       const bodyStream = getObj.Body;
-      if (
-        !bodyStream ||
-        typeof (bodyStream as { transformToByteArray?: unknown }).transformToByteArray !==
-          "function"
-      ) {
+      if (!bodyStream) {
         const short = "Could not read object from storage after upload";
         await db
           .update(inventoryUploadObject)
@@ -717,10 +757,14 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
           500,
         );
       }
-      const bytes = await (
-        bodyStream as { transformToByteArray: () => Promise<Uint8Array> }
-      ).transformToByteArray();
-      const digest = createHash("sha256").update(Buffer.from(bytes)).digest();
+      const collectMax =
+        session.inventoryKind === "product" && obj.role === "artwork"
+          ? WEBP_COLLECT_MAX_BYTES
+          : null;
+      const { digest, byteSize, collected } = await digestR2Body(
+        bodyStream as unknown as AsyncIterable<Uint8Array>,
+        collectMax,
+      );
       const fileChecksum = digest.toString("hex");
       const fileCid = cidFromSha256Digest32(new Uint8Array(digest));
       const fileFormat = obj.contentType || "application/octet-stream";
@@ -734,12 +778,14 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         });
       }
 
-      const webpR2Key = await maybeGenerateWebpDerivative(
-        { cfg, client },
-        { role: obj.role, r2Key: obj.r2Key },
-        session.inventoryKind,
-        Buffer.from(bytes),
-      );
+      const webpR2Key = collected
+        ? await maybeGenerateWebpDerivative(
+            { cfg, client },
+            { role: obj.role, r2Key: obj.r2Key },
+            session.inventoryKind,
+            collected,
+          )
+        : null;
 
       await db
         .update(inventoryUploadObject)
@@ -747,9 +793,9 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
           status: "completed",
           fileChecksum,
           fileCid,
-          // Authoritative byte length from the assembled object -- overrides the
+          // Authoritative byte length from the streamed object -- overrides the
           // client-declared byteSize set at object registration.
-          byteSize: bytes.byteLength,
+          byteSize,
           webpR2Key,
           error: null,
           updatedAt: new Date(),
