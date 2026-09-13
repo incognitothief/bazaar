@@ -22,6 +22,7 @@ import {
   type ListingRow,
 } from "@/lib/atproto/records";
 import { createBrowserApiURL, triggerFileDownload } from "@/lib/browserApi";
+import { inventoryHttpErrorMessage } from "@/lib/api/inventoryApi";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
@@ -668,8 +669,7 @@ export function ItemDetailPage() {
       url.searchParams.set("itemUri", targetUri);
       const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || res.statusText);
+        throw new Error(await inventoryHttpErrorMessage(res));
       }
       const { url: signed, filename } = (await res.json()) as {
         url: string;
@@ -694,8 +694,7 @@ export function ItemDetailPage() {
       url.searchParams.set("collectionUri", itemUri);
       const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || res.statusText);
+        throw new Error(await inventoryHttpErrorMessage(res));
       }
       const blob = await res.blob();
       const dispo = res.headers.get("Content-Disposition");
@@ -724,8 +723,7 @@ export function ItemDetailPage() {
       url.searchParams.set("productUri", itemUri);
       const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || res.statusText);
+        throw new Error(await inventoryHttpErrorMessage(res));
       }
       const blob = await res.blob();
       const dispo = res.headers.get("Content-Disposition");

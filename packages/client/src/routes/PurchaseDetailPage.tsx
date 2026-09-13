@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { createBrowserApiURL } from "@/lib/browserApi";
+import { inventoryHttpErrorMessage } from "@/lib/api/inventoryApi";
 import { merchantSignInUrl } from "@/lib/signInReturn";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import { pdslsRecordUrl } from "@/lib/pdsls";
@@ -239,8 +240,7 @@ export function PurchaseDetailPage() {
       url.searchParams.set("itemUri", itemUri);
       const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || res.statusText);
+        throw new Error(await inventoryHttpErrorMessage(res));
       }
       const { url: signed } = (await res.json()) as { url: string };
       window.location.href = signed;
@@ -259,8 +259,7 @@ export function PurchaseDetailPage() {
       url.searchParams.set("productUri", productUri);
       const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || res.statusText);
+        throw new Error(await inventoryHttpErrorMessage(res));
       }
       const blob = await res.blob();
       const dispo = res.headers.get("Content-Disposition");
@@ -286,8 +285,7 @@ export function PurchaseDetailPage() {
       url.searchParams.set("collectionUri", collectionUri);
       const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || res.statusText);
+        throw new Error(await inventoryHttpErrorMessage(res));
       }
       const blob = await res.blob();
       const dispo = res.headers.get("Content-Disposition");
