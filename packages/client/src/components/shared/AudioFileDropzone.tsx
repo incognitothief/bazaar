@@ -10,11 +10,17 @@ const DEFAULT_ACCEPT = [
   "audio/ogg",
 ];
 
+function maxSizeLabel(maxSizeMb: number): string {
+  return maxSizeMb >= 1024 && maxSizeMb % 1024 === 0
+    ? `${maxSizeMb / 1024} GB`
+    : `${maxSizeMb} MB`;
+}
+
 export function AudioFileDropzone({
   onFile,
   onError,
   accept = DEFAULT_ACCEPT,
-  maxSizeMb = 500,
+  maxSizeMb = 50 * 1024,
 }: {
   onFile: (file: File, meta: ParsedAudioMeta) => void;
   onError: (msg: string) => void;
@@ -27,7 +33,7 @@ export function AudioFileDropzone({
     async (file: File) => {
       const maxBytes = maxSizeMb * 1024 * 1024;
       if (file.size > maxBytes) {
-        onError(`File too large (max ${maxSizeMb} MB)`);
+        onError(`File too large (max ${maxSizeLabel(maxSizeMb)})`);
         return;
       }
       const okMime = !file.type || accept.some((a) => file.type === a);

@@ -20,11 +20,17 @@ function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function maxSizeLabel(maxSizeMb: number): string {
+  return maxSizeMb >= 1024 && maxSizeMb % 1024 === 0
+    ? `${maxSizeMb / 1024} GB`
+    : `${maxSizeMb} MB`;
+}
+
 export function BatchAudioFileDropzone({
   onBatch,
   onError,
   accept = DEFAULT_ACCEPT,
-  maxSizeMb = 500,
+  maxSizeMb = 50 * 1024,
   hint,
 }: {
   onBatch: (entries: BatchAudioEntry[]) => void;
@@ -47,7 +53,7 @@ export function BatchAudioFileDropzone({
         const next: BatchAudioEntry[] = [];
         for (const file of files) {
           if (file.size > maxBytes) {
-            onError(`"${file.name}" is too large (max ${maxSizeMb} MB)`);
+            onError(`"${file.name}" is too large (max ${maxSizeLabel(maxSizeMb)})`);
             continue;
           }
           const okMime = !file.type || accept.some((a) => file.type === a);

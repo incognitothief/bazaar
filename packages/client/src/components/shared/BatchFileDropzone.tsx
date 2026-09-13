@@ -10,6 +10,12 @@ function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function maxSizeLabel(maxSizeMb: number): string {
+  return maxSizeMb >= 1024 && maxSizeMb % 1024 === 0
+    ? `${maxSizeMb / 1024} GB`
+    : `${maxSizeMb} MB`;
+}
+
 /**
  * Generic sibling of BatchAudioFileDropzone -- that one parses audio
  * metadata and only accepts audio MIME types/extensions, which doesn't fit
@@ -19,7 +25,7 @@ function makeId(): string {
 export function BatchFileDropzone({
   onBatch,
   onError,
-  maxSizeMb = 500,
+  maxSizeMb = 50 * 1024,
   hint,
 }: {
   onBatch: (entries: BatchFileEntry[]) => void;
@@ -40,7 +46,7 @@ export function BatchFileDropzone({
         const next: BatchFileEntry[] = [];
         for (const file of files) {
           if (file.size > maxBytes) {
-            onError(`"${file.name}" is too large (max ${maxSizeMb} MB)`);
+            onError(`"${file.name}" is too large (max ${maxSizeLabel(maxSizeMb)})`);
             continue;
           }
           next.push({ id: makeId(), file });
