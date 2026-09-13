@@ -15,6 +15,7 @@ import {
   sweepPaymentFulfillment,
 } from "./lib/stripe/fulfillCheckoutSession";
 import { getStripe } from "./lib/stripe/getStripe";
+import { waitForInFlightZipRebuilds } from "./lib/productZip";
 import { lexicons } from "@bazaar/shared";
 import { ns } from "./routes/ns";
 import { wellKnown } from "./routes/wellKnown";
@@ -72,6 +73,20 @@ if (sweepMs > 0) {
 
 const api = createApiRouter(db, oauthClient);
 const app = new Hono();
+
+/**
+ * Safety net for any uncaught exception in any route -- without this, Hono's
+ * own default just returns bare "Internal Server Error" text with no detail
+ * client-side and nothing beyond Bun's own crash-dump in the server logs.
+ * Logs the full error server-side (name/message/stack) and returns enough
+ * of it to the client to diagnose without needing to go pull `fly logs`.
+ */
+app.onError((err, c) => {
+  console.error(`[unhandled] ${c.req.method} ${c.req.path}:`, err);
+  const name = err instanceof Error ? err.name : "Error";
+  const message = err instanceof Error ? err.message : String(err);
+  return c.json({ error: "internal_error", name, message }, 500);
+});
 
 app.get("/xrpc/com.atproto.lexicon.get", (c) => {
   const id = c.req.query("lexicon");
@@ -167,3 +182,23 @@ Bun.serve({
   fetch: app.fetch,
 });
 console.log(`Listening on :${port}`);
+
+/**
+ * Product zip rebuilds now run in the background after their triggering
+ * request already responded (see productZip.ts's rebuildProductZipCache*).
+ * Fly's scale-to-zero (and a plain redeploy) only track HTTP connections,
+ * not that in-process work, so a stop/restart signal could otherwise land
+ * mid-rebuild -- wait for any in-flight ones (bounded, so a stuck rebuild
+ * can't block shutdown forever) before actually exiting.
+ */
+let shuttingDown = false;
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received, waiting for in-flight zip rebuilds before exit...`);
+  await waitForInFlightZipRebuilds(25_000);
+  console.log("shutdown: proceeding");
+  process.exit(0);
+}
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));

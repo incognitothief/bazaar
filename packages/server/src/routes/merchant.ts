@@ -29,7 +29,8 @@ import {
 } from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import { resolveCoverImages } from "../lib/productAssets";
-import { buildProductZip } from "../lib/productZip";
+import { buildProductZip, rebuildProductZipCache, rebuildProductZipCacheByUri } from "../lib/productZip";
+import { getZipProgress } from "../lib/zipProgress";
 import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import {
@@ -554,6 +555,7 @@ export function createMerchantRouter(db: Db) {
         rkey: at.rkey,
       });
       await captureCatalogProduct(db, owner, res.data.value, res.data.uri, res.data.cid!);
+      void rebuildProductZipCacheByUri(db, res.data.uri);
     } catch {
       return c.json({ error: "sync_failed" }, 502);
     }
@@ -601,6 +603,10 @@ export function createMerchantRouter(db: Db) {
     }
     db.update(catalogProducts).set(set).where(eq(catalogProducts.uri, uri)).run();
     const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
+    // Only artIncludedInDownload affects zip contents -- a productType-only edit needn't rebuild.
+    if (row && "artIncludedInDownload" in (body ?? {})) {
+      void rebuildProductZipCache(db, row);
+    }
     return c.json({
       product: row
         ? {
@@ -633,6 +639,25 @@ export function createMerchantRouter(db: Db) {
     }));
     return { coverImages, includedAssets };
   }
+
+  /**
+   * Store-owner: live "zipping item N of M" progress for an in-flight
+   * package rebuild, for the merchant UI to poll while a save/publish
+   * request is in flight (see lib/zipProgress.ts). `uri` may name a product
+   * that doesn't exist yet -- the very first publish captures the PDS
+   * record before the zip step runs, so early polls during that window are
+   * expected and just get {progress: null}, same as "nothing in progress."
+   */
+  r.get("/catalog/products/zip-progress", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.MERCHANT_DID!.trim();
+    const uri = c.req.query("uri");
+    if (!uri) return c.json({ error: "uri required" }, 400);
+    const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
+    if (product && product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
+    return c.json({ progress: getZipProgress(uri) });
+  });
 
   /** Store-owner: cover art + included assets for one product (see loadProductAssets). */
   r.get("/catalog/products/assets", async (c) => {
@@ -705,6 +730,7 @@ export function createMerchantRouter(db: Db) {
         position,
       })
       .run();
+    void rebuildProductZipCache(db, product);
     return c.json(await loadProductAssets(productUri));
   });
 
@@ -735,6 +761,7 @@ export function createMerchantRouter(db: Db) {
     if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
 
     db.delete(catalogProductAssets).where(eq(catalogProductAssets.id, id)).run();
+    void rebuildProductZipCache(db, product);
 
     const stillLinked =
       db

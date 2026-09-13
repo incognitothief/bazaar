@@ -42,6 +42,7 @@ import {
 } from "../lib/r2/diagnostics";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import { generateWebpDerivative } from "../lib/webpDerivative";
+import { rebuildProductZipCacheByUri } from "../lib/productZip";
 import {
   buildBazaarPid,
   buildBazaarRid,
@@ -196,7 +197,15 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       status: "active",
       productRkey,
     });
-    return c.json({ sessionId: id });
+    // For a brand-new product, hand back the URI it'll be created at --
+    // productRkey is minted here, before the record exists, so the client
+    // has no other way to know it. Lets the merchant UI poll zip-progress
+    // for this product from the moment publishing starts, not just after
+    // the response comes back.
+    const productUri = productRkey
+      ? (body.existingProductUri ?? `at://${sess.did}/${col("catalog.product")}/${productRkey}`)
+      : null;
+    return c.json({ sessionId: id, productUri });
   });
 
   r.get("/prefill/latest", async (c) => {
@@ -1361,11 +1370,25 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       if (it.category?.trim()) record.category = it.category.trim();
       if (it.tags?.length) record.tags = it.tags;
 
-      const res = await sess.agent.com.atproto.repo.createRecord({
-        repo: sess.did,
-        collection: itemType,
-        record,
-      });
+      let res;
+      try {
+        res = await sess.agent.com.atproto.repo.createRecord({
+          repo: sess.did,
+          collection: itemType,
+          record,
+        });
+      } catch (e) {
+        console.error("publish: item createRecord failed", it.objectId, e);
+        return c.json(
+          {
+            error: "pds_write_failed",
+            phase: "item",
+            objectId: it.objectId,
+            message: e instanceof Error ? e.message : String(e),
+          },
+          502,
+        );
+      }
       await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
         objectId: mo.id,
       });
@@ -1385,12 +1408,30 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     }
     if (draft.product.tags?.length) productRecord.tags = draft.product.tags;
 
-    const productRes = await sess.agent.com.atproto.repo.createRecord({
-      repo: sess.did,
-      collection: productType,
-      rkey: session.productRkey,
-      record: productRecord,
-    });
+    let productRes;
+    try {
+      productRes = await sess.agent.com.atproto.repo.createRecord({
+        repo: sess.did,
+        collection: productType,
+        rkey: session.productRkey,
+        record: productRecord,
+      });
+    } catch (e) {
+      // A retry after a prior attempt partially succeeded (e.g. items were
+      // created but the response was lost before the client saw it) will
+      // land here, since this reuses the same session.productRkey every
+      // time -- the PDS rejects a second createRecord at an already-used
+      // rkey. Surfacing that plainly beats an opaque 500 on retry.
+      console.error("publish-product: product createRecord failed", session.productRkey, e);
+      return c.json(
+        {
+          error: "pds_write_failed",
+          phase: "product",
+          message: e instanceof Error ? e.message : String(e),
+        },
+        502,
+      );
+    }
     await captureCatalogProduct(
       db,
       sess.did,
@@ -1420,6 +1461,11 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         role,
       });
     }
+
+    // After the asset inserts above, not right after captureCatalogProduct --
+    // the cover art / included assets rows don't exist yet at that point, so
+    // building the first cache entry there would miss them.
+    void rebuildProductZipCacheByUri(db, productRes.data.uri);
 
     const snapshot = {
       productUri: productRes.data.uri,
@@ -1507,11 +1553,25 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       if (it.category?.trim()) record.category = it.category.trim();
       if (it.tags?.length) record.tags = it.tags;
 
-      const res = await sess.agent.com.atproto.repo.createRecord({
-        repo: sess.did,
-        collection: itemType,
-        record,
-      });
+      let res;
+      try {
+        res = await sess.agent.com.atproto.repo.createRecord({
+          repo: sess.did,
+          collection: itemType,
+          record,
+        });
+      } catch (e) {
+        console.error("publish: item createRecord failed", it.objectId, e);
+        return c.json(
+          {
+            error: "pds_write_failed",
+            phase: "item",
+            objectId: it.objectId,
+            message: e instanceof Error ? e.message : String(e),
+          },
+          502,
+        );
+      }
       await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
         objectId: mo.id,
       });

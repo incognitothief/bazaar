@@ -4,6 +4,7 @@ import {
   inventoryObjectKey,
   newProductAssetKey,
   newProductItemKey,
+  newProductPackageZipKey,
   sanitizeInventoryFilename,
 } from "./inventoryKey";
 
@@ -40,6 +41,19 @@ describe("newProductItemKey / newProductAssetKey", () => {
     expect(() =>
       newProductAssetKey("did:plc:test", "", "obj-1", "f"),
     ).toThrow();
+  });
+});
+
+describe("newProductPackageZipKey", () => {
+  it("builds a single per-product key, no objectId segment", () => {
+    expect(newProductPackageZipKey("did:plc:test", "3jzfcijpjner5")).toBe(
+      "inventory/did:plc:test/3jzfcijpjner5/package.zip",
+    );
+  });
+
+  it("rejects invalid DID or missing product rkey", () => {
+    expect(() => newProductPackageZipKey("plc:test", "3jzfcijpjner5")).toThrow();
+    expect(() => newProductPackageZipKey("did:plc:test", "")).toThrow();
   });
 });
 

@@ -78,13 +78,15 @@ export async function createInventorySession(
   existingProductUri?: string,
 ): Promise<{
   sessionId: string;
+  /** The product's URI, known up front for "product"-kind sessions (minted server-side for a new product, echoed back for an existing one) -- lets the UI poll zip-progress before the publish response comes back. Null for non-product sessions. */
+  productUri: string | null;
 }> {
   const res = await invFetch("/sessions", {
     method: "POST",
     body: JSON.stringify({ inventoryKind, existingProductUri }),
   });
   if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
-  return res.json() as Promise<{ sessionId: string }>;
+  return res.json() as Promise<{ sessionId: string; productUri: string | null }>;
 }
 
 export async function registerInventoryObjects(

@@ -20,6 +20,7 @@ function clientScope(oauthClient: OAuthClient): string {
 }
 import type { Db } from "../db";
 import { catalogItems, catalogProducts, licenses, meta } from "../db/schema";
+import { rebuildProductZipCacheByUri } from "../lib/productZip";
 
 const LICENSE_TERMS_COLLECTION = "diamonds.whereditgo.bazaar.license.terms";
 const CATALOG_ITEM_COLLECTION = "diamonds.whereditgo.bazaar.catalog.item";
@@ -416,6 +417,7 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       await captureCatalogItem(db, did, body.record, res.data.uri, res.data.cid);
     } else if (body.collection === CATALOG_PRODUCT_COLLECTION) {
       await captureCatalogProduct(db, did, body.record, res.data.uri, res.data.cid);
+      void rebuildProductZipCacheByUri(db, res.data.uri);
     }
     return c.json({ uri: res.data.uri, cid: res.data.cid });
   });
@@ -443,6 +445,7 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       await captureCatalogItem(db, did, body.record, res.data.uri, res.data.cid);
     } else if (body.collection === CATALOG_PRODUCT_COLLECTION) {
       await captureCatalogProduct(db, did, body.record, res.data.uri, res.data.cid);
+      void rebuildProductZipCacheByUri(db, res.data.uri);
     }
     return c.json({ ok: true, uri: res.data.uri, cid: res.data.cid });
   });

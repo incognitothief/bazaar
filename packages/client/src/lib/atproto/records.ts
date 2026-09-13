@@ -824,6 +824,26 @@ export async function updateCatalogProductSettings(
   return data.product;
 }
 
+export type ZipProgress = {
+  current: number;
+  total: number;
+  fileName: string;
+  updatedAt: number;
+};
+
+/** Live "zipping item N of M" state for a product's in-flight package rebuild -- poll while a save/publish request is in flight. Null once nothing's in progress (or nothing has started yet). */
+export async function getZipProgress(productUri: string): Promise<ZipProgress | null> {
+  const res = await fetch(
+    browserApiUrl(
+      `/api/merchant/catalog/products/zip-progress?uri=${encodeURIComponent(productUri)}`,
+    ),
+    { credentials: "include" },
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { progress: ZipProgress | null };
+  return data.progress;
+}
+
 export type CatalogProductAssets = {
   coverImages: Array<{ id: string; objectId: string; url: string }>;
   includedAssets: Array<{
