@@ -836,6 +836,8 @@ export type ZipProgress = {
   current: number;
   total: number;
   fileName: string;
+  /** Epoch ms when this rebuild first reported progress. */
+  startedAt?: number;
   updatedAt: number;
 };
 

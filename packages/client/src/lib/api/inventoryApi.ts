@@ -288,10 +288,16 @@ export async function fetchLatestInventoryPrefill(): Promise<{
 
 const MULTIPART_CHUNK = 8 * 1024 * 1024;
 
-/** Bytes delivered for the current file (`total` = file.size). */
+/**
+ * Bytes delivered for the current file (`total` = file.size).
+ * `finalizing` means every byte is already in object storage; the server is
+ * still hashing the object so we have a checksum/CID. That pass has no
+ * client-side progress and can take a while on multi-GB files.
+ */
 export type InventoryUploadProgressEvent = {
   loaded: number;
   total: number;
+  phase?: "uploading" | "finalizing";
 };
 
 export async function uploadFileToInventoryObject(
@@ -302,9 +308,9 @@ export async function uploadFileToInventoryObject(
 ): Promise<void> {
   const total = file.size;
   if (uploadKind === "single_put") {
-    onProgress?.({ loaded: 0, total });
+    onProgress?.({ loaded: 0, total, phase: "uploading" });
     await uploadInventorySingle(objectId, file);
-    onProgress?.({ loaded: total, total });
+    onProgress?.({ loaded: total, total, phase: "uploading" });
     return;
   }
   await multipartInit(objectId);
@@ -313,7 +319,7 @@ export async function uploadFileToInventoryObject(
   /** Presigned PUT to R2 first (lower latency); switch to API proxy if CORS/network fails. */
   let preferDirectR2 = true;
   let loaded = 0;
-  onProgress?.({ loaded, total });
+  onProgress?.({ loaded, total, phase: "uploading" });
   for (let offset = 0; offset < file.size; offset += MULTIPART_CHUNK) {
     const chunk = file.slice(offset, Math.min(offset + MULTIPART_CHUNK, file.size));
     const buf = await chunk.arrayBuffer();
@@ -329,7 +335,11 @@ export async function uploadFileToInventoryObject(
     parts.push({ partNumber, etag });
     partNumber += 1;
     loaded += buf.byteLength;
-    onProgress?.({ loaded: Math.min(loaded, total), total });
+    onProgress?.({
+      loaded: Math.min(loaded, total),
+      total,
+      phase: "uploading",
+    });
   }
   if (parts.length === 0) throw new Error("empty file");
   const last = file.size % MULTIPART_CHUNK;
@@ -337,6 +347,7 @@ export async function uploadFileToInventoryObject(
     /* R2/S3: all but last part must be ≥5MB except last. Our 8MB chunks satisfy except when
        final chunk is small — allowed as last part. */
   }
+  onProgress?.({ loaded: total, total, phase: "finalizing" });
   await multipartComplete(objectId, parts);
-  onProgress?.({ loaded: total, total });
+  onProgress?.({ loaded: total, total, phase: "finalizing" });
 }

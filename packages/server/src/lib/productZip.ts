@@ -215,14 +215,16 @@ function takeBytes(chunks: Uint8Array[], n: number): Uint8Array {
 }
 
 /**
- * Per-call ceiling on any single R2 operation or stream read. Without this,
- * a stalled network read just hangs forever with nothing to catch and
- * nothing to log -- exactly what happened on staging (a request silently
- * stuck, no crash, no error, until Fly's proxy gave up and dropped the
- * connection). A timeout turns that into a normal, logged, recoverable
- * failure -- rebuildProductZipCache already handles thrown errors by
- * marking packageZipStatus "failed", so this just ensures it can actually
- * get there instead of hanging indefinitely.
+ * Per-call ceiling on a discrete R2 command (multipart create / upload
+ * part / complete) or on one idle gap between GetObject body chunks.
+ * Without this, a stalled network read hangs forever -- staging saw a
+ * request silently stuck until Fly's proxy dropped it.
+ *
+ * This must NOT wrap an entire GetObject (headers + body) in
+ * AbortSignal.timeout: that aborts a healthy multi-GB download after 30s
+ * (`aborted` / ECONNRESET) even though chunks are still flowing. GetObject
+ * send() is timed until headers arrive; each body chunk is timed
+ * separately so a stall still fails and a long file can finish.
  */
 const R2_OP_TIMEOUT_MS = 30_000;
 
@@ -300,11 +302,12 @@ async function streamIntoSink(
       log(`fetching ${index}/${objects.length}: ${obj.fileName}`);
       let got;
       try {
+        // No abortSignal on GetObject: the SDK applies it to the whole
+        // download, not just the header round-trip. A 2.5GB source is a
+        // many-minute read; 30s wall-clock abort is what marked this
+        // package failed with ECONNRESET after ~32 healthy 8MB parts.
         got = await withTimeout(
-          client.send(
-            new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }),
-            { abortSignal: AbortSignal.timeout(R2_OP_TIMEOUT_MS) },
-          ),
+          client.send(new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key })),
           `get object ${obj.fileName}`,
         );
       } catch (e) {

@@ -12,6 +12,8 @@ type ZipProgress = {
   current: number;
   total: number;
   fileName: string;
+  /** First setZipProgress for this URI; preserved across later updates. */
+  startedAt: number;
   updatedAt: number;
 };
 
@@ -19,9 +21,15 @@ const progress = new Map<string, ZipProgress>();
 
 export function setZipProgress(
   productUri: string,
-  p: Omit<ZipProgress, "updatedAt">,
+  p: Omit<ZipProgress, "updatedAt" | "startedAt">,
 ): void {
-  progress.set(productUri, { ...p, updatedAt: Date.now() });
+  const prev = progress.get(productUri);
+  const now = Date.now();
+  progress.set(productUri, {
+    ...p,
+    startedAt: prev?.startedAt ?? now,
+    updatedAt: now,
+  });
 }
 
 export function clearZipProgress(productUri: string): void {

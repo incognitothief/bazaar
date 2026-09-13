@@ -1,9 +1,28 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Package } from "lucide-react";
 import { toast } from "sonner";
 import { useZipActivity } from "@/hooks/useZipActivity";
 import { rebuildCatalogProductZip } from "@/lib/atproto/records";
+
+function formatElapsed(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem ? `${h}h ${rem}m` : `${h}h`;
+}
+
+function formatStartedAt(ts: number): string {
+  return new Date(ts).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
 
 /**
  * Merchant-shell activity for the only background job we have today:
@@ -14,6 +33,14 @@ import { rebuildCatalogProductZip } from "@/lib/atproto/records";
 export function PackageZipActivityBanner() {
   const { jobs, failed } = useZipActivity();
   const [retryingUri, setRetryingUri] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (jobs.length === 0) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [jobs.length]);
 
   if (jobs.length === 0 && failed.length === 0) return null;
 
@@ -35,34 +62,43 @@ export function PackageZipActivityBanner() {
 
   return (
     <div className="mb-3 space-y-2">
-      {jobs.map((job) => (
-        <div
-          key={job.uri}
-          className="flex items-start gap-2.5 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
-        >
-          <Package
-            className="mt-0.5 size-[18px] shrink-0 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="leading-5">
-              Packaging{" "}
-              <Link
-                to={productHref(job.uri)}
-                className="font-medium underline underline-offset-2"
-              >
-                {job.title}
-              </Link>
-              {job.total > 0
-                ? ` — zipping ${job.current}/${job.total}`
-                : null}
-            </p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {job.fileName}
-            </p>
+      {jobs.map((job) => {
+        const startedAt = job.startedAt ?? job.updatedAt;
+        return (
+          <div
+            key={job.uri}
+            className="flex items-start gap-2.5 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
+          >
+            <Package
+              className="mt-0.5 size-[18px] shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="leading-5">
+                Packaging{" "}
+                <Link
+                  to={productHref(job.uri)}
+                  className="font-medium underline underline-offset-2"
+                >
+                  {job.title}
+                </Link>
+                {job.total > 0
+                  ? ` — zipping ${job.current}/${job.total}`
+                  : null}
+              </p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {job.fileName}
+              </p>
+              {startedAt ? (
+                <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                  Started {formatStartedAt(startedAt)} ·{" "}
+                  {formatElapsed(now - startedAt)} elapsed
+                </p>
+              ) : null}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {failed.map((row) => (
         <div
           key={row.uri}

@@ -665,6 +665,7 @@ export function createMerchantRouter(db: Db) {
           current: j.current,
           total: j.total,
           fileName: j.fileName,
+          startedAt: j.startedAt,
           updatedAt: j.updatedAt,
         };
       }).filter((j): j is NonNullable<typeof j> => j != null);
