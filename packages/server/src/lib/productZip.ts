@@ -228,7 +228,10 @@ async function streamProductZipToR2(
   key: string,
   onProgress?: (current: number, total: number, fileName: string) => void,
 ): Promise<{ ok: true } | { error: string; status: 400 | 413 }> {
+  const log = (msg: string) => console.log(`[zip ${key}]`, msg);
+
   const objectIds = resolveProductZipObjectIds(db, product);
+  log(`starting: ${objectIds.length} object(s) to package`);
 
   const created = await withTimeout(
     client.send(
@@ -239,6 +242,7 @@ async function streamProductZipToR2(
   );
   const uploadId = created.UploadId;
   if (!uploadId) throw new Error("multipart_init_failed");
+  log(`multipart upload ${uploadId} created`);
 
   const abort = () =>
     client
@@ -267,6 +271,7 @@ async function streamProductZipToR2(
     );
     if (!out.ETag) throw new Error("multipart_missing_etag");
     parts.push({ PartNumber: partNumber, ETag: out.ETag });
+    log(`uploaded part ${partNumber} (${body.length} bytes)`);
   }
 
   /**
@@ -314,6 +319,7 @@ async function streamProductZipToR2(
         .get();
       if (!obj || obj.status !== "completed") continue;
       onProgress?.(index, objectIds.length, obj.fileName);
+      log(`fetching ${index}/${objectIds.length}: ${obj.fileName}`);
       let got;
       try {
         got = await withTimeout(
@@ -324,46 +330,73 @@ async function streamProductZipToR2(
           `get object ${obj.fileName}`,
         );
       } catch (e) {
-        console.warn("product zip stream: skip object", objectId, e);
+        console.warn(`[zip ${key}] get object failed, skipping`, obj.fileName, e);
         continue;
       }
       if (!got.Body) continue;
+      log(`got response for ${obj.fileName} (contentLength=${got.ContentLength ?? "unknown"}), reading...`);
 
       const nameInZip = uniqueZipEntryName(usedNames, safeZipEntryName(obj.fileName));
       const entry = new ZipDeflate(nameInZip, { level: 6 });
       zip.add(entry);
       sawFile = true;
 
-      const reader = got.Body.transformToWebStream().getReader();
+      // Iterate got.Body directly as the async-iterable stream the SDK
+      // already gives us (a Node Readable under Bun/Node) rather than going
+      // through transformToWebStream().getReader() -- that conversion layer
+      // is the leading suspect for a real staging hang: no crash, no
+      // timeout ever tripped, just a request that silently never finished,
+      // which fits a stream that never resolves `done` rather than any
+      // single slow operation.
+      const iterator = (got.Body as unknown as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
       let tooLarge = false;
-      for (;;) {
-        const { done, value } = await withTimeout(reader.read(), `read ${obj.fileName}`);
-        if (done) break;
-        if (!value?.length) continue;
-        total += value.length;
-        if (total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
-          tooLarge = true;
-          await reader.cancel().catch(() => {});
-          break;
+      let emptyReadsInARow = 0;
+      try {
+        for (;;) {
+          const { done, value } = await withTimeout(iterator.next(), `read ${obj.fileName}`);
+          if (done) break;
+          if (!value?.length) {
+            // Defense in depth: a stream that yields empty chunks forever
+            // without ever signaling done would spin past the size cap
+            // and past any single-read timeout without ever failing --
+            // this bounds that specific failure mode too.
+            emptyReadsInARow += 1;
+            if (emptyReadsInARow > 1000) {
+              throw new Error(`stream for ${obj.fileName} stalled: 1000 consecutive empty reads`);
+            }
+            continue;
+          }
+          emptyReadsInARow = 0;
+          total += value.length;
+          if (total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
+            tooLarge = true;
+            break;
+          }
+          entry.push(value, false);
+          await flushPart(false);
         }
-        entry.push(value, false);
-        await flushPart(false);
+      } finally {
+        await iterator.return?.(undefined).catch(() => {});
       }
       if (tooLarge) {
+        log(`aborting: total exceeded MAX_PRODUCT_ZIP_TOTAL_BYTES at ${obj.fileName}`);
         await abort();
         return { error: "package_too_large", status: 413 };
       }
       entry.push(new Uint8Array(0), true);
       await flushPart(false);
+      log(`finished ${obj.fileName} (${total} bytes read so far)`);
     }
 
     if (!sawFile) {
+      log("no downloadable files found, aborting");
       await abort();
       return { error: "no_downloadable_files", status: 400 };
     }
 
     zip.end();
     await flushPart(true);
+    log(`completing multipart upload: ${parts.length} part(s), ${total} raw bytes read`);
     await withTimeout(
       client.send(
         new CompleteMultipartUploadCommand({
@@ -376,8 +409,10 @@ async function streamProductZipToR2(
       ),
       "multipart complete",
     );
+    log("done");
     return { ok: true };
   } catch (e) {
+    log(`failed: ${e instanceof Error ? e.message : String(e)}`);
     await abort();
     throw e;
   }
@@ -437,6 +472,7 @@ export async function rebuildProductZipCache(
   db: Db,
   product: CatalogProductRow,
 ): Promise<void> {
+  console.log(`rebuildProductZipCache: starting for ${product.uri}`);
   const r2 = r2ConfigFromEnv();
   if (!r2.ok) {
     console.warn("rebuildProductZipCache: R2 not configured, skipping", r2.reason);
