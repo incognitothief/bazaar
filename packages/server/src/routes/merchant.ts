@@ -665,6 +665,8 @@ export function createMerchantRouter(db: Db) {
           current: j.current,
           total: j.total,
           fileName: j.fileName,
+          bytesRead: j.bytesRead,
+          bytesTotal: j.bytesTotal,
           startedAt: j.startedAt,
           updatedAt: j.updatedAt,
         };

@@ -836,6 +836,10 @@ export type ZipProgress = {
   current: number;
   total: number;
   fileName: string;
+  /** Raw source bytes read so far. */
+  bytesRead?: number;
+  /** Sum of known source byteSize; 0/absent if unknown. */
+  bytesTotal?: number;
   /** Epoch ms when this rebuild first reported progress. */
   startedAt?: number;
   updatedAt: number;

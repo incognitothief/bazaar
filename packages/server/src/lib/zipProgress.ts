@@ -12,6 +12,10 @@ type ZipProgress = {
   current: number;
   total: number;
   fileName: string;
+  /** Raw source bytes read so far (not compressed zip output). */
+  bytesRead: number;
+  /** Sum of completed objects' byteSize; 0 if unknown. */
+  bytesTotal: number;
   /** First setZipProgress for this URI; preserved across later updates. */
   startedAt: number;
   updatedAt: number;

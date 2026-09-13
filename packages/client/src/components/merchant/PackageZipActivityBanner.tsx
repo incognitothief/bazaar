@@ -4,6 +4,8 @@ import { Package } from "lucide-react";
 import { toast } from "sonner";
 import { useZipActivity } from "@/hooks/useZipActivity";
 import { rebuildCatalogProductZip } from "@/lib/atproto/records";
+import { Progress } from "@/components/ui/progress";
+import { formatBytes } from "@/lib/utils";
 
 function formatElapsed(ms: number): string {
   const sec = Math.max(0, Math.floor(ms / 1000));
@@ -22,6 +24,32 @@ function formatStartedAt(ts: number): string {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+/** Source-byte estimate; capped at 99 while the job is still in flight. */
+function zipPercent(bytesRead: number | undefined, bytesTotal: number | undefined): number | null {
+  if (bytesTotal == null || bytesTotal <= 0) return null;
+  return Math.min(99, Math.floor((100 * (bytesRead ?? 0)) / bytesTotal));
+}
+
+function TimestampBlock({
+  startedAt,
+  now,
+  stacked,
+  className,
+}: {
+  startedAt: number;
+  now: number;
+  stacked?: boolean;
+  className?: string;
+}) {
+  return (
+    <p className={className}>
+      Started {formatStartedAt(startedAt)}
+      {stacked ? <br /> : " · "}
+      {formatElapsed(now - startedAt)} elapsed
+    </p>
+  );
 }
 
 /**
@@ -64,6 +92,11 @@ export function PackageZipActivityBanner() {
     <div className="mb-3 space-y-2">
       {jobs.map((job) => {
         const startedAt = job.startedAt ?? job.updatedAt;
+        const percent = zipPercent(job.bytesRead, job.bytesTotal);
+        const sizeLabel =
+          job.bytesTotal && job.bytesTotal > 0
+            ? `${formatBytes(job.bytesRead ?? 0)} of ${formatBytes(job.bytesTotal)}`
+            : null;
         return (
           <div
             key={job.uri}
@@ -73,27 +106,43 @@ export function PackageZipActivityBanner() {
               className="mt-0.5 size-[18px] shrink-0 text-muted-foreground"
               aria-hidden="true"
             />
-            <div className="min-w-0 flex-1">
-              <p className="leading-5">
-                Packaging{" "}
-                <Link
-                  to={productHref(job.uri)}
-                  className="font-medium underline underline-offset-2"
-                >
-                  {job.title}
-                </Link>
-                {job.total > 0
-                  ? ` — zipping ${job.current}/${job.total}`
-                  : null}
-              </p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {job.fileName}
-              </p>
-              {startedAt ? (
-                <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                  Started {formatStartedAt(startedAt)} ·{" "}
-                  {formatElapsed(now - startedAt)} elapsed
+            <div className="flex min-w-0 flex-1 items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="leading-5">
+                  Packaging{" "}
+                  <Link
+                    to={productHref(job.uri)}
+                    className="font-medium underline underline-offset-2"
+                  >
+                    {job.title}
+                  </Link>
+                  {job.total > 0
+                    ? ` — zipping ${job.current}/${job.total}`
+                    : null}
+                  {percent != null ? ` · ${percent}%` : null}
                 </p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {job.fileName}
+                  {sizeLabel ? ` · ${sizeLabel}` : ""}
+                </p>
+                {percent != null ? (
+                  <Progress value={percent} className="mt-1.5 w-full" />
+                ) : null}
+                {startedAt ? (
+                  <TimestampBlock
+                    startedAt={startedAt}
+                    now={now}
+                    className="mt-0.5 text-xs text-muted-foreground tabular-nums sm:hidden"
+                  />
+                ) : null}
+              </div>
+              {startedAt ? (
+                <TimestampBlock
+                  startedAt={startedAt}
+                  now={now}
+                  stacked
+                  className="hidden shrink-0 text-right text-xs text-muted-foreground tabular-nums sm:block"
+                />
               ) : null}
             </div>
           </div>

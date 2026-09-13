@@ -14,6 +14,7 @@ import { getR2S3Client } from "./r2/s3Client";
 import { newProductPackageZipKey } from "./r2/inventoryKey";
 import { r2ConfigFromEnv } from "./r2/env";
 import { clearZipProgress, setZipProgress } from "./zipProgress";
+import { ensureZipAutostopHold, releaseZipAutostopHold } from "./flyZipAutostopHold";
 
 export const MAX_PRODUCT_ZIP_TOTAL_BYTES = 50 * 1024 * 1024 * 1024;
 /** R2/S3 requires every multipart part except the last to be >= 5MiB; this gives headroom. */
@@ -26,11 +27,12 @@ const MULTIPART_PART_SIZE = 8 * 1024 * 1024;
  * rebuild can take long enough to trip a proxy/tunnel timeout well before
  * it's actually done, which then reads as a false failure to the merchant
  * and invites a retry that collides with the still-in-flight original (see
- * the ticket's staging incident). But a background promise is invisible to
- * Fly's scale-to-zero, which tracks HTTP connections, not our in-process
- * work -- once the response is sent it can decide the machine is idle and
- * signal it to stop mid-rebuild. Tracking in-flight rebuilds here lets
- * index.ts's shutdown handler wait for them first.
+ * the ticket's staging incident). Fly Proxy autostop only counts inbound
+ * edge connections, so a background promise looks like an idle machine
+ * (staging: SIGINT mid-zip, then SIGKILL ~5s later). ensureZipAutostopHold
+ * keeps a proxy-visible SSE open for the duration. Tracking in-flight
+ * rebuilds here also lets index.ts wait on SIGINT/SIGTERM (deploys), which
+ * is a 5s default kill_timeout and cannot finish a multi-GB zip on its own.
  */
 const inFlightRebuilds = new Set<Promise<void>>();
 
@@ -259,6 +261,14 @@ type ZipSink = {
  * the R2 sink only (null byteSize on a completed object, or a lie); HTTP
  * cannot change the status code once the body has started.
  */
+type ZipBuildProgress = {
+  current: number;
+  total: number;
+  fileName: string;
+  bytesRead: number;
+  bytesTotal: number;
+};
+
 async function streamIntoSink(
   client: ReturnType<typeof getR2S3Client>,
   r2: R2Config,
@@ -266,12 +276,26 @@ async function streamIntoSink(
   sink: ZipSink,
   opts: {
     abortOnOverCap: boolean;
-    onProgress?: (current: number, total: number, fileName: string) => void;
+    onProgress?: (p: ZipBuildProgress) => void;
     log: (msg: string) => void;
   },
 ): Promise<{ ok: true } | { error: string; status: 400 | 413 }> {
   const { abortOnOverCap, onProgress, log } = opts;
   const pending: Uint8Array[] = [];
+  const bytesTotal = objects
+    .filter((o) => o.status === "completed")
+    .reduce((n, o) => n + (o.byteSize ?? 0), 0);
+  let lastProgressAt = 0;
+
+  function report(
+    p: Omit<ZipBuildProgress, "bytesRead" | "bytesTotal"> & { bytesRead: number },
+    force: boolean,
+  ): void {
+    const now = Date.now();
+    if (!force && now - lastProgressAt < 250) return;
+    lastProgressAt = now;
+    onProgress?.({ ...p, bytesTotal });
+  }
 
   async function drain(): Promise<void> {
     while (pending.length) {
@@ -298,7 +322,10 @@ async function streamIntoSink(
     for (const obj of objects) {
       index += 1;
       if (obj.status !== "completed") continue;
-      onProgress?.(index, objects.length, obj.fileName);
+      report(
+        { current: index, total: objects.length, fileName: obj.fileName, bytesRead: total },
+        true,
+      );
       log(`fetching ${index}/${objects.length}: ${obj.fileName}`);
       let got;
       try {
@@ -355,6 +382,10 @@ async function streamIntoSink(
           }
           entry.push(value, false);
           await drain();
+          report(
+            { current: index, total: objects.length, fileName: obj.fileName, bytesRead: total },
+            false,
+          );
         }
       } finally {
         await iterator.return?.(undefined).catch(() => {});
@@ -366,6 +397,10 @@ async function streamIntoSink(
       }
       entry.push(new Uint8Array(0), true);
       await drain();
+      report(
+        { current: index, total: objects.length, fileName: obj.fileName, bytesRead: total },
+        true,
+      );
       log(`finished ${obj.fileName} (${total} bytes read so far)`);
     }
 
@@ -524,7 +559,7 @@ async function streamProductZipToR2(
   client: ReturnType<typeof getR2S3Client>,
   product: CatalogProductRow,
   key: string,
-  onProgress?: (current: number, total: number, fileName: string) => void,
+  onProgress?: (p: ZipBuildProgress) => void,
 ): Promise<{ ok: true } | { error: string; status: 400 | 413 }> {
   const log = (msg: string) => console.log(`[zip ${key}]`, msg);
   const objects = loadZipSourceObjects(db, product);
@@ -616,10 +651,12 @@ export async function rebuildProductZipCache(
 ): Promise<void> {
   const p = runRebuildProductZipCache(db, product);
   inFlightRebuilds.add(p);
+  ensureZipAutostopHold();
   try {
     await p;
   } finally {
     inFlightRebuilds.delete(p);
+    if (inFlightRebuilds.size === 0) releaseZipAutostopHold();
   }
 }
 
@@ -641,9 +678,15 @@ async function runRebuildProductZipCache(
       .update(catalogProducts)
       .set({ packageZipRebuildStartedAt: new Date() })
       .where(eq(catalogProducts.uri, product.uri));
-    setZipProgress(product.uri, { current: 0, total: 1, fileName: "Preparing package…" });
-    const result = await streamProductZipToR2(db, r2, client, product, key, (current, total, fileName) =>
-      setZipProgress(product.uri, { current, total, fileName }),
+    setZipProgress(product.uri, {
+      current: 0,
+      total: 1,
+      fileName: "Preparing package…",
+      bytesRead: 0,
+      bytesTotal: 0,
+    });
+    const result = await streamProductZipToR2(db, r2, client, product, key, (p) =>
+      setZipProgress(product.uri, p),
     );
     if ("error" in result) {
       console.warn("rebuildProductZipCache: assembly failed", product.uri, result.error);
