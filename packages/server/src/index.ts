@@ -15,6 +15,7 @@ import {
   sweepPaymentFulfillment,
 } from "./lib/stripe/fulfillCheckoutSession";
 import { getStripe } from "./lib/stripe/getStripe";
+import { waitForInFlightZipRebuilds } from "./lib/productZip";
 import { lexicons } from "@bazaar/shared";
 import { ns } from "./routes/ns";
 import { wellKnown } from "./routes/wellKnown";
@@ -181,3 +182,23 @@ Bun.serve({
   fetch: app.fetch,
 });
 console.log(`Listening on :${port}`);
+
+/**
+ * Product zip rebuilds now run in the background after their triggering
+ * request already responded (see productZip.ts's rebuildProductZipCache*).
+ * Fly's scale-to-zero (and a plain redeploy) only track HTTP connections,
+ * not that in-process work, so a stop/restart signal could otherwise land
+ * mid-rebuild -- wait for any in-flight ones (bounded, so a stuck rebuild
+ * can't block shutdown forever) before actually exiting.
+ */
+let shuttingDown = false;
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received, waiting for in-flight zip rebuilds before exit...`);
+  await waitForInFlightZipRebuilds(25_000);
+  console.log("shutdown: proceeding");
+  process.exit(0);
+}
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));

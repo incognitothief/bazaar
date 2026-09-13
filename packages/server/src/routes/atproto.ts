@@ -417,7 +417,7 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       await captureCatalogItem(db, did, body.record, res.data.uri, res.data.cid);
     } else if (body.collection === CATALOG_PRODUCT_COLLECTION) {
       await captureCatalogProduct(db, did, body.record, res.data.uri, res.data.cid);
-      await rebuildProductZipCacheByUri(db, res.data.uri);
+      void rebuildProductZipCacheByUri(db, res.data.uri);
     }
     return c.json({ uri: res.data.uri, cid: res.data.cid });
   });
@@ -445,7 +445,7 @@ export function createAtprotoRouter(db: Db, oauthClient: OAuthClient) {
       await captureCatalogItem(db, did, body.record, res.data.uri, res.data.cid);
     } else if (body.collection === CATALOG_PRODUCT_COLLECTION) {
       await captureCatalogProduct(db, did, body.record, res.data.uri, res.data.cid);
-      await rebuildProductZipCacheByUri(db, res.data.uri);
+      void rebuildProductZipCacheByUri(db, res.data.uri);
     }
     return c.json({ ok: true, uri: res.data.uri, cid: res.data.cid });
   });

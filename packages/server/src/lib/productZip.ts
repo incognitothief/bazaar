@@ -20,6 +20,31 @@ const MAX_PRODUCT_ZIP_TOTAL_BYTES = 250 * 1024 * 1024;
 const MULTIPART_PART_SIZE = 8 * 1024 * 1024;
 
 /**
+ * Rebuilds now run in the background after a write-path route returns its
+ * response (see rebuildProductZipCacheByUri call sites) rather than
+ * blocking the request on the full rebuild -- a real multi-file product's
+ * rebuild can take long enough to trip a proxy/tunnel timeout well before
+ * it's actually done, which then reads as a false failure to the merchant
+ * and invites a retry that collides with the still-in-flight original (see
+ * the ticket's staging incident). But a background promise is invisible to
+ * Fly's scale-to-zero, which tracks HTTP connections, not our in-process
+ * work -- once the response is sent it can decide the machine is idle and
+ * signal it to stop mid-rebuild. Tracking in-flight rebuilds here lets
+ * index.ts's shutdown handler wait for them first.
+ */
+const inFlightRebuilds = new Set<Promise<void>>();
+
+/** For index.ts's SIGINT/SIGTERM handler: waits (up to timeoutMs) for any rebuilds still running so a scale-to-zero stop or deploy doesn't cut one off mid-flight. */
+export async function waitForInFlightZipRebuilds(timeoutMs: number): Promise<void> {
+  if (inFlightRebuilds.size === 0) return;
+  console.log(`waitForInFlightZipRebuilds: waiting on ${inFlightRebuilds.size} in-flight rebuild(s)`);
+  await Promise.race([
+    Promise.allSettled([...inFlightRebuilds]),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
+}
+
+/**
  * Only fixes characters that would actually break a zip entry / filesystem
  * path ("/" and "\" would create unintended subfolders, control characters
  * aren't valid in most filesystems) -- everything else in the original
@@ -469,6 +494,19 @@ export async function buildProductZip(
  * than ever serving stale or wrong bytes.
  */
 export async function rebuildProductZipCache(
+  db: Db,
+  product: CatalogProductRow,
+): Promise<void> {
+  const p = runRebuildProductZipCache(db, product);
+  inFlightRebuilds.add(p);
+  try {
+    await p;
+  } finally {
+    inFlightRebuilds.delete(p);
+  }
+}
+
+async function runRebuildProductZipCache(
   db: Db,
   product: CatalogProductRow,
 ): Promise<void> {
