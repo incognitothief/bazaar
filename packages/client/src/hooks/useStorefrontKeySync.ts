@@ -6,7 +6,7 @@ import { useMerchantAgent } from "./useMerchantAgent";
 
 type ExpectedEntry = { rkey: string; record: Record<string, unknown> };
 
-export type MerchantKeySyncStatus = {
+export type StorefrontKeySyncStatus = {
   /** true = PDS mirror matches; false = drift; null = not checkable. */
   inSync: boolean | null;
   /** rkeys (= kids) whose mirror record must be (re)written. */
@@ -18,19 +18,19 @@ export type MerchantKeySyncStatus = {
   checkedAt?: string;
   error?: string;
   status?: string;
-  /** Exact `actor.merchantKeys` record values the client should `putRecord`. */
+  /** Exact `actor.storefrontKeys` record values the client should `putRecord`. */
   expected: ExpectedEntry[];
 };
 
 /**
  * Storefront key mirror status for the merchant panel: is the merchant's
- * `actor.merchantKeys` collection in step with the storefront's current key
- * history? `sync()` writes/deletes records to bring it back in step. See ADR 0014.
+ * `actor.storefrontKeys` collection in step with the storefront's current key
+ * history? `sync()` writes/deletes records to bring it back in step. See ADR 0014 / 0015.
  */
-export function useMerchantKeySync() {
+export function useStorefrontKeySync() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
-  const [status, setStatus] = useState<MerchantKeySyncStatus | null>(null);
+  const [status, setStatus] = useState<StorefrontKeySyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export function useMerchantKeySync() {
       credentials: "include",
     });
     if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
-    return (await res.json()) as MerchantKeySyncStatus;
+    return (await res.json()) as StorefrontKeySyncStatus;
   }, []);
 
   const refetch = useCallback(async () => {
@@ -66,7 +66,7 @@ export function useMerchantKeySync() {
     setError(null);
     try {
       const repo = session.did;
-      const collection = BAZAAR_COLLECTION.actorMerchantKeys;
+      const collection = BAZAAR_COLLECTION.actorStorefrontKeys;
       for (const e of status.expected) {
         await agent.com.atproto.repo.putRecord({
           repo,

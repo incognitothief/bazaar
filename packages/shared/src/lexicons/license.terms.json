@@ -26,7 +26,7 @@
           "licenseText": {
             "type": "string",
             "maxLength": 20000,
-            "description": "The full license/contract text, authored by the merchant. This is the single source of truth for what the buyer agreed to — it is what gets hashed and anchored via licenseGrantCid on catalog.listing and purchase.consent. Nothing downstream interprets its contents structurally; any terms the merchant needs to convey (usage restrictions, territory, term length, attribution, etc.) belong in this text."
+            "description": "The full license/contract text, authored by the merchant. This is the single source of truth for what the buyer agreed to — it is what gets hashed and anchored via licenseGrantCid on catalog.listing and purchase.receipt. Nothing downstream interprets its contents structurally; any terms the merchant needs to convey (usage restrictions, territory, term length, attribution, etc.) belong in this text."
           },
           "checkoutConsentRequired": {
             "type": "boolean",

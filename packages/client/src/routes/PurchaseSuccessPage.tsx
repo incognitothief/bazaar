@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 
 type PdsFulfillment = {
   receiptUri: string | null;
-  consentUri: string | null;
   receiptCid?: string | null;
 };
 
@@ -85,7 +84,7 @@ export function PurchaseSuccessPage() {
             );
             setFulfillNote(
               parts.length
-                ? `We couldn't finish writing your receipt and license consent to your PDS yet. If you were charged, wait a moment and refresh, or open My purchases. (${parts.join(": ")})`
+                ? `We couldn't finish writing your receipt to your PDS yet. If you were charged, wait a moment and refresh, or open My purchases. (${parts.join(": ")})`
                 : `We couldn't finish writing to your PDS yet (something went wrong on our side). If you were charged, try refreshing in a minute; records usually land shortly after payment.`,
             );
             return;
@@ -93,14 +92,14 @@ export function PurchaseSuccessPage() {
           const okBody = (await fr.json().catch(() => null)) as {
             pds?: PdsFulfillment;
           } | null;
-          if (okBody?.pds?.receiptUri || okBody?.pds?.consentUri) {
+          if (okBody?.pds?.receiptUri) {
             setPds(okBody.pds);
           }
           setFulfillNote(null);
           return;
         }
         setFulfillNote(
-          "We're still writing your receipt and license consent to your PDS. Refresh in a minute or open My purchases; they should appear in your repo soon.",
+          "We're still writing your receipt to your PDS. Refresh in a minute or open My purchases; it should appear in your repo soon.",
         );
       } catch {
         /* ignore */
@@ -133,29 +132,21 @@ export function PurchaseSuccessPage() {
         <span className="text-foreground/90">your PDS</span>. You can view your
         records below.
       </p>
-      {pds?.receiptUri || pds?.consentUri ? (
+      {pds?.receiptUri ? (
         <div className="rounded-lg border bg-card px-4 py-3 text-left space-y-3">
           <p className="text-sm font-medium text-foreground">
             Your purchase records
           </p>
-          {pds.receiptUri ? (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Purchase receipt</p>
-              <PdslsAtUriLink uri={pds.receiptUri} />
-              {pds.receiptCid ? (
-                <p className="text-[11px] text-muted-foreground">
-                  CID{" "}
-                  <span className="font-mono break-all">{pds.receiptCid}</span>
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-          {pds.consentUri ? (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">License consent</p>
-              <PdslsAtUriLink uri={pds.consentUri} />
-            </div>
-          ) : null}
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Purchase receipt</p>
+            <PdslsAtUriLink uri={pds.receiptUri} />
+            {pds.receiptCid ? (
+              <p className="text-[11px] text-muted-foreground">
+                CID{" "}
+                <span className="font-mono break-all">{pds.receiptCid}</span>
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
       {fulfillNote ? (

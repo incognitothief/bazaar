@@ -4,7 +4,7 @@ primary_region = "iad"
 
 [build]
 
-# Same as prod: set ARTIST_DID (and other server secrets) on this app via fly secrets set.
+# Same as prod: set MERCHANT_DID (and other server secrets) on this app via fly secrets set.
 [env]
   PORT = "3000"
 

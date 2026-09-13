@@ -8,9 +8,9 @@ import { catalogItems, catalogProducts, inventoryUploadObject } from "../db/sche
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { getSessionAgent } from "../lib/atproto/session";
-import { appMerchantPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
+import { storefrontPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
 import { entitlementDigest } from "../lib/atproto/entitlement";
-import { candidatePemsForKid, getMerchantKeys } from "../lib/merchantKeys";
+import { candidatePemsForKid, getStorefrontKeys } from "../lib/storefrontKeys";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import { isS3NoSuchKey } from "../lib/r2/diagnostics";
 import {
@@ -37,24 +37,23 @@ type ItemRef = {
 };
 
 type PurchaseReceipt = {
-  item: ItemRef;
-  listingUri: string;
-  listingCid: string;
-  buyerDid?: string;
-  paymentRef: string;
+  purchasedGood: ItemRef;
+  listing: ItemRef;
+  licenseGrant?: ItemRef;
+  payment?: { processor: string; ref: string };
   purchasedAt: string;
-  appSig: string;
-  /** Hint for selecting the storefront key that produced `appSig` (ADR 0013). */
+  storefrontSig: string;
+  /** Hint for selecting the storefront key that produced `storefrontSig` (ADR 0013). */
   kid?: string;
   /**
-   * Frozen entitlement: the catalog.item URIs this purchase covers, captured
+   * Frozen entitlement: the catalog.item refs this purchase covers, captured
    * at checkout. Present on current receipts; absent on legacy ones, which
    * fall back to live product/collection membership.
    */
-  grantedItems?: string[];
+  grantedItems?: ItemRef[];
 };
 
-function frozenGrant(rec: PurchaseReceipt): string[] | null {
+function frozenGrant(rec: PurchaseReceipt): ItemRef[] | null {
   return Array.isArray(rec.grantedItems) && rec.grantedItems.length > 0
     ? rec.grantedItems
     : null;
@@ -63,9 +62,9 @@ function frozenGrant(rec: PurchaseReceipt): string[] | null {
 /** itemRef no longer carries a stored type field (removed as redundant with the URI itself); the AT-URI's own collection segment is the only source of truth. */
 
 /** True when at least one storefront verification key is configured (env or key history). */
-function merchantVerifyKeysAvailable(): boolean {
+function storefrontVerifyKeysAvailable(): boolean {
   return (
-    getMerchantKeys().byKid.size > 0 || appMerchantPublicKeyPemFromEnv() !== null
+    getStorefrontKeys().byKid.size > 0 || storefrontPublicKeyPemFromEnv() !== null
   );
 }
 
@@ -150,7 +149,7 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    if (!merchantVerifyKeysAvailable())
+    if (!storefrontVerifyKeysAvailable())
       return c.json({ error: "app_key_missing" }, 503);
 
     let entitled = false;
@@ -159,13 +158,13 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
     for (const row of list.data.records) {
       try {
         const rec = row.value as PurchaseReceipt;
-        if (!rec?.item?.uri) continue;
+        if (!rec?.purchasedGood?.uri) continue;
 
         // Current receipts: entitlement is exactly the frozen grant. A later
         // edit to the product's items[] cannot add or remove access.
         const grant = frozenGrant(rec);
         if (grant) {
-          if (!grant.includes(itemUriRaw)) continue;
+          if (!grant.some((g) => g.uri === itemUriRaw)) continue;
           if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
           entitled = true;
           receipt = rec;
@@ -173,16 +172,16 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
         }
 
         // Legacy receipts (no grantedItems): resolve against live membership.
-        if (rec.item.uri === itemUriRaw) {
+        if (rec.purchasedGood.uri === itemUriRaw) {
           if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
           entitled = true;
           receipt = rec;
           break;
         }
-        if (receiptItemIsCollection(rec.item.uri)) {
+        if (receiptItemIsCollection(rec.purchasedGood.uri)) {
           if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
           const ok = await collectionContainsDigitalMember(
-            rec.item.uri,
+            rec.purchasedGood.uri,
             itemUriRaw,
           );
           if (ok) {
@@ -191,9 +190,9 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
             break;
           }
         }
-        if (isCatalogItem && receiptItemIsProduct(rec.item.uri)) {
+        if (isCatalogItem && receiptItemIsProduct(rec.purchasedGood.uri)) {
           if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-          if (productContainsItem(db, rec.item.uri, itemUriRaw)) {
+          if (productContainsItem(db, rec.purchasedGood.uri, itemUriRaw)) {
             entitled = true;
             receipt = rec;
             break;
@@ -320,16 +319,16 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    if (!merchantVerifyKeysAvailable())
+    if (!storefrontVerifyKeysAvailable())
       return c.json({ error: "app_key_missing" }, 503);
 
     let entitled = false;
     for (const row of list.data.records) {
       try {
         const rec = row.value as PurchaseReceipt;
-        if (!rec?.item?.uri) continue;
-        if (!receiptItemIsCollection(rec.item.uri)) continue;
-        if (rec.item.uri !== collectionUriRaw) continue;
+        if (!rec?.purchasedGood?.uri) continue;
+        if (!receiptItemIsCollection(rec.purchasedGood.uri)) continue;
+        if (rec.purchasedGood.uri !== collectionUriRaw) continue;
         if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
         entitled = true;
         break;
@@ -378,16 +377,16 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       limit: 100,
     });
 
-    if (!merchantVerifyKeysAvailable())
+    if (!storefrontVerifyKeysAvailable())
       return c.json({ error: "app_key_missing" }, 503);
 
     let entitledReceipt: PurchaseReceipt | null = null;
     for (const row of list.data.records) {
       try {
         const rec = row.value as PurchaseReceipt;
-        if (!rec?.item?.uri) continue;
-        if (!receiptItemIsProduct(rec.item.uri)) continue;
-        if (rec.item.uri !== productUriRaw) continue;
+        if (!rec?.purchasedGood?.uri) continue;
+        if (!receiptItemIsProduct(rec.purchasedGood.uri)) continue;
+        if (rec.purchasedGood.uri !== productUriRaw) continue;
         if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
         entitledReceipt = rec;
         break;
@@ -412,7 +411,7 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       db,
       cfg,
       product,
-      grant ?? undefined,
+      grant?.map((g) => g.uri),
     );
     if (result instanceof Response) return result;
     return c.json({ error: result.error }, result.status);
@@ -422,25 +421,25 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
 }
 
 /**
- * appSig covers `rec.item.uri` (the purchased listing item), not an individual track URI.
+ * storefrontSig covers `rec.purchasedGood.uri` (the purchased listing item), not an individual
+ * track URI. buyerDid is not a stored field -- the receipt lives in `sessionDid`'s own
+ * repo (this is only ever called on rows from `sess.did`'s own listRecords), so that IS
+ * the buyer, and it's what gets fed into the signed payload for reconstruction.
  *
  * Key selection (ADR 0013): if `rec.kid` names a revoked storefront key, reject outright.
  * Otherwise try the hinted key first, then every other non-revoked key (current + active +
  * retired). Falls back to the env-derived current key when no key set is configured.
  */
 function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolean {
-  const buyerDid = rec.buyerDid ?? sessionDid;
-  if (buyerDid !== sessionDid) return false;
-
-  const { revoked, pems } = candidatePemsForKid(getMerchantKeys(), rec.kid);
+  const { revoked, pems } = candidatePemsForKid(getStorefrontKeys(), rec.kid);
   if (revoked) return false;
 
   const candidates =
     pems.length > 0
       ? pems
-      : [appMerchantPublicKeyPemFromEnv()].filter((p): p is string => !!p);
+      : [storefrontPublicKeyPemFromEnv()].filter((p): p is string => !!p);
 
-  // Current receipts fold the grantedItems digest into appSig as a sixth
+  // Current receipts fold the grantedItems digest into storefrontSig as a sixth
   // payload field; legacy receipts sign only the five-field payload.
   const grant = frozenGrant(rec);
   const digest = grant ? entitlementDigest(grant) : undefined;
@@ -448,12 +447,13 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
   return candidates.some((publicKeyPem) =>
     verifyReceiptPayload({
       purchasedAt: rec.purchasedAt,
-      paymentRef: rec.paymentRef,
-      itemUri: rec.item.uri,
-      listingCid: rec.listingCid,
-      buyerDid,
+      paymentRef: rec.payment?.ref ?? "",
+      itemUri: rec.purchasedGood.uri,
+      listingCid: rec.listing.cid ?? "",
+      buyerDid: sessionDid,
+      licenseGrantCid: rec.licenseGrant?.cid,
       entitlementDigest: digest,
-      appSig: rec.appSig,
+      storefrontSig: rec.storefrontSig,
       publicKeyPem,
     }),
   );

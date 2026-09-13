@@ -22,6 +22,7 @@ import {
   type ListingRow,
 } from "@/lib/atproto/records";
 import { createBrowserApiURL, triggerFileDownload } from "@/lib/browserApi";
+import { inventoryHttpErrorMessage } from "@/lib/api/inventoryApi";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
@@ -37,7 +38,7 @@ import {
   isDummyStorefrontItem,
   resolveDummyItemAtUri,
 } from "@/lib/devCatalogDummy";
-import { resolveStorefrontArtistDid } from "@/lib/atUri";
+import { resolveListingMerchantDid } from "@/lib/atUri";
 import {
   catalogItemRkey,
   isLegacyItemPathSegment,
@@ -72,7 +73,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn, formatBytes } from "@/lib/utils";
 import {
   catalogItemArtworkCid,
-  catalogItemSellerDid,
+  catalogItemMerchantDid,
   type ActorMerchant,
   type BazaarItem,
   type CatalogItem,
@@ -149,7 +150,7 @@ export function ItemDetailPage() {
   /** `?from=<rkey>` set on member links from a product/collection page -- the
    * back button then returns there instead of doing a plain history pop. */
   const fromRkey = searchParams.get("from")?.trim() || null;
-  const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
+  const merchantDidEnv = import.meta.env.VITE_MERCHANT_DID?.trim() ?? "";
   const legacySegment = !!rkeyParam && isLegacyItemPathSegment(rkeyParam);
 
   const agent = useMemo(() => createPublicAgent(), []);
@@ -223,16 +224,16 @@ export function ItemDetailPage() {
     setRkeyResolved(false);
     let cancelled = false;
     void (async () => {
-      if (!storefrontDid.startsWith("did:")) {
+      if (!merchantDidEnv.startsWith("did:")) {
         if (!cancelled) {
           setResolvedItemUri(null);
           setRkeyResolved(true);
         }
         return;
       }
-      let uri = await resolveCatalogItemUriFromRkey(storefrontDid, rkeyParam);
+      let uri = await resolveCatalogItemUriFromRkey(merchantDidEnv, rkeyParam);
       if (!uri && catalogDummyEnabled() && rkeyParam === DUMMY_ITEM_RKEY) {
-        uri = resolveDummyItemAtUri(storefrontDid);
+        uri = resolveDummyItemAtUri(merchantDidEnv);
       }
       if (!cancelled) {
         setResolvedItemUri(uri);
@@ -242,22 +243,22 @@ export function ItemDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [rkeyParam, storefrontDid, legacySegment]);
+  }, [rkeyParam, merchantDidEnv, legacySegment]);
 
   const itemUri = legacySegment ? "" : (resolvedItemUri ?? "");
-  const artistDid = resolveStorefrontArtistDid(itemUri);
+  const merchantDid = resolveListingMerchantDid(itemUri);
 
   useEffect(() => {
     if (!itemUri) {
       setLoading(false);
       return;
     }
-    if (!artistDid.startsWith("did:")) {
+    if (!merchantDid.startsWith("did:")) {
       setLoading(false);
       return;
     }
     const dummyTarget =
-      catalogDummyEnabled() && isDummyStorefrontItem(itemUri, artistDid);
+      catalogDummyEnabled() && isDummyStorefrontItem(itemUri, merchantDid);
     let cancelled = false;
     void (async () => {
       setLoading(true);
@@ -265,11 +266,11 @@ export function ItemDetailPage() {
         let v = await getRecordValue<CatalogItem>(itemUri);
         if (cancelled) return;
         if (!v && dummyTarget) {
-          v = buildDummyDigitalItem(itemUri, artistDid);
+          v = buildDummyDigitalItem(itemUri, merchantDid);
         }
         setItem(v ?? null);
 
-        const rows = await listListingRows(artistDid);
+        const rows = await listListingRows(merchantDid);
         if (cancelled) return;
         setAllArtistListings(rows);
         const row = rows.find((r) => r.listing.item.uri === itemUri);
@@ -294,8 +295,8 @@ export function ItemDetailPage() {
             setOwnsCollection(
               receipts.some(
                 (r) =>
-                  r.receipt.item.uri === itemUri &&
-                  new AtUri(r.receipt.item.uri).collection ===
+                  r.receipt.purchasedGood?.uri === itemUri &&
+                  new AtUri(r.receipt.purchasedGood.uri).collection ===
                     BAZAAR_COLLECTION.collection,
               ),
             );
@@ -314,7 +315,9 @@ export function ItemDetailPage() {
         ) {
           const receipts = await listPurchaseReceiptRows(session.did);
           if (!cancelled) {
-            setOwnsItem(receipts.some((r) => r.receipt.item.uri === itemUri));
+            setOwnsItem(
+              receipts.some((r) => r.receipt.purchasedGood?.uri === itemUri),
+            );
           }
         } else if (!cancelled) {
           setOwnsItem(false);
@@ -323,13 +326,15 @@ export function ItemDetailPage() {
         if (v && "$type" in v && v.$type === BAZAAR_COLLECTION.product) {
           if (buyerAgent && session?.did) {
             const receipts = await listPurchaseReceiptRows(session.did);
-            const mine = receipts.find((r) => r.receipt.item.uri === itemUri);
+            const mine = receipts.find(
+              (r) => r.receipt.purchasedGood?.uri === itemUri,
+            );
             if (!cancelled) {
               setOwnsProduct(!!mine);
               setProductGrant(
                 Array.isArray(mine?.receipt.grantedItems) &&
                   mine.receipt.grantedItems.length > 0
-                  ? mine.receipt.grantedItems
+                  ? mine.receipt.grantedItems.map((g) => g.uri)
                   : null,
               );
             }
@@ -398,7 +403,7 @@ export function ItemDetailPage() {
           setSingleFileMeta(null);
         }
 
-        let licUri = listingRow?.licenseUri;
+        let licUri = listingRow?.licenseGrant?.uri;
         if (
           !licUri &&
           v &&
@@ -418,6 +423,11 @@ export function ItemDetailPage() {
           setLicense(dummyTarget ? buildDummyLicenseTerms() : null);
           setLicenseCid(null);
         }
+      } catch (e) {
+        if (!cancelled) {
+          console.error("ItemDetailPage: failed to load item data", e);
+          toast.error("Failed to load this item");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -425,14 +435,16 @@ export function ItemDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [itemUri, artistDid, buyerAgent, session?.did]);
+  }, [itemUri, merchantDid, buyerAgent, session?.did]);
 
   useEffect(() => {
     setRelayAvatarBroken(false);
   }, [relayAvatarUrl]);
 
   useEffect(() => {
-    const authorDid = (item ? catalogItemSellerDid(item) : undefined)?.trim();
+    const authorDid = (
+      item ? catalogItemMerchantDid(item, itemUri) : undefined
+    )?.trim();
     if (!authorDid?.startsWith("did:")) {
       setRelayAvatarUrl(null);
       setAuthorDisplayName(null);
@@ -513,7 +525,7 @@ export function ItemDetailPage() {
         return null;
       });
     };
-  }, [agent, item ? catalogItemSellerDid(item) : undefined]);
+  }, [agent, item ? catalogItemMerchantDid(item, itemUri) : undefined]);
 
   const isCollection =
     item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
@@ -598,10 +610,10 @@ export function ItemDetailPage() {
     return <p className="text-muted-foreground">Invalid item link.</p>;
   }
 
-  if (!artistDid.startsWith("did:")) {
+  if (!merchantDid.startsWith("did:")) {
     return (
       <p className="text-muted-foreground">
-        Set <code className="text-xs">VITE_ARTIST_DID</code> in{" "}
+        Set <code className="text-xs">VITE_MERCHANT_DID</code> in{" "}
         <code className="text-xs">packages/client/.env</code> to load catalog
         items. Item URLs use the record TID, e.g.{" "}
         <code className="text-xs">/item/3jui7kd5z2f2x</code>.
@@ -630,7 +642,7 @@ export function ItemDetailPage() {
   const collectionTrackCount = isCollection
     ? item.items.filter((i) => i.role === "track").length
     : 0;
-  const authorDid = catalogItemSellerDid(item);
+  const authorDid = catalogItemMerchantDid(item, itemUri);
   const authorInitial =
     authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
 
@@ -657,8 +669,7 @@ export function ItemDetailPage() {
       url.searchParams.set("itemUri", targetUri);
       const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || res.statusText);
+        throw new Error(await inventoryHttpErrorMessage(res));
       }
       const { url: signed, filename } = (await res.json()) as {
         url: string;
@@ -683,8 +694,7 @@ export function ItemDetailPage() {
       url.searchParams.set("collectionUri", itemUri);
       const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || res.statusText);
+        throw new Error(await inventoryHttpErrorMessage(res));
       }
       const blob = await res.blob();
       const dispo = res.headers.get("Content-Disposition");
@@ -713,8 +723,7 @@ export function ItemDetailPage() {
       url.searchParams.set("productUri", itemUri);
       const res = await fetch(url.href, { credentials: "include" });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || res.statusText);
+        throw new Error(await inventoryHttpErrorMessage(res));
       }
       const blob = await res.blob();
       const dispo = res.headers.get("Content-Disposition");
@@ -734,10 +743,10 @@ export function ItemDetailPage() {
 
   const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
 
-  const blobDid = isDigital ? item.artistDid : (artistDid ?? "");
+  const blobDid = isDigital ? item.artistDid : (merchantDid ?? "");
 
   const showDummyBanner =
-    catalogDummyEnabled() && isDummyStorefrontItem(itemUri, artistDid);
+    catalogDummyEnabled() && isDummyStorefrontItem(itemUri, merchantDid);
 
   const pageRkey = catalogItemRkey(itemUri);
   const canonicalRel = itemPathPretty(pageRkey, item.title);

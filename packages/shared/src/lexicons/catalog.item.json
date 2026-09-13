@@ -7,9 +7,9 @@
       "key": "tid",
       "record": {
         "type": "object",
+        "description": "No merchantDid field: the record's own repo (at://did/{collection}/rkey) already identifies the merchant, and OAuth write permission enforces that the repo owner is the only one who can create or update it here -- a separate field would just duplicate that without adding evidentiary value.",
         "required": [
           "title",
-          "sellerDid",
           "createdAt"
         ],
         "properties": {
@@ -17,11 +17,6 @@
             "type": "string",
             "maxLength": 512,
             "description": "Freely mutable via putRecord."
-          },
-          "sellerDid": {
-            "type": "string",
-            "format": "did",
-            "description": "Immutable. Ownership transfer is not supported."
           },
           "category": {
             "type": "string",

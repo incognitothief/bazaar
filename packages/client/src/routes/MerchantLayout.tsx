@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { MerchantKeySyncBanner } from "@/components/merchant/MerchantKeySyncBanner";
+import { StorefrontKeySyncBanner } from "@/components/merchant/StorefrontKeySyncBanner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAtpSession } from "@/hooks/useAtpSession";
@@ -193,7 +193,7 @@ export function MerchantLayout() {
 
       <main className="flex min-w-0 w-full flex-col px-4 pb-4 pt-[calc(4.25rem+env(safe-area-inset-top))] sm:px-6 sm:pb-6 md:px-8 md:pb-8">
         <div className="mx-auto w-full min-w-0 max-w-6xl">
-          <MerchantKeySyncBanner />
+          <StorefrontKeySyncBanner />
           <Outlet />
         </div>
       </main>

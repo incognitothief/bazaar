@@ -5,11 +5,9 @@ import {
 } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import {
-  appMerchantKidFromEnv,
-  normalizeAppMerchantPrivateKey,
-  signConsentPayload,
+  storefrontKidFromEnv,
+  normalizeStorefrontPrivateKey,
   signReceiptPayload,
-  verifyConsentPayload,
   verifyReceiptPayload,
 } from "./sign";
 
@@ -29,26 +27,26 @@ function p256Pems() {
   };
 }
 
-describe("appMerchantKidFromEnv", () => {
+describe("storefrontKidFromEnv", () => {
   test("returns null when unset", () => {
-    const prev = process.env.APP_MERCHANT_KID;
-    delete process.env.APP_MERCHANT_KID;
+    const prev = process.env.STOREFRONT_KID;
+    delete process.env.STOREFRONT_KID;
     try {
-      expect(appMerchantKidFromEnv()).toBeNull();
+      expect(storefrontKidFromEnv()).toBeNull();
     } finally {
-      if (prev === undefined) delete process.env.APP_MERCHANT_KID;
-      else process.env.APP_MERCHANT_KID = prev;
+      if (prev === undefined) delete process.env.STOREFRONT_KID;
+      else process.env.STOREFRONT_KID = prev;
     }
   });
 
   test("returns trimmed value when set", () => {
-    const prev = process.env.APP_MERCHANT_KID;
-    process.env.APP_MERCHANT_KID = "  merchant-key-2026-08-29  ";
+    const prev = process.env.STOREFRONT_KID;
+    process.env.STOREFRONT_KID = "  storefront-key-2026-08-29  ";
     try {
-      expect(appMerchantKidFromEnv()).toBe("merchant-key-2026-08-29");
+      expect(storefrontKidFromEnv()).toBe("storefront-key-2026-08-29");
     } finally {
-      if (prev === undefined) delete process.env.APP_MERCHANT_KID;
-      else process.env.APP_MERCHANT_KID = prev;
+      if (prev === undefined) delete process.env.STOREFRONT_KID;
+      else process.env.STOREFRONT_KID = prev;
     }
   });
 });
@@ -79,28 +77,28 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
     buyerDid: "did:plc:buyer",
   };
 
-  test("round-trip with P-256 EC key (compact low-S appSig)", () => {
+  test("round-trip with P-256 EC key (compact low-S storefrontSig)", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
-    const appSig = signReceiptPayload({ ...params, privateKeyPem });
+    const storefrontSig = signReceiptPayload({ ...params, privateKeyPem });
 
     // Current wire format: 64-byte IEEE-P1363 (r || s).
-    const raw = Buffer.from(appSig, "base64url");
+    const raw = Buffer.from(storefrontSig, "base64url");
     expect(raw.length).toBe(64);
     // Low-S: s <= n/2.
     const s = BigInt(`0x${raw.subarray(32).toString("hex")}`);
     expect(s <= P256_HALF_N).toBe(true);
 
-    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(true);
   });
 
   test("tampered field fails verification", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
-    const appSig = signReceiptPayload({ ...params, privateKeyPem });
+    const storefrontSig = signReceiptPayload({ ...params, privateKeyPem });
     expect(
       verifyReceiptPayload({
         ...params,
         paymentRef: "pi_tampered",
-        appSig,
+        storefrontSig,
         publicKeyPem,
       }),
     ).toBe(false);
@@ -109,23 +107,79 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
   test("entitlementDigest is bound into the signature", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
     const entitlementDigest = "Zm9vYmFyZW50aXRsZW1lbnRkaWdlc3RfXw";
-    const appSig = signReceiptPayload({
+    const storefrontSig = signReceiptPayload({
       ...params,
       entitlementDigest,
       privateKeyPem,
     });
 
     expect(
-      verifyReceiptPayload({ ...params, entitlementDigest, appSig, publicKeyPem }),
+      verifyReceiptPayload({ ...params, entitlementDigest, storefrontSig, publicKeyPem }),
     ).toBe(true);
     // Same fields, digest dropped -> five-field payload -> mismatch.
-    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(false);
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(false);
     // Same fields, different digest -> mismatch.
     expect(
       verifyReceiptPayload({
         ...params,
         entitlementDigest: `${entitlementDigest}x`,
-        appSig,
+        storefrontSig,
+        publicKeyPem,
+      }),
+    ).toBe(false);
+  });
+
+  test("licenseGrantCid is bound into the signature (atomic license freeze, no consent record)", () => {
+    const { privateKeyPem, publicKeyPem } = p256Pems();
+    const licenseGrantCid = "bafyreilicensegrantcid";
+    const storefrontSig = signReceiptPayload({
+      ...params,
+      licenseGrantCid,
+      privateKeyPem,
+    });
+
+    expect(
+      verifyReceiptPayload({ ...params, licenseGrantCid, storefrontSig, publicKeyPem }),
+    ).toBe(true);
+    // A buyer editing their own receipt's licenseGrant can't keep this valid.
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(false);
+    expect(
+      verifyReceiptPayload({
+        ...params,
+        licenseGrantCid: `${licenseGrantCid}x`,
+        storefrontSig,
+        publicKeyPem,
+      }),
+    ).toBe(false);
+  });
+
+  test("licenseGrantCid and entitlementDigest compose (both bound, fixed order)", () => {
+    const { privateKeyPem, publicKeyPem } = p256Pems();
+    const licenseGrantCid = "bafyreilicensegrantcid";
+    const entitlementDigest = "Zm9vYmFyZW50aXRsZW1lbnRkaWdlc3RfXw";
+    const storefrontSig = signReceiptPayload({
+      ...params,
+      licenseGrantCid,
+      entitlementDigest,
+      privateKeyPem,
+    });
+
+    expect(
+      verifyReceiptPayload({
+        ...params,
+        licenseGrantCid,
+        entitlementDigest,
+        storefrontSig,
+        publicKeyPem,
+      }),
+    ).toBe(true);
+    // Order matters -- swapping which field is which value must not verify.
+    expect(
+      verifyReceiptPayload({
+        ...params,
+        licenseGrantCid: entitlementDigest,
+        entitlementDigest: licenseGrantCid,
+        storefrontSig,
         publicKeyPem,
       }),
     ).toBe(false);
@@ -133,8 +187,8 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
 
   test("legacy five-field payload still round-trips when no digest is given", () => {
     const { privateKeyPem, publicKeyPem } = p256Pems();
-    const appSig = signReceiptPayload({ ...params, privateKeyPem });
-    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
+    const storefrontSig = signReceiptPayload({ ...params, privateKeyPem });
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(true);
   });
 
   test("SEC1 EC PRIVATE KEY collapsed to one line (typical .env)", () => {
@@ -147,10 +201,10 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
       type: "spki",
       format: "pem",
     }) as string;
-    expect(normalizeAppMerchantPrivateKey(oneLine)).toContain("\n");
+    expect(normalizeStorefrontPrivateKey(oneLine)).toContain("\n");
 
-    const appSig = signReceiptPayload({ ...params, privateKeyPem: oneLine });
-    expect(verifyReceiptPayload({ ...params, appSig, publicKeyPem })).toBe(true);
+    const storefrontSig = signReceiptPayload({ ...params, privateKeyPem: oneLine });
+    expect(verifyReceiptPayload({ ...params, storefrontSig, publicKeyPem })).toBe(true);
   });
 
   test("TRANSITIONAL: verifies a legacy DER-encoded EC signature (pre-migration field receipts)", () => {
@@ -177,12 +231,12 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
       cryptoSign(
         "sha256",
         Buffer.from(message, "utf8"),
-        createPrivateKey(normalizeAppMerchantPrivateKey(privateKeyPem)),
+        createPrivateKey(normalizeStorefrontPrivateKey(privateKeyPem)),
       ),
     ).toString("base64url");
 
     expect(
-      verifyReceiptPayload({ ...params, appSig: derSig, publicKeyPem }),
+      verifyReceiptPayload({ ...params, storefrontSig: derSig, publicKeyPem }),
     ).toBe(true);
   });
 
@@ -211,30 +265,14 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
         params.listingCid,
         params.buyerDid,
       ].join(":");
-      const sk = createPrivateKey(normalizeAppMerchantPrivateKey(privateKeyPem));
+      const sk = createPrivateKey(normalizeStorefrontPrivateKey(privateKeyPem));
       const legacySig = Buffer.from(
         cryptoSign(null, Buffer.from(message, "utf8"), sk),
       ).toString("base64url");
 
       expect(
-        verifyReceiptPayload({ ...params, appSig: legacySig, publicKeyPem }),
+        verifyReceiptPayload({ ...params, storefrontSig: legacySig, publicKeyPem }),
       ).toBe(true);
     },
   );
-});
-
-describe("signConsentPayload / verifyConsentPayload", () => {
-  const params = {
-    buyerDid: "did:plc:buyer",
-    licenseGrantCid: "bafyreiabc",
-    receiptCid: "bafyreixyz",
-    consentedAt: new Date().toISOString(),
-  };
-
-  test("round-trip with P-256 EC key (compact low-S appSig)", () => {
-    const { privateKeyPem, publicKeyPem } = p256Pems();
-    const appSig = signConsentPayload({ ...params, privateKeyPem });
-    expect(Buffer.from(appSig, "base64url").length).toBe(64);
-    expect(verifyConsentPayload({ ...params, appSig, publicKeyPem })).toBe(true);
-  });
 });

@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { KeyRound } from "lucide-react";
-import { useMerchantKeySync } from "@/hooks/useMerchantKeySync";
+import { useStorefrontKeySync } from "@/hooks/useStorefrontKeySync";
 
 /**
  * Shown across the merchant panel when the storefront's signing-key history has
- * changed and the merchant's PDS `actor.merchantKeys` mirror is out of step.
- * "Publish" writes the mirror using the merchant's live session. See ADR 0014.
+ * changed and the merchant's PDS `actor.storefrontKeys` mirror is out of step.
+ * "Publish" writes the mirror using the merchant's live session. See ADR 0014 / 0015.
  *
  * Dismissible for the current session; reappears on reload or on a fresh drift.
  */
-export function MerchantKeySyncBanner() {
-  const { status, syncing, error, sync } = useMerchantKeySync();
+export function StorefrontKeySyncBanner() {
+  const { status, syncing, error, sync } = useStorefrontKeySync();
   const [dismissed, setDismissed] = useState(false);
 
   const drift =

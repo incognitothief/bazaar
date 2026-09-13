@@ -38,28 +38,24 @@ export function bazaarRepoOAuthScopes(): string[] {
     repoAction(col(ns, "catalog.listing"), "update"),
     repoAction(col(ns, "license.terms"), "create"),
     repoAction(col(ns, "purchase.receipt"), "create"),
-    repoAction(col(ns, "purchase.consent"), "create"),
     repoAction(col(ns, "actor.merchant"), "create"),
     repoAction(col(ns, "actor.merchant"), "update"),
-    repoAction(col(ns, "actor.merchantKeys"), "create"),
-    repoAction(col(ns, "actor.merchantKeys"), "update"),
-    repoAction(col(ns, "actor.merchantKeys"), "delete"),
+    repoAction(col(ns, "actor.storefrontKeys"), "create"),
+    repoAction(col(ns, "actor.storefrontKeys"), "update"),
+    repoAction(col(ns, "actor.storefrontKeys"), "delete"),
   ];
 }
 
 /**
  * Collections a BUYER's OAuth session ever needs to write to. Buyers only ever
- * create purchase attestations in their own repo — they never touch catalog,
- * listing, license, or merchant-profile collections. Requesting only these at
+ * create a purchase receipt in their own repo — they never touch catalog,
+ * listing, license, or merchant-profile collections. Requesting only this at
  * sign-in (instead of the full `bazaarRepoOAuthScopes()` superset) keeps the
  * PDS consent screen honest about what Bazaar can actually do on a buyer's repo.
  */
 export function buyerRepoOAuthScopes(): string[] {
   const ns = lexiconNamespace();
-  return [
-    repoAction(col(ns, "purchase.receipt"), "create"),
-    repoAction(col(ns, "purchase.consent"), "create"),
-  ];
+  return [repoAction(col(ns, "purchase.receipt"), "create")];
 }
 
 /**

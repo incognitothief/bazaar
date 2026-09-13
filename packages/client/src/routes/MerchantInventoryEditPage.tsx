@@ -1201,7 +1201,7 @@ function PhysicalEditForm({
  * catalog.item is ERP-first (getCatalogItem), not PDS-direct like the
  * three legacy forms above -- consistent with "ERP-first everywhere."
  * Only title/category/description are editable; fileCid/fileChecksum/
- * format/sellerDid are preserved as-authored (see putCatalogItem).
+ * format/merchantDid are preserved as-authored (see putCatalogItem).
  */
 function CatalogItemEditForm({
   uri,
@@ -1269,7 +1269,7 @@ function CatalogItemEditForm({
     setTags(r.tags ?? []);
 
     const [listings, productRows] = await Promise.all([
-      listListingRows(r.sellerDid).catch(() => []),
+      listListingRows(r.merchantDid).catch(() => []),
       listCatalogProductRows().catch(() => []),
     ]);
 
@@ -1299,8 +1299,9 @@ function CatalogItemEditForm({
     // Defer to the item's own license; otherwise inherit the parent product
     // listing's license (an item with no listing of its own still sells under
     // the product, under the product's terms).
-    const licUri = own?.listing.licenseUri ?? parentListing?.listing.licenseUri;
-    const inherited = !own && !!parentListing?.listing.licenseUri;
+    const licUri =
+      own?.listing.licenseGrant?.uri ?? parentListing?.listing.licenseGrant?.uri;
+    const inherited = !own && !!parentListing?.listing.licenseGrant?.uri;
     if (licUri) {
       const lt = await getRecordValueWithCid<LicenseTerms>(licUri).catch(
         () => null,

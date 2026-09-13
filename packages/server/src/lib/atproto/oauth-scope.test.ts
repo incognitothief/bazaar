@@ -30,18 +30,15 @@ describe("oauth-scope", () => {
       "repo:diamonds.whereditgo.bazaar.purchase.receipt?action=create",
     );
     expect(s).toContain(
-      "repo:diamonds.whereditgo.bazaar.purchase.consent?action=create",
-    );
-    expect(s).toContain(
       "repo:diamonds.whereditgo.bazaar.license.terms?action=create",
     );
   });
 
-  test("merchant scope includes actor.merchantKeys create/update/delete", () => {
+  test("merchant scope includes actor.storefrontKeys create/update/delete", () => {
     const s = buildOAuthScopeString();
     for (const action of ["create", "update", "delete"]) {
       expect(s).toContain(
-        `repo:diamonds.whereditgo.bazaar.actor.merchantKeys?action=${action}`,
+        `repo:diamonds.whereditgo.bazaar.actor.storefrontKeys?action=${action}`,
       );
     }
   });
@@ -67,11 +64,10 @@ describe("oauth-scope", () => {
     );
   });
 
-  test("buyer scope is limited to purchase receipt/consent create", () => {
+  test("buyer scope is limited to purchase receipt create", () => {
     const scopes = buyerRepoOAuthScopes();
     expect(scopes).toEqual([
       "repo:diamonds.whereditgo.bazaar.purchase.receipt?action=create",
-      "repo:diamonds.whereditgo.bazaar.purchase.consent?action=create",
     ]);
   });
 

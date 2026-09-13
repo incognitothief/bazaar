@@ -20,7 +20,6 @@ import type {
   Listing,
   PhysicalItem,
   Product,
-  PurchaseConsent,
   PurchaseReceipt,
   Recording,
 } from "@/types/lexicons";
@@ -287,15 +286,6 @@ function isPurchaseReceipt(v: unknown): v is PurchaseReceipt {
   );
 }
 
-function isPurchaseConsent(v: unknown): v is PurchaseConsent {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as PurchaseConsent).$type ===
-      "diamonds.whereditgo.bazaar.purchase.consent"
-  );
-}
-
 export type PurchaseReceiptRow = {
   uri: string;
   cid: string;
@@ -308,7 +298,7 @@ function dedupePurchaseReceiptRows(
 ): PurchaseReceiptRow[] {
   const byKey = new Map<string, PurchaseReceiptRow>();
   for (const row of rows) {
-    const pr = row.receipt.paymentRef?.trim();
+    const pr = row.receipt.payment?.ref?.trim();
     const key = pr && pr.length > 0 ? pr : row.uri;
     const prev = byKey.get(key);
     if (
@@ -343,51 +333,6 @@ export async function listPurchaseReceiptRows(
       receipt: r.value as PurchaseReceipt,
     }));
   return dedupePurchaseReceiptRows(rows);
-}
-
-export type PurchaseConsentRow = {
-  uri: string;
-  cid: string;
-  consent: PurchaseConsent;
-};
-
-/** One consent per receipt URI (latest consentedAt wins). */
-function dedupePurchaseConsentRows(
-  rows: PurchaseConsentRow[],
-): PurchaseConsentRow[] {
-  const byReceipt = new Map<string, PurchaseConsentRow>();
-  for (const row of rows) {
-    const ru = row.consent.receiptUri?.trim();
-    if (!ru) continue;
-    const prev = byReceipt.get(ru);
-    if (
-      !prev ||
-      new Date(row.consent.consentedAt).getTime() >=
-        new Date(prev.consent.consentedAt).getTime()
-    ) {
-      byReceipt.set(ru, row);
-    }
-  }
-  return Array.from(byReceipt.values());
-}
-
-export async function listPurchaseConsentRows(
-  did: string,
-): Promise<PurchaseConsentRow[]> {
-  const agent = await agentForRepo(did);
-  const res = (await agent.com.atproto.repo.listRecords({
-    repo: did,
-    collection: BAZAAR_COLLECTION.consent,
-    limit: 100,
-  })) as ListRecordsResponse;
-  const rows = res.data.records
-    .filter((r) => isPurchaseConsent(r.value))
-    .map((r) => ({
-      uri: r.uri,
-      cid: r.cid,
-      consent: r.value as PurchaseConsent,
-    }));
-  return dedupePurchaseConsentRows(rows);
 }
 
 export type DigitalItemRow = { uri: string; cid: string; item: DigitalItem };
@@ -706,7 +651,7 @@ export function incrementLicenseVersion(version: string): string {
 export type CatalogItemRow = {
   uri: string;
   cid: string;
-  sellerDid: string;
+  merchantDid: string;
   title: string;
   category: string | null;
   description: string | null;
@@ -732,7 +677,7 @@ export type CatalogItemRow = {
 export type CatalogProductRow = {
   uri: string;
   cid: string;
-  sellerDid: string;
+  merchantDid: string;
   title: string;
   description: string | null;
   tags: string[] | null;
@@ -1260,7 +1205,7 @@ export async function putPhysicalItem(
   });
 }
 
-/** Only title/category/description are editable -- fileCid/fileChecksum/format/sellerDid are preserved as-authored. */
+/** Only title/category/description are editable -- fileCid/fileChecksum/format/merchantDid are preserved as-authored. */
 export async function putCatalogItem(
   agent: ATPRepoClient,
   uri: string,
@@ -1306,7 +1251,7 @@ export async function putCatalogItem(
   return { cid: res.cid };
 }
 
-/** title/description/tags/items are all editable -- items[] is mutable (see catalog.product.json). sellerDid/createdAt are preserved. */
+/** title/description/tags/items are all editable -- items[] is mutable (see catalog.product.json). merchantDid/createdAt are preserved. */
 export async function putCatalogProduct(
   agent: ATPRepoClient,
   uri: string,

@@ -26,14 +26,14 @@ const DEFAULT_STOREFRONT_DESCRIPTION =
   "Music and releases from the artist catalog. Only items with an active listing are shown.";
 
 export function HomePage() {
-  const artistDid = import.meta.env.VITE_ARTIST_DID;
+  const merchantDid = import.meta.env.VITE_MERCHANT_DID;
   const { profile: merchantProfile, loading: merchantProfileLoading } =
-    useActorMerchantProfile(artistDid);
-  const { entries, listingsByItemUri, loading, error } = useCatalog(artistDid);
+    useActorMerchantProfile(merchantDid);
+  const { entries, listingsByItemUri, loading, error } = useCatalog(merchantDid);
   const agent = createPublicAgent();
 
   const merchantHeaderPending =
-    merchantProfileLoading && artistDid?.startsWith("did:");
+    merchantProfileLoading && merchantDid?.startsWith("did:");
   const storefrontTitle =
     merchantProfile?.displayName?.trim() || DEFAULT_STOREFRONT_TITLE;
   const storefrontDescription =
@@ -42,25 +42,25 @@ export function HomePage() {
 
   const dummyItemUri = useMemo(
     () =>
-      artistDid?.startsWith("did:") ? resolveDummyItemAtUri(artistDid) : null,
-    [artistDid],
+      merchantDid?.startsWith("did:") ? resolveDummyItemAtUri(merchantDid) : null,
+    [merchantDid],
   );
   const showStorefrontDummy =
     catalogDummyEnabled() &&
-    !!artistDid?.startsWith("did:") &&
+    !!merchantDid?.startsWith("did:") &&
     !!dummyItemUri &&
     !hasActive;
 
   const gridEntries: CatalogEntry[] = useMemo(() => {
     if (!showStorefrontDummy || !dummyItemUri) return entries;
-    const item = buildDummyDigitalItem(dummyItemUri, artistDid!);
+    const item = buildDummyDigitalItem(dummyItemUri, merchantDid!);
     const synthetic: CatalogEntry = {
       uri: dummyItemUri,
       cid: "bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       item,
     };
     return [synthetic];
-  }, [showStorefrontDummy, dummyItemUri, entries, artistDid]);
+  }, [showStorefrontDummy, dummyItemUri, entries, merchantDid]);
 
   const gridListings = useMemo(() => {
     if (!showStorefrontDummy || !dummyItemUri) return listingsByItemUri;
@@ -143,9 +143,9 @@ export function HomePage() {
       ) : null}
       {loading ? (
         <InventoryGridSkeleton />
-      ) : !artistDid?.startsWith("did:") ? (
+      ) : !merchantDid?.startsWith("did:") ? (
         <p className="text-muted-foreground">
-          Set <code className="text-xs">VITE_ARTIST_DID</code> in{" "}
+          Set <code className="text-xs">VITE_MERCHANT_DID</code> in{" "}
           <code className="text-xs">packages/client/.env</code> to load catalog.
         </p>
       ) : !hasActive && !showStorefrontDummy ? (
@@ -170,7 +170,7 @@ export function HomePage() {
           ) : null}
           <InventoryGrid
             agent={agent}
-            artistDid={artistDid}
+            artistDid={merchantDid}
             entries={gridEntries}
             listingsByItemUri={gridListings}
             previewItemUri={showStorefrontDummy ? dummyItemUri : null}

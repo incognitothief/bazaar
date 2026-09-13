@@ -208,15 +208,15 @@ export function CreateListingPage() {
         // Edit an existing item listing.
         setStandalone(!own.listing.parentListing);
         setPriceUsd((own.listing.price.amount / 100).toFixed(2));
-        setLicenseUri(own.listing.licenseUri ?? "");
-        setLicenseCid(own.listing.licenseGrantCid ?? "");
+        setLicenseUri(own.listing.licenseGrant?.uri ?? "");
+        setLicenseCid(own.listing.licenseGrant?.cid ?? "");
       } else {
         // New listing: default to selling under the product when it's listed,
         // otherwise standalone. Seed the license from the product's listing.
         setStandalone(!productListing);
-        if (productListing?.listing.licenseUri) {
-          setLicenseUri(productListing.listing.licenseUri);
-          setLicenseCid(productListing.listing.licenseGrantCid ?? "");
+        if (productListing?.listing.licenseGrant?.uri) {
+          setLicenseUri(productListing.listing.licenseGrant.uri);
+          setLicenseCid(productListing.listing.licenseGrant.cid ?? "");
         }
       }
 
@@ -367,8 +367,7 @@ export function CreateListingPage() {
             amount: cents,
             currency: existingListing.listing.price.currency,
           },
-          licenseUri,
-          licenseGrantCid: licenseCid,
+          licenseGrant: { uri: licenseUri, cid: licenseCid },
         };
         if (parentListing) rec.parentListing = parentListing;
         else delete rec.parentListing;
@@ -384,8 +383,7 @@ export function CreateListingPage() {
         item: itemRef,
         price: { amount: cents, currency: "USD" },
         status: "active",
-        licenseUri,
-        licenseGrantCid: licenseCid,
+        licenseGrant: { uri: licenseUri, cid: licenseCid },
         parentListing,
       });
 
@@ -408,8 +406,7 @@ export function CreateListingPage() {
             item: ref,
             price: { amount: Math.round(n * 100), currency: "USD" },
             status: "active",
-            licenseUri,
-            licenseGrantCid: licenseCid,
+            licenseGrant: { uri: licenseUri, cid: licenseCid },
             parentListing: createdListingUri,
           });
           childCreated += 1;
@@ -468,15 +465,15 @@ export function CreateListingPage() {
       }
       const priceChanged = prodCents !== cur.price.amount;
       const licenseChanged =
-        licenseUri !== cur.licenseUri || licenseCid !== cur.licenseGrantCid;
+        licenseUri !== cur.licenseGrant?.uri ||
+        licenseCid !== cur.licenseGrant?.cid;
       if (priceChanged || licenseChanged) {
         const freshRef = await buildItemRefFromUri(entity.uri);
         await putListing(agent, productListing.uri, {
           ...cur,
           item: freshRef ?? cur.item,
           price: { amount: prodCents, currency: cur.price.currency },
-          licenseUri,
-          licenseGrantCid: licenseCid,
+          licenseGrant: { uri: licenseUri, cid: licenseCid },
         });
       }
 
@@ -527,8 +524,7 @@ export function CreateListingPage() {
             item: ref,
             price: { amount: cents, currency: "USD" },
             status: "active",
-            licenseUri,
-            licenseGrantCid: licenseCid,
+            licenseGrant: { uri: licenseUri, cid: licenseCid },
             parentListing: wantStandalone ? undefined : productListing.uri,
           });
           created += 1;

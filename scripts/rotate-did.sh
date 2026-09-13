@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Rotate the storefront signing key. Generates a new keypair and prints the new
-# APP_MERCHANT_* environment block (incoming key becomes current; outgoing key is
-# appended to APP_MERCHANT_KEY_HISTORY as retired). See docs/adr/0013 §5.
+# STOREFRONT_* environment block (incoming key becomes current; outgoing key is
+# appended to STOREFRONT_KEY_HISTORY as retired). See docs/adr/0013 §5.
 # To hard-revoke a key, add "revoked": true to its keyHistory entry by hand.
 set -euo pipefail
 
@@ -18,7 +18,7 @@ cd "$ROOT"
 # Pull the current (non-secret) key vars from packages/server/.env if the operator keeps them there.
 ENV_FILE="packages/server/.env"
 if [ -f "$ENV_FILE" ]; then
-  for k in APP_DID APP_MERCHANT_KID APP_MERCHANT_PUBLIC_MULTIBASE APP_MERCHANT_KEY_HISTORY; do
+  for k in STOREFRONT_DID STOREFRONT_KID STOREFRONT_PUBLIC_MULTIBASE STOREFRONT_KEY_HISTORY; do
     v="$(grep -E "^${k}=" "$ENV_FILE" | tail -1 | sed "s/^${k}=//")" || true
     [ -n "${v:-}" ] && export "${k}=${v}"
   done

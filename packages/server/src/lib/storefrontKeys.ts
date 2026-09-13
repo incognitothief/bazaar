@@ -4,17 +4,19 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../db";
 import { appKeys, meta } from "../db/schema";
 import { getAgentForDid } from "./atproto/resolvePds";
-import { normalizeAppMerchantPrivateKey } from "./atproto/sign";
+import { normalizeStorefrontPrivateKey } from "./atproto/sign";
 import { publicSpkiPemToMultibase } from "./publicKeyMultibase";
 
 /**
- * Merchant (storefront) signing keys. See `docs/adr/0013-key-rotation-and-did-document-v2.md`.
+ * Storefront (Bazaar service instance) signing keys. See
+ * `docs/adr/0013-key-rotation-and-did-document-v2.md` and
+ * `docs/adr/0015-storefront-merchant-terminology-split.md`.
  *
  * Source of truth is the environment, nothing else:
- *   APP_MERCHANT_PRIVATE_KEY      current signing key (secret PEM)
- *   APP_MERCHANT_KID              current key fragment, e.g. merchant-key-2026-08-29[-N]
- *   APP_MERCHANT_PUBLIC_MULTIBASE current public key `z…` (optional; derived from the PEM)
- *   APP_MERCHANT_KEY_HISTORY      base64(JSON array) of every NON-current key (see KeyHistoryEntry)
+ *   STOREFRONT_PRIVATE_KEY      current signing key (secret PEM)
+ *   STOREFRONT_KID              current key fragment, e.g. storefront-key-2026-08-29[-N]
+ *   STOREFRONT_PUBLIC_MULTIBASE current public key `z…` (optional; derived from the PEM)
+ *   STOREFRONT_KEY_HISTORY      base64(JSON array) of every NON-current key (see KeyHistoryEntry)
  *
  * DID document shape:
  *   verificationMethod = the current key + every non-revoked key.
@@ -34,9 +36,9 @@ const CTX_NS = "https://bazaar.whereditgo.diamonds/ns#";
 export const KEY_HISTORY_CONTEXT_URL = "https://bazaar.whereditgo.diamonds/ns/v1";
 const DEFAULT_DID = "did:web:bazaar.whereditgo.diamonds";
 
-/** One entry of the decoded APP_MERCHANT_KEY_HISTORY array / the served `keyHistory`. */
+/** One entry of the decoded STOREFRONT_KEY_HISTORY array / the served `keyHistory`. */
 export type KeyHistoryEntry = {
-  /** Full DID URL, e.g. did:web:…#merchant-key-2026-04-05 */
+  /** Full DID URL, e.g. did:web:…#storefront-key-2026-04-05 */
   id: string;
   type: "Multikey";
   publicKeyMultibase: string;
@@ -46,8 +48,8 @@ export type KeyHistoryEntry = {
   revoked?: boolean;
 };
 
-export type MerchantKey = {
-  /** Bare fragment, e.g. "merchant-key-2026-04-05" — matches a record's `kid`. */
+export type StorefrontKey = {
+  /** Bare fragment, e.g. "storefront-key-2026-04-05" — matches a record's `kid`. */
   kid: string;
   /** Full DID URL. */
   id: string;
@@ -59,29 +61,29 @@ export type MerchantKey = {
   supersededBy?: string;
 };
 
-export type MerchantKeySet = {
-  /** null when APP_MERCHANT_PRIVATE_KEY / _KID are unset or placeholder. */
-  current: MerchantKey | null;
-  /** Non-current keys, in the order supplied by APP_MERCHANT_KEY_HISTORY (oldest → newest). */
-  history: MerchantKey[];
+export type StorefrontKeySet = {
+  /** null when STOREFRONT_PRIVATE_KEY / _KID are unset or placeholder. */
+  current: StorefrontKey | null;
+  /** Non-current keys, in the order supplied by STOREFRONT_KEY_HISTORY (oldest → newest). */
+  history: StorefrontKey[];
   /** current + history, keyed by bare kid fragment. */
-  byKid: Map<string, MerchantKey>;
+  byKid: Map<string, StorefrontKey>;
 };
 
 function isPlaceholder(v: string | undefined): boolean {
   return !v || v.includes("PLACEHOLDER");
 }
 
-/** The storefront DID. `APP_DID` when it is a did:web, else the built-in default. */
-export function merchantDid(): string {
-  const envDid = process.env.APP_DID?.trim();
+/** The storefront DID. `STOREFRONT_DID` when it is a did:web, else the built-in default. */
+export function storefrontDid(): string {
+  const envDid = process.env.STOREFRONT_DID?.trim();
   return envDid?.startsWith("did:web:") ? envDid : DEFAULT_DID;
 }
 
 /** Accept a full DID URL or a bare fragment; return the full DID URL. */
 function toDidUrl(value: string): string {
   if (value.includes("#")) return value;
-  return `${merchantDid()}#${value}`;
+  return `${storefrontDid()}#${value}`;
 }
 
 /** Bare fragment of a DID URL. */
@@ -108,26 +110,26 @@ function multibaseToSpkiPem(multibase: string): string {
   return key.export({ type: "spki", format: "pem" }) as string;
 }
 
-function currentKeyFromEnv(): MerchantKey | null {
-  const rawPriv = process.env.APP_MERCHANT_PRIVATE_KEY?.trim();
-  const kid = process.env.APP_MERCHANT_KID?.trim();
+function currentKeyFromEnv(): StorefrontKey | null {
+  const rawPriv = process.env.STOREFRONT_PRIVATE_KEY?.trim();
+  const kid = process.env.STOREFRONT_KID?.trim();
   if (isPlaceholder(rawPriv) || !kid) return null;
 
-  const priv = createPrivateKey(normalizeAppMerchantPrivateKey(rawPriv!));
+  const priv = createPrivateKey(normalizeStorefrontPrivateKey(rawPriv!));
   const pub = createPublicKey(priv);
   const publicKeyPem = pub.export({ type: "spki", format: "pem" }) as string;
 
   const derivedMultibase = publicSpkiPemToMultibase(publicKeyPem);
-  const envMultibase = process.env.APP_MERCHANT_PUBLIC_MULTIBASE?.trim();
+  const envMultibase = process.env.STOREFRONT_PUBLIC_MULTIBASE?.trim();
   if (envMultibase && envMultibase !== derivedMultibase) {
     throw new Error(
-      "APP_MERCHANT_PUBLIC_MULTIBASE does not match APP_MERCHANT_PRIVATE_KEY",
+      "STOREFRONT_PUBLIC_MULTIBASE does not match STOREFRONT_PRIVATE_KEY",
     );
   }
 
   return {
     kid,
-    id: `${merchantDid()}#${kid}`,
+    id: `${storefrontDid()}#${kid}`,
     publicKeyMultibase: derivedMultibase,
     publicKeyPem,
     kind: "current",
@@ -135,7 +137,7 @@ function currentKeyFromEnv(): MerchantKey | null {
   };
 }
 
-/** Decode APP_MERCHANT_KEY_HISTORY (base64(JSON) or bare JSON). Throws loudly on anything malformed. */
+/** Decode STOREFRONT_KEY_HISTORY (base64(JSON) or bare JSON). Throws loudly on anything malformed. */
 export function parseKeyHistoryEnv(raw: string | undefined): KeyHistoryEntry[] {
   const trimmed = raw?.trim();
   if (!trimmed || isPlaceholder(trimmed)) return [];
@@ -145,7 +147,7 @@ export function parseKeyHistoryEnv(raw: string | undefined): KeyHistoryEntry[] {
     try {
       jsonText = Buffer.from(trimmed, "base64").toString("utf8");
     } catch {
-      throw new Error("APP_MERCHANT_KEY_HISTORY is neither JSON nor base64(JSON)");
+      throw new Error("STOREFRONT_KEY_HISTORY is neither JSON nor base64(JSON)");
     }
   }
 
@@ -154,16 +156,16 @@ export function parseKeyHistoryEnv(raw: string | undefined): KeyHistoryEntry[] {
     parsed = JSON.parse(jsonText);
   } catch (e) {
     throw new Error(
-      `APP_MERCHANT_KEY_HISTORY is not valid JSON: ${(e as Error).message}`,
+      `STOREFRONT_KEY_HISTORY is not valid JSON: ${(e as Error).message}`,
     );
   }
   if (!Array.isArray(parsed)) {
-    throw new Error("APP_MERCHANT_KEY_HISTORY must decode to a JSON array");
+    throw new Error("STOREFRONT_KEY_HISTORY must decode to a JSON array");
   }
 
   return parsed.map((v, i) => {
     const o = v as Record<string, unknown>;
-    const where = `APP_MERCHANT_KEY_HISTORY[${i}]`;
+    const where = `STOREFRONT_KEY_HISTORY[${i}]`;
     const rawId = o.id ?? o.kid; // accept legacy "kid"
     const publicKeyMultibase = o.publicKeyMultibase;
     const supersededBy = o.supersededBy;
@@ -194,10 +196,10 @@ export function parseKeyHistoryEnv(raw: string | undefined): KeyHistoryEntry[] {
   });
 }
 
-function buildKeySet(): MerchantKeySet {
+function buildKeySet(): StorefrontKeySet {
   const current = currentKeyFromEnv();
-  const history: MerchantKey[] = parseKeyHistoryEnv(
-    process.env.APP_MERCHANT_KEY_HISTORY,
+  const history: StorefrontKey[] = parseKeyHistoryEnv(
+    process.env.STOREFRONT_KEY_HISTORY,
   ).map((h) => ({
     kid: fragmentOf(h.id),
     id: h.id,
@@ -208,17 +210,17 @@ function buildKeySet(): MerchantKeySet {
     supersededBy: h.supersededBy,
   }));
 
-  const byKid = new Map<string, MerchantKey>();
+  const byKid = new Map<string, StorefrontKey>();
   for (const k of history) {
     if (byKid.has(k.kid)) {
-      throw new Error(`APP_MERCHANT_KEY_HISTORY has a duplicate key id: ${k.kid}`);
+      throw new Error(`STOREFRONT_KEY_HISTORY has a duplicate key id: ${k.kid}`);
     }
     byKid.set(k.kid, k);
   }
   if (current) {
     if (byKid.has(current.kid)) {
       throw new Error(
-        `current key ${current.kid} also appears in APP_MERCHANT_KEY_HISTORY`,
+        `current key ${current.kid} also appears in STOREFRONT_KEY_HISTORY`,
       );
     }
     byKid.set(current.kid, current);
@@ -227,21 +229,21 @@ function buildKeySet(): MerchantKeySet {
   return { current, history, byKid };
 }
 
-let cached: MerchantKeySet | null = null;
+let cached: StorefrontKeySet | null = null;
 
-/** Parsed merchant key set from the environment, memoised. */
-export function getMerchantKeys(): MerchantKeySet {
+/** Parsed storefront key set from the environment, memoised. */
+export function getStorefrontKeys(): StorefrontKeySet {
   if (!cached) cached = buildKeySet();
   return cached;
 }
 
-/** Test hook — drop the memoised key set so the next getMerchantKeys() re-reads env. */
-export function resetMerchantKeysCache(): void {
+/** Test hook — drop the memoised key set so the next getStorefrontKeys() re-reads env. */
+export function resetStorefrontKeysCache(): void {
   cached = null;
 }
 
 /**
- * Ordered public-key PEMs to try when verifying a record's `appSig`.
+ * Ordered public-key PEMs to try when verifying a record's `storefrontSig`.
  *
  * - `revoked: true` — the record's `kid` names a hard-revoked key. Reject outright,
  *   do not attempt any signature check.
@@ -249,15 +251,15 @@ export function resetMerchantKeysCache(): void {
  *   then the current key, then every non-revoked history key newest → oldest.
  */
 export function candidatePemsForKid(
-  keys: MerchantKeySet,
+  keys: StorefrontKeySet,
   kid: string | undefined,
 ): { revoked: boolean; pems: string[] } {
   if (kid && keys.byKid.get(kid)?.revoked) {
     return { revoked: true, pems: [] };
   }
 
-  const ordered: MerchantKey[] = [];
-  const push = (k: MerchantKey | undefined) => {
+  const ordered: StorefrontKey[] = [];
+  const push = (k: StorefrontKey | undefined) => {
     if (k && !k.revoked && !ordered.includes(k)) ordered.push(k);
   };
 
@@ -291,9 +293,9 @@ export function keyHistoryContextDocument(): Record<string, unknown> {
  * truncated and repopulated on every boot, so it can never be the thing that is stale.
  * Preserves `first_seen_at` for kids already present. Call once at startup.
  */
-export async function reconcileMerchantKeys(db: Db): Promise<void> {
-  const keys = getMerchantKeys();
-  const rows: MerchantKey[] = [
+export async function reconcileStorefrontKeys(db: Db): Promise<void> {
+  const keys = getStorefrontKeys();
+  const rows: StorefrontKey[] = [
     ...(keys.current ? [keys.current] : []),
     ...keys.history,
   ];
@@ -304,7 +306,7 @@ export async function reconcileMerchantKeys(db: Db): Promise<void> {
   await db.delete(appKeys);
   if (rows.length === 0) {
     if (process.env.NODE_ENV !== "test") {
-      console.warn("reconcileMerchantKeys: no merchant keys configured in env");
+      console.warn("reconcileStorefrontKeys: no storefront keys configured in env");
     }
     return;
   }
@@ -337,12 +339,12 @@ export async function reconcileMerchantKeys(db: Db): Promise<void> {
  * authentication     = omitted.
  */
 export function buildServiceDidDocument(
-  keys: MerchantKeySet,
+  keys: StorefrontKeySet,
   contextBase: unknown[],
 ): Record<string, unknown> {
-  const id = merchantDid();
+  const id = storefrontDid();
 
-  const vmEntry = (k: MerchantKey) => ({
+  const vmEntry = (k: StorefrontKey) => ({
     id: k.id,
     type: "Multikey" as const,
     controller: id,
@@ -377,15 +379,15 @@ export function buildServiceDidDocument(
   };
 }
 
-// --- Merchant-side mirror (diamonds.whereditgo.bazaar.actor.merchantKeys) — ADR 0014 ---
+// --- Merchant-side mirror (diamonds.whereditgo.bazaar.actor.storefrontKeys) — ADR 0014/0015 ---
 
-const MERCHANT_KEYS_COLLECTION = "diamonds.whereditgo.bazaar.actor.merchantKeys";
-const SYNC_META_KEY = "merchant_keys_sync";
+const STOREFRONT_KEYS_COLLECTION = "diamonds.whereditgo.bazaar.actor.storefrontKeys";
+const SYNC_META_KEY = "storefront_keys_sync";
 
-/** One `actor.merchantKeys` record value, mirroring a `keyHistory` entry. `syncedAt` is added by the client. */
-export type MerchantKeyMirrorRecord = {
-  $type: "diamonds.whereditgo.bazaar.actor.merchantKeys";
-  appDid: string;
+/** One `actor.storefrontKeys` record value, mirroring a `keyHistory` entry. `syncedAt` is added by the client. */
+export type StorefrontKeyMirrorRecord = {
+  $type: "diamonds.whereditgo.bazaar.actor.storefrontKeys";
+  storefrontDid: string;
   id: string;
   type: "Multikey";
   controller: string;
@@ -394,7 +396,7 @@ export type MerchantKeyMirrorRecord = {
   revoked?: boolean;
 };
 
-export type MerchantKeySyncStatus = {
+export type StorefrontKeySyncStatus = {
   /** true = PDS matches; false = drift; null = not checkable (unconfigured / PDS unreachable). */
   inSync: boolean | null;
   /** rkeys (= kids) whose mirror record is absent or stale and must be (re)written. */
@@ -403,23 +405,23 @@ export type MerchantKeySyncStatus = {
   extra: string[];
   expectedCount: number;
   pdsCount: number;
-  artistDid: string | null;
+  merchantDid: string | null;
   checkedAt: string;
   error?: string;
   status?: "unconfigured";
 };
 
-/** The `actor.merchantKeys` records the merchant repo should contain: one per non-current key. */
-export function expectedMerchantKeyRecords(): {
+/** The `actor.storefrontKeys` records the merchant repo should contain: one per non-current key. */
+export function expectedStorefrontKeyRecords(): {
   rkey: string;
-  record: MerchantKeyMirrorRecord;
+  record: StorefrontKeyMirrorRecord;
 }[] {
-  const did = merchantDid();
-  return getMerchantKeys().history.map((k) => ({
+  const did = storefrontDid();
+  return getStorefrontKeys().history.map((k) => ({
     rkey: k.kid,
     record: {
-      $type: "diamonds.whereditgo.bazaar.actor.merchantKeys",
-      appDid: did,
+      $type: "diamonds.whereditgo.bazaar.actor.storefrontKeys",
+      storefrontDid: did,
       id: k.id,
       type: "Multikey",
       controller: did,
@@ -432,7 +434,7 @@ export function expectedMerchantKeyRecords(): {
 
 function mirrorMatches(
   pds: Record<string, unknown>,
-  want: MerchantKeyMirrorRecord,
+  want: StorefrontKeyMirrorRecord,
 ): boolean {
   return (
     pds.id === want.id &&
@@ -442,8 +444,8 @@ function mirrorMatches(
   );
 }
 
-/** Compare the current key history against the merchant PDS's `actor.merchantKeys` collection. */
-export function diffMerchantKeyMirror(
+/** Compare the current key history against the merchant PDS's `actor.storefrontKeys` collection. */
+export function diffStorefrontKeyMirror(
   pdsRecords: { uri: string; value: unknown }[],
 ): { missing: string[]; extra: string[]; pdsCount: number } {
   const byRkey = new Map<string, Record<string, unknown>>();
@@ -451,7 +453,7 @@ export function diffMerchantKeyMirror(
     const rkey = rec.uri.split("/").pop() ?? "";
     if (rkey) byRkey.set(rkey, (rec.value ?? {}) as Record<string, unknown>);
   }
-  const expected = expectedMerchantKeyRecords();
+  const expected = expectedStorefrontKeyRecords();
   const expectedRkeys = new Set(expected.map((e) => e.rkey));
   const missing = expected
     .filter((e) => {
@@ -464,43 +466,43 @@ export function diffMerchantKeyMirror(
 }
 
 /**
- * Runs on every boot (from `index.ts`, after `reconcileMerchantKeys`). Best-effort: resolves the
- * merchant PDS, lists `actor.merchantKeys`, diffs it against the current key history, and stores
+ * Runs on every boot (from `index.ts`, after `reconcileStorefrontKeys`). Best-effort: resolves the
+ * merchant PDS, lists `actor.storefrontKeys`, diffs it against the current key history, and stores
  * the result in `meta` for the merchant panel to read. Never throws.
  */
-export async function checkMerchantKeySync(db: Db): Promise<MerchantKeySyncStatus> {
+export async function checkStorefrontKeySync(db: Db): Promise<StorefrontKeySyncStatus> {
   const checkedAt = new Date().toISOString();
-  const artistDid = process.env.ARTIST_DID?.trim() ?? null;
-  const expectedCount = expectedMerchantKeyRecords().length;
+  const merchantDidEnv = process.env.MERCHANT_DID?.trim() ?? null;
+  const expectedCount = expectedStorefrontKeyRecords().length;
 
-  let status: MerchantKeySyncStatus;
-  if (!artistDid?.startsWith("did:")) {
+  let status: StorefrontKeySyncStatus;
+  if (!merchantDidEnv?.startsWith("did:")) {
     status = {
       inSync: null,
       missing: [],
       extra: [],
       expectedCount,
       pdsCount: 0,
-      artistDid: null,
+      merchantDid: null,
       checkedAt,
       status: "unconfigured",
     };
   } else {
     try {
-      const agent = await getAgentForDid(artistDid);
+      const agent = await getAgentForDid(merchantDidEnv);
       const res = await agent.com.atproto.repo.listRecords({
-        repo: artistDid,
-        collection: MERCHANT_KEYS_COLLECTION,
+        repo: merchantDidEnv,
+        collection: STOREFRONT_KEYS_COLLECTION,
         limit: 100,
       });
-      const { missing, extra, pdsCount } = diffMerchantKeyMirror(res.data.records);
+      const { missing, extra, pdsCount } = diffStorefrontKeyMirror(res.data.records);
       status = {
         inSync: missing.length === 0 && extra.length === 0,
         missing,
         extra,
         expectedCount,
         pdsCount,
-        artistDid,
+        merchantDid: merchantDidEnv,
         checkedAt,
       };
     } catch (e) {
@@ -510,7 +512,7 @@ export async function checkMerchantKeySync(db: Db): Promise<MerchantKeySyncStatu
         extra: [],
         expectedCount,
         pdsCount: 0,
-        artistDid,
+        merchantDid: merchantDidEnv,
         checkedAt,
         error: e instanceof Error ? e.message : String(e),
       };
@@ -528,10 +530,10 @@ export async function checkMerchantKeySync(db: Db): Promise<MerchantKeySyncStatu
   return status;
 }
 
-/** The last stored `checkMerchantKeySync` result. */
-export async function readMerchantKeySyncStatus(
+/** The last stored `checkStorefrontKeySync` result. */
+export async function readStorefrontKeySyncStatus(
   db: Db,
-): Promise<MerchantKeySyncStatus | null> {
+): Promise<StorefrontKeySyncStatus | null> {
   const row = await db.select().from(meta).where(eq(meta.key, SYNC_META_KEY)).get();
-  return row ? (JSON.parse(row.value) as MerchantKeySyncStatus) : null;
+  return row ? (JSON.parse(row.value) as StorefrontKeySyncStatus) : null;
 }

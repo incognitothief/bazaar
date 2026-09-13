@@ -35,7 +35,7 @@ export const meta = sqliteTable("meta", {
     .$defaultFn(() => new Date()),
 });
 
-/** Stripe PaymentIntent → PDS receipt/consent fulfillment state machine. */
+/** Stripe PaymentIntent → PDS receipt fulfillment state machine. */
 /** Resumable inventory uploads + deferred PDS publish (digital first; discriminator for future physical). */
 export const inventoryUploadSession = sqliteTable("inventory_upload_session", {
   id: text("id").primaryKey(),
@@ -176,7 +176,7 @@ export const licenses = sqliteTable("licenses", {
 export const catalogItems = sqliteTable("catalog_items", {
   uri: text("uri").primaryKey(),
   cid: text("cid").notNull(),
-  sellerDid: text("seller_did").notNull(),
+  merchantDid: text("merchant_did").notNull(),
   title: text("title").notNull(),
   category: text("category"),
   description: text("description"),
@@ -205,12 +205,12 @@ export const catalogItems = sqliteTable("catalog_items", {
 
 /**
  * Merchant (storefront) signing keys — a boot-rebuilt audit mirror of the environment
- * (`APP_MERCHANT_PRIVATE_KEY` / `_KID` / `_PUBLIC_MULTIBASE` / `_KEY_HISTORY`). Zero authority:
- * `reconcileMerchantKeys()` truncates and repopulates it on every startup. Verification reads
+ * (`STOREFRONT_PRIVATE_KEY` / `_KID` / `_PUBLIC_MULTIBASE` / `_KEY_HISTORY`). Zero authority:
+ * `reconcileStorefrontKeys()` truncates and repopulates it on every startup. Verification reads
  * the in-memory key set, not this table. See `docs/adr/0013-key-rotation-and-did-document-v2.md`.
  */
 export const appKeys = sqliteTable("app_keys", {
-  /** Bare fragment, e.g. merchant-key-2026-08-29. */
+  /** Bare fragment, e.g. storefront-key-2026-08-29. */
   kid: text("kid").primaryKey(),
   /** Full DID URL. */
   id: text("id").notNull(),
@@ -230,7 +230,7 @@ export const appKeys = sqliteTable("app_keys", {
 export const catalogProducts = sqliteTable("catalog_products", {
   uri: text("uri").primaryKey(),
   cid: text("cid").notNull(),
-  sellerDid: text("seller_did").notNull(),
+  merchantDid: text("merchant_did").notNull(),
   title: text("title").notNull(),
   description: text("description"),
   /** JSON-serialized string[] -- freeform, seller-authored, no taxonomy. Mirrors catalog.item's own tags field. */
@@ -307,7 +307,6 @@ export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   lastError: text("last_error"),
   receiptUri: text("receipt_uri"),
   receiptCid: text("receipt_cid"),
-  consentUri: text("consent_uri"),
   /** From the Checkout Session metadata that seeded this row -- lets the Sales page show what was bought without a PDS round trip. */
   itemUri: text("item_uri"),
   listingUri: text("listing_uri"),

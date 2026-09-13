@@ -36,7 +36,7 @@ export function SignInPage() {
             <>
               Development mode: OAuth disabled. To view the merchant dashboard,
               enter the handle that matches your environment configuration for (
-              <span className="font-mono text-foreground">VITE_ARTIST_DID</span>
+              <span className="font-mono text-foreground">VITE_MERCHANT_DID</span>
               ). Other handles will present the UI available to all other users.
             </>
           ) : (

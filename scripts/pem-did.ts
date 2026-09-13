@@ -6,7 +6,7 @@ import { formatDidKey, formatMultikey } from "@atproto/crypto";
  * quotes, or the whole key on one line with spaces where the newlines belong. Reflow it into
  * something `createPublicKey` accepts. A well-formed PEM passes through unchanged.
  *
- * Mirrors `normalizeAppMerchantPrivateKey` in
+ * Mirrors `normalizeStorefrontPrivateKey` in
  * `packages/server/src/lib/atproto/sign.ts` — keep the two in step.
  */
 export function normalizePem(raw: Buffer | string): string {

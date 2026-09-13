@@ -52,13 +52,13 @@ export function CustomerDashboardPage() {
       .then((rows) => {
         if (cancelled) return;
         // A buyer's repo can hold purchase.receipt records from any Bazaar
-        // storefront, not just this one -- issuerScope is the selling
-        // merchant's own DID, stable across app-identity/key changes on our
-        // side, so it's the right signal for "did this store sell it."
-        const storefrontDid = import.meta.env.VITE_ARTIST_DID?.trim();
+        // storefront, not just this one -- merchantDid is the selling
+        // merchant's own DID, stable across storefront-identity/key changes
+        // on our side, so it's the right signal for "did this store sell it."
+        const merchantDid = import.meta.env.VITE_MERCHANT_DID?.trim();
         setPurchases(
-          storefrontDid
-            ? rows.filter((r) => r.receipt.issuerScope === storefrontDid)
+          merchantDid
+            ? rows.filter((r) => r.receipt.merchantDid === merchantDid)
             : rows,
         );
       })
@@ -77,7 +77,7 @@ export function CustomerDashboardPage() {
       const next: Record<string, string> = {};
       const failed = new Set<string>();
       for (const row of purchases) {
-        const uri = row.receipt.item.uri;
+        const uri = row.receipt.purchasedGood.uri;
         try {
           const item = await getRecordValue<CatalogItem>(uri);
           if (item?.title) {
@@ -176,19 +176,19 @@ export function CustomerDashboardPage() {
                       <div className="flex min-w-0 items-center gap-1">
                         <code
                           className="min-w-0 truncate text-[11px] text-muted-foreground"
-                          title={row.receipt.item.uri}
+                          title={row.receipt.purchasedGood.uri}
                         >
-                          {row.receipt.item.uri}
+                          {row.receipt.purchasedGood.uri}
                         </code>
                         <CopyButton
-                          value={row.receipt.item.uri}
+                          value={row.receipt.purchasedGood.uri}
                           label="Copy item URI"
                         />
                       </div>
                     </>
                   ) : (
                     <p className="font-medium truncate">
-                      {purchaseTitles[row.uri] ?? row.receipt.item.uri}
+                      {purchaseTitles[row.uri] ?? row.receipt.purchasedGood.uri}
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">

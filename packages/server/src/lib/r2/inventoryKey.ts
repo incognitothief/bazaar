@@ -69,27 +69,27 @@ export function extensionForDigital(
  * product-level assets (cover art, included assets).
  */
 export function newProductItemKey(
-  sellerDid: string,
+  merchantDid: string,
   productRkey: string,
   objectId: string,
   filename: string,
 ): string {
-  if (!sellerDid.startsWith("did:")) throw new Error("Invalid seller DID");
+  if (!merchantDid.startsWith("did:")) throw new Error("Invalid merchant DID");
   if (!productRkey) throw new Error("Invalid product rkey");
   if (!objectId) throw new Error("Invalid object id");
   const safe = sanitizeInventoryFilename(filename);
-  return `inventory/${sellerDid}/${productRkey}/items/${objectId}/${safe}`;
+  return `inventory/${merchantDid}/${productRkey}/items/${objectId}/${safe}`;
 }
 
 export function newProductAssetKey(
-  sellerDid: string,
+  merchantDid: string,
   productRkey: string,
   objectId: string,
   filename: string,
 ): string {
-  if (!sellerDid.startsWith("did:")) throw new Error("Invalid seller DID");
+  if (!merchantDid.startsWith("did:")) throw new Error("Invalid merchant DID");
   if (!productRkey) throw new Error("Invalid product rkey");
   if (!objectId) throw new Error("Invalid object id");
   const safe = sanitizeInventoryFilename(filename);
-  return `inventory/${sellerDid}/${productRkey}/assets/${objectId}/${safe}`;
+  return `inventory/${merchantDid}/${productRkey}/assets/${objectId}/${safe}`;
 }

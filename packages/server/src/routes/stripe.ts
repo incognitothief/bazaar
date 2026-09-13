@@ -76,13 +76,14 @@ async function getRecordJsonWithCid(
 }
 
 function listingHasV5License(listing: Record<string, unknown>): boolean {
-  const licUri = listing.licenseUri;
-  const licCid = listing.licenseGrantCid;
+  const licenseGrant = listing.licenseGrant as
+    | { uri?: unknown; cid?: unknown }
+    | undefined;
   return (
-    typeof licUri === "string" &&
-    licUri.length > 0 &&
-    typeof licCid === "string" &&
-    licCid.length > 0
+    typeof licenseGrant?.uri === "string" &&
+    licenseGrant.uri.length > 0 &&
+    typeof licenseGrant.cid === "string" &&
+    licenseGrant.cid.length > 0
   );
 }
 
@@ -148,7 +149,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     }
     if (!listingHasV5License(listing)) {
       return c.json(
-        { error: "Listing must include licenseUri and licenseGrantCid" },
+        { error: "Listing must include a licenseGrant (uri + cid)" },
         400,
       );
     }
@@ -202,7 +203,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
       listingUri,
       itemUri,
       listingCid,
-      appDid: process.env.APP_DID ?? "",
+      storefrontDid: process.env.STOREFRONT_DID ?? "",
       buyerDid: body?.buyerDid ?? "",
     };
     if (!stripe) {
@@ -309,10 +310,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     const row = fulfillmentRowForCheckoutSession(db, session);
     const buyerCookieOk = !!(cookieDid && cookieDid === buyerDid);
     const itemUriMeta = session.metadata?.itemUri;
-    const showPds =
-      buyerCookieOk &&
-      row &&
-      (row.receiptUri?.length || row.consentUri?.length);
+    const showPds = buyerCookieOk && row && row.receiptUri?.length;
     return c.json({
       ok: true,
       ...(skipReason ? { note: `claim_skipped:${skipReason}` } : {}),
@@ -325,7 +323,6 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
         ? {
             pds: {
               receiptUri: row.receiptUri ?? null,
-              consentUri: row.consentUri ?? null,
               receiptCid: row.receiptCid ?? null,
             },
           }

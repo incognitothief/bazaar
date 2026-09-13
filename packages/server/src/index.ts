@@ -8,7 +8,7 @@ import { serveStatic } from "hono/bun";
 import { createApiRouter } from "./api";
 import { createDb } from "./db";
 import { createOAuthClient } from "./lib/atproto/oauth";
-import { checkMerchantKeySync, reconcileMerchantKeys } from "./lib/merchantKeys";
+import { checkStorefrontKeySync, reconcileStorefrontKeys } from "./lib/storefrontKeys";
 import { injectSpaHead } from "./lib/spaHtmlMeta";
 import {
   backfillPaymentFulfillmentFromMeta,
@@ -39,19 +39,19 @@ try {
 }
 
 try {
-  await reconcileMerchantKeys(db);
+  await reconcileStorefrontKeys(db);
 } catch (e) {
   console.error(
-    "Merchant key config invalid (APP_MERCHANT_KEY_HISTORY / APP_MERCHANT_*):",
+    "Storefront key config invalid (STOREFRONT_KEY_HISTORY / STOREFRONT_*):",
     e,
   );
   process.exit(1);
 }
 
-// Best-effort: compare the merchant PDS's actor.merchantKeys mirror against the current
+// Best-effort: compare the merchant PDS's actor.storefrontKeys mirror against the current
 // key history and stash the result for the merchant panel. Never blocks boot.
-void checkMerchantKeySync(db).catch((e) =>
-  console.warn("merchant key sync check:", e),
+void checkStorefrontKeySync(db).catch((e) =>
+  console.warn("storefront key sync check:", e),
 );
 
 const oauthClient = await createOAuthClient(db);
@@ -154,11 +154,11 @@ app.notFound(async (c) => {
   return c.text("Not found", 404);
 });
 
-if (!process.env.APP_MERCHANT_KID?.trim() && process.env.NODE_ENV === "production") {
+if (!process.env.STOREFRONT_KID?.trim() && process.env.NODE_ENV === "production") {
   console.warn(
-    "[WARN] APP_MERCHANT_KID is not set. Signed records will not carry a kid field. " +
+    "[WARN] STOREFRONT_KID is not set. Signed records will not carry a kid field. " +
       "Key rotation verification will require exhaustive key search. " +
-      "Set APP_MERCHANT_KID (merchant-key-YYYY-MM-DD) alongside APP_MERCHANT_PRIVATE_KEY.",
+      "Set STOREFRONT_KID (storefront-key-YYYY-MM-DD) alongside STOREFRONT_PRIVATE_KEY.",
   );
 }
 

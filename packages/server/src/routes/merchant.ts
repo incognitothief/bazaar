@@ -44,10 +44,10 @@ import {
   validateBusinessState,
 } from "../lib/businessProfile";
 import {
-  checkMerchantKeySync,
-  expectedMerchantKeyRecords,
-  readMerchantKeySyncStatus,
-} from "../lib/merchantKeys";
+  checkStorefrontKeySync,
+  expectedStorefrontKeyRecords,
+  readStorefrontKeySyncStatus,
+} from "../lib/storefrontKeys";
 import {
   stripeCredentialSources,
   stripeSecretKeyFromEnv,
@@ -62,10 +62,10 @@ const SESSION_COOKIE = "bazaar_atp_session";
 const LIST_LIMIT = 250;
 
 function merchantGuard(c: Context): Response | null {
-  const owner = process.env.ARTIST_DID?.trim();
+  const owner = process.env.MERCHANT_DID?.trim();
   if (!owner?.startsWith("did:")) {
     return c.json(
-      { error: "server_misconfigured", detail: "ARTIST_DID not set" },
+      { error: "server_misconfigured", detail: "MERCHANT_DID not set" },
       503,
     );
   }
@@ -212,7 +212,7 @@ export function createMerchantRouter(db: Db) {
   r.get("/licenses", (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const rows = db
       .select()
       .from(licenses)
@@ -223,7 +223,7 @@ export function createMerchantRouter(db: Db) {
   });
 
   /**
-   * Storefront key mirror status: does the merchant PDS's `actor.merchantKeys` collection
+   * Storefront key mirror status: does the merchant PDS's `actor.storefrontKeys` collection
    * match the current storefront key history? `expected` is the exact record set the client
    * should `putRecord` (rkey = kid). Computed on boot; this returns the stored result, or
    * recomputes if none is stored yet.
@@ -232,16 +232,16 @@ export function createMerchantRouter(db: Db) {
     const denied = merchantGuard(c);
     if (denied) return denied;
     const status =
-      (await readMerchantKeySyncStatus(db)) ?? (await checkMerchantKeySync(db));
-    return c.json({ ...status, expected: expectedMerchantKeyRecords() });
+      (await readStorefrontKeySyncStatus(db)) ?? (await checkStorefrontKeySync(db));
+    return c.json({ ...status, expected: expectedStorefrontKeyRecords() });
   });
 
   /** Re-run the mirror diff (call after the client finishes a sync). */
   r.post("/key-sync-status/recheck", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const status = await checkMerchantKeySync(db);
-    return c.json({ ...status, expected: expectedMerchantKeyRecords() });
+    const status = await checkStorefrontKeySync(db);
+    return c.json({ ...status, expected: expectedStorefrontKeyRecords() });
   });
 
   /** Store-owner only: lists `payment_fulfillment` rows for the Stripe → PDS pipeline. */
@@ -289,7 +289,6 @@ export function createMerchantRouter(db: Db) {
         lastError: row.lastError,
         receiptUri: row.receiptUri,
         receiptCid: row.receiptCid,
-        consentUri: row.consentUri,
         itemUri: row.itemUri,
         listingUri: row.listingUri,
         itemTitle: row.itemUri ? (titleByUri.get(row.itemUri) ?? null) : null,
@@ -426,18 +425,18 @@ export function createMerchantRouter(db: Db) {
   r.get("/catalog/items", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const rows = db
       .select()
       .from(catalogItems)
-      .where(eq(catalogItems.sellerDid, owner))
+      .where(eq(catalogItems.merchantDid, owner))
       .orderBy(desc(catalogItems.capturedAt))
       .all();
 
     const productRows = db
       .select()
       .from(catalogProducts)
-      .where(eq(catalogProducts.sellerDid, owner))
+      .where(eq(catalogProducts.merchantDid, owner))
       .all();
     const productUriByItemUri = new Map<string, string>();
     for (const p of productRows) {
@@ -471,11 +470,11 @@ export function createMerchantRouter(db: Db) {
   r.get("/catalog/products", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const rows = db
       .select()
       .from(catalogProducts)
-      .where(eq(catalogProducts.sellerDid, owner))
+      .where(eq(catalogProducts.merchantDid, owner))
       .orderBy(desc(catalogProducts.capturedAt))
       .all();
     const products = await Promise.all(
@@ -498,7 +497,7 @@ export function createMerchantRouter(db: Db) {
   r.post("/catalog/items/sync", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const body = (await c.req.json().catch(() => null)) as { uri?: string } | null;
     const uri = body?.uri;
     if (!uri) return c.json({ error: "uri required" }, 400);
@@ -509,7 +508,7 @@ export function createMerchantRouter(db: Db) {
       return c.json({ error: "invalid_uri" }, 400);
     }
     if (at.hostname !== owner) {
-      return c.json({ error: "forbidden", detail: "uri does not belong to this deployment's ARTIST_DID" }, 403);
+      return c.json({ error: "forbidden", detail: "uri does not belong to this deployment's MERCHANT_DID" }, 403);
     }
     try {
       const agent = await getAgentForDid(owner);
@@ -534,7 +533,7 @@ export function createMerchantRouter(db: Db) {
   r.post("/catalog/products/sync", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const body = (await c.req.json().catch(() => null)) as { uri?: string } | null;
     const uri = body?.uri;
     if (!uri) return c.json({ error: "uri required" }, 400);
@@ -545,7 +544,7 @@ export function createMerchantRouter(db: Db) {
       return c.json({ error: "invalid_uri" }, 400);
     }
     if (at.hostname !== owner) {
-      return c.json({ error: "forbidden", detail: "uri does not belong to this deployment's ARTIST_DID" }, 403);
+      return c.json({ error: "forbidden", detail: "uri does not belong to this deployment's MERCHANT_DID" }, 403);
     }
     try {
       const agent = await getAgentForDid(owner);
@@ -579,7 +578,7 @@ export function createMerchantRouter(db: Db) {
   r.post("/catalog/products/settings", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const body = (await c.req.json().catch(() => null)) as {
       uri?: string;
       productType?: string | null;
@@ -592,7 +591,7 @@ export function createMerchantRouter(db: Db) {
       .from(catalogProducts)
       .where(eq(catalogProducts.uri, uri))
       .get();
-    if (!existing || existing.sellerDid !== owner) {
+    if (!existing || existing.merchantDid !== owner) {
       return c.json({ error: "not_found" }, 404);
     }
     const set: Partial<typeof catalogProducts.$inferInsert> = { updatedAt: new Date() };
@@ -639,11 +638,11 @@ export function createMerchantRouter(db: Db) {
   r.get("/catalog/products/assets", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const uri = c.req.query("uri");
     if (!uri) return c.json({ error: "uri required" }, 400);
     const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
-    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
     return c.json(await loadProductAssets(uri));
   });
 
@@ -658,7 +657,7 @@ export function createMerchantRouter(db: Db) {
   r.post("/catalog/products/assets", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const body = (await c.req.json().catch(() => null)) as {
       productUri?: string;
       objectId?: string;
@@ -671,7 +670,7 @@ export function createMerchantRouter(db: Db) {
       return c.json({ error: "productUri_objectId_role_required" }, 400);
     }
     const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, productUri)).get();
-    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
     const obj = db
       .select({
         id: inventoryUploadObject.id,
@@ -722,7 +721,7 @@ export function createMerchantRouter(db: Db) {
   r.post("/catalog/products/assets/remove", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const body = (await c.req.json().catch(() => null)) as { id?: string } | null;
     const id = body?.id;
     if (!id) return c.json({ error: "id_required" }, 400);
@@ -733,7 +732,7 @@ export function createMerchantRouter(db: Db) {
       .from(catalogProducts)
       .where(eq(catalogProducts.uri, row.productUri))
       .get();
-    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
 
     db.delete(catalogProductAssets).where(eq(catalogProductAssets.id, id)).run();
 
@@ -789,11 +788,11 @@ export function createMerchantRouter(db: Db) {
   r.get("/catalog/items/download", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const uri = c.req.query("uri");
     if (!uri) return c.json({ error: "uri required" }, 400);
     const item = db.select().from(catalogItems).where(eq(catalogItems.uri, uri)).get();
-    if (!item || item.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!item || item.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
     if (!item.objectId) return c.json({ error: "no_file" }, 404);
     const obj = db
       .select()
@@ -823,11 +822,11 @@ export function createMerchantRouter(db: Db) {
   r.get("/catalog/products/download", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const uri = c.req.query("uri");
     if (!uri) return c.json({ error: "uri required" }, 400);
     const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
-    if (!product || product.sellerDid !== owner) return c.json({ error: "not_found" }, 404);
+    if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
 
     const r2 = r2ConfigFromEnv();
     if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
@@ -847,7 +846,7 @@ export function createMerchantRouter(db: Db) {
   r.get("/catalog/legacy/item-download", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const uri = c.req.query("uri");
     if (!uri) return c.json({ error: "uri required" }, 400);
     let at: AtUri;
@@ -919,7 +918,7 @@ export function createMerchantRouter(db: Db) {
   r.get("/catalog/legacy/collection-download", async (c) => {
     const denied = merchantGuard(c);
     if (denied) return denied;
-    const owner = process.env.ARTIST_DID!.trim();
+    const owner = process.env.MERCHANT_DID!.trim();
     const uri = c.req.query("uri");
     if (!uri) return c.json({ error: "uri required" }, 400);
     let at: AtUri;

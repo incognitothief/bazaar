@@ -8,56 +8,34 @@
       "record": {
         "type": "object",
         "required": [
-          "item",
-          "listingUri",
-          "listingCid",
+          "purchasedGood",
+          "listing",
           "pricePaid",
-          "paymentProcessor",
-          "paymentRef",
-          "buyerDid",
-          "appDid",
-          "issuerScope",
-          "appSig",
+          "payment",
+          "licenseGrant",
+          "storefrontDid",
+          "merchantDid",
+          "storefrontSig",
           "purchasedAt"
         ],
         "properties": {
-          "item": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
+          "purchasedGood": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef",
+            "description": "The catalog.item or catalog.product purchased -- Bazaar sells both under one receipt shape, hence the generic name."
           },
-          "listingUri": {
-            "type": "string",
-            "format": "at-uri"
-          },
-          "listingCid": {
-            "type": "string",
-            "format": "cid",
-            "description": "CID of the listing at time of purchase — immutable price anchor."
+          "listing": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#ref",
+            "description": "Listing purchased. cid is pinned at checkout as the immutable price anchor."
           },
           "pricePaid": {
             "$ref": "diamonds.whereditgo.bazaar.defs#money"
           },
-          "paymentProcessor": {
-            "type": "string",
-            "maxLength": 128
+          "payment": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#payment"
           },
-          "paymentRef": {
-            "type": "string",
-            "maxLength": 256,
-            "description": "Stripe PaymentIntent ID or equivalent. Independently verifiable via payment processor."
-          },
-          "licenseGrantUri": {
-            "type": "string",
-            "format": "at-uri"
-          },
-          "licenseGrantCid": {
-            "type": "string",
-            "format": "cid",
-            "description": "CID of the license.terms record at time of purchase. Resolved from the listing's licenseGrantCid."
-          },
-          "buyerDid": {
-            "type": "string",
-            "format": "did",
-            "description": "DID of the buyer. Explicit field — previously only implied by appSig payload. Makes receipt queryable by buyer identity and consistent with purchase.consent record."
+          "licenseGrant": {
+            "$ref": "diamonds.whereditgo.bazaar.defs#ref",
+            "description": "License terms in effect at time of purchase. cid resolved from the listing's own licenseGrant.cid. Required: every listing must carry license terms before it can be sold, so every receipt has one. cid is folded into storefrontSig (see storefrontSig's description) -- this is what freezes the license terms atomically with the purchase itself; there is no separate consent record."
           },
           "shippingAddress": {
             "$ref": "diamonds.whereditgo.bazaar.defs#address",
@@ -69,27 +47,27 @@
           },
           "grantedItems": {
             "type": "array",
-            "items": { "type": "string", "format": "at-uri" },
-            "description": "Fully-qualified catalog.item AT-URIs this purchase entitles the buyer to download, frozen at purchase time. Single-item purchase: the one item URI. Product purchase: the product's member item URIs at time of sale — later edits to product.items do NOT change this grant (a removed item stays downloadable for this buyer; an added item is not). Sorted by UTF-8 byte order and de-duplicated. Covered by appSig: the signed payload appends a sixth colon-delimited field, base64url(SHA-256(grantedItems.join('\\n'))) — newline never occurs in an AT-URI, so the join is unambiguous. Freezes which items, not which bytes: re-uploading an item's master still serves the current file for that URI. Absent on legacy receipts and on collection purchases, which fall back to live membership resolution. Immutable."
+            "items": { "$ref": "diamonds.whereditgo.bazaar.defs#ref" },
+            "description": "The catalog.item refs (uri + cid) this purchase entitles the buyer to download, frozen at purchase time. Single-item purchase: the one item ref. Product purchase: the product's member item refs at time of sale — later edits to product.items do NOT change this grant (a removed item stays downloadable for this buyer; an added item is not). Sorted by uri UTF-8 byte order and de-duplicated by uri. Covered by storefrontSig — see storefrontSig's description for the digest algorithm. Freezes which items, not which bytes: re-uploading an item's master still serves the current file for that URI. Absent on legacy receipts and on collection purchases, which fall back to live membership resolution. Immutable."
           },
-          "appDid": {
+          "storefrontDid": {
             "type": "string",
             "format": "did",
-            "description": "DID of the Bazaar app that issued this receipt. Verifiers resolve this to get the public key for appSig verification."
+            "description": "DID of the storefront (Bazaar service instance) that issued this receipt. Verifiers resolve this to get the public key for storefrontSig verification."
           },
-          "issuerScope": {
+          "merchantDid": {
             "type": "string",
             "format": "did",
-            "description": "DID of the artist/storefront this receipt was issued under."
+            "description": "DID of the merchant this receipt was issued under — the ATProto identity hosting the catalog/storefront (actor.merchant)."
           },
-          "appSig": {
+          "storefrontSig": {
             "type": "string",
-            "description": "Base64url signature by the Bazaar app service keypair (appDid) over SHA-256(purchasedAt:paymentRef:item.uri:listingCid:buyerDid), colon-delimited in that order. When grantedItems is present a sixth field is appended: ':' + base64url(SHA-256(grantedItems sorted by UTF-8 byte order, de-duplicated, joined by '\\n')). Legacy receipts without grantedItems sign only the five-field payload. item.uri is the AT-URI from the item field. Verifiers reconstruct this payload from the receipt's plaintext fields (recomputing the grantedItems digest) and verify against the public key resolved from appDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
+            "description": "Base64url signature by the storefront service keypair (storefrontDid) over SHA-256(purchasedAt:payment.ref:purchasedGood.uri:listing.cid:buyerDid), colon-delimited in that order. buyerDid is the authenticated buyer at mint time -- not a stored field, since the receipt's own repo already establishes whose purchase this is; verifiers supply their own session DID when reconstructing the payload. licenseGrant.cid is appended as a sixth field when present (every receipt from a listing gated by license.terms has one -- see licenseGrant's description). grantedItems, when present, is folded in as a further field: base64url(SHA-256(canonical grantedItems joined by '\\n')), where each entry is canonicalized as 'uri|cid' (empty string for a missing cid), sorted by uri UTF-8 byte order and de-duplicated by uri -- '|' never occurs in an AT-URI or a CID, so the per-entry join is unambiguous, and '\\n' never occurs in either, so the overall join is too. Each of licenseGrant.cid and the grantedItems digest is appended only when its source field is present on the receipt, in that fixed order -- legacy receipts from before either field existed sign only the five-field base payload. Verifiers reconstruct this payload from the receipt's plaintext fields (recomputing the grantedItems digest) and verify against the public key resolved from storefrontDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
           },
           "kid": {
             "type": "string",
             "maxLength": 64,
-            "description": "Key identifier for the app service keypair that produced appSig. Format: merchant-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. merchant-key-2026-08-29. Allows verifiers to select the correct historical key from the appDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
+            "description": "Key identifier for the storefront service keypair that produced storefrontSig. Format: storefront-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. storefront-key-2026-08-29. Allows verifiers to select the correct historical key from the storefrontDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
           },
           "purchasedAt": {
             "type": "string",

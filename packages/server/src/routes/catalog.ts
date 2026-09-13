@@ -94,18 +94,18 @@ export function createCatalogRouter(db: Db) {
     /**
      * An item has no cover art of its own -- it lives on the owning
      * product (catalogProductAssets). Find that product by scanning the
-     * seller's products for one whose items[] contains this item's uri
+     * merchant's products for one whose items[] contains this item's uri
      * (same lookup merchant.ts's GET /catalog/items list uses), and reuse
      * its already-resolved cover images. A standalone single still gets
      * the album/product art this way.
      */
     let coverImages: Awaited<ReturnType<typeof resolveCoverImages>> = [];
-    const sellerProducts = await db
+    const merchantProducts = await db
       .select()
       .from(catalogProducts)
-      .where(eq(catalogProducts.sellerDid, row.sellerDid))
+      .where(eq(catalogProducts.merchantDid, row.merchantDid))
       .all();
-    for (const p of sellerProducts) {
+    for (const p of merchantProducts) {
       const refs = JSON.parse(p.items) as Array<{ uri: string }>;
       if (refs.some((ref) => ref.uri === uri)) {
         coverImages = await resolveCoverImages(db, p.uri);

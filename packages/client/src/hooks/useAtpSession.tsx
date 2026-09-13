@@ -26,8 +26,8 @@ function devMockSignInEnabled(): boolean {
   );
 }
 
-function artistDid(): string {
-  const d = import.meta.env.VITE_ARTIST_DID?.trim() ?? "";
+function merchantDid(): string {
+  const d = import.meta.env.VITE_MERCHANT_DID?.trim() ?? "";
   return d.startsWith("did:") ? d : "";
 }
 
@@ -90,9 +90,9 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
     if (!h) return;
 
     if (devMockSignInEnabled()) {
-      if (!artistDid()) {
+      if (!merchantDid()) {
         throw new Error(
-          "Mock sign-in needs VITE_ARTIST_DID set to your store owner did:…",
+          "Mock sign-in needs VITE_MERCHANT_DID set to your store owner did:…",
         );
       }
       // Protocol-level resolution (DNS TXT / well-known, bidirectionally verified)
@@ -118,7 +118,7 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
     // sign-in will land. A destination under /merchant/ is the merchant's own
     // dashboard flow (needs full catalog/listing/license/profile write scopes);
     // anything else is a buyer completing a purchase (only ever needs
-    // purchase.receipt/purchase.consent). Defaults to the narrower buyer scope
+    // purchase.receipt). Defaults to the narrower buyer scope
     // when ambiguous — the real DID/role isn't known until after OAuth completes.
     const role = (back ?? window.location.pathname).startsWith("/merchant/")
       ? "merchant"

@@ -1,6 +1,11 @@
 /** Types aligned with diamonds.whereditgo.bazaar.* lexicons (v5). */
 
+import { repoDidFromAtUri } from "@/lib/atUri";
+
 export type Money = { amount: number; currency: string };
+
+/** Which payment system settled a receipt, plus its opaque reference in that system. */
+export type Payment = { processor: string; ref: string };
 
 export type Dimensions = {
   width?: number;
@@ -31,6 +36,12 @@ export type ItemRef = {
   uri: string;
   cid?: string;
   variantSku?: string;
+};
+
+/** A plain AT-URI + CID pointer, used where ItemRef's variantSku doesn't apply. */
+export type Ref = {
+  uri: string;
+  cid?: string;
 };
 
 export type Address = {
@@ -172,7 +183,6 @@ export type Collection = {
 export type BazaarItem = {
   $type: "diamonds.whereditgo.bazaar.catalog.item";
   title: string;
-  sellerDid: string;
   category?: string;
   description?: string;
   tags?: string[];
@@ -188,7 +198,6 @@ export type BazaarItem = {
 export type Product = {
   $type: "diamonds.whereditgo.bazaar.catalog.product";
   title: string;
-  sellerDid: string;
   description?: string;
   tags?: string[];
   items: ItemRef[];
@@ -207,8 +216,7 @@ export type Listing = {
     | "scheduled"
     | "archived"
     | "superseded";
-  licenseUri: string;
-  licenseGrantCid: string;
+  licenseGrant: Ref;
   /** Parent collection listing AT-URI when this listing is a per-track single under that album. */
   parentListing?: string;
   supersededBy?: string;
@@ -229,40 +237,27 @@ export type LicenseTerms = {
 
 export type PurchaseReceipt = {
   $type: "diamonds.whereditgo.bazaar.purchase.receipt";
-  item: ItemRef;
-  listingUri: string;
-  listingCid: string;
+  /** The catalog.item or catalog.product purchased. */
+  purchasedGood: ItemRef;
+  /** Listing purchased. cid is pinned at checkout as the immutable price anchor. */
+  listing: Ref;
   pricePaid: Money;
-  paymentProcessor: string;
-  paymentRef: string;
-  /** Required for v5 records; may be absent on legacy receipts. */
-  buyerDid?: string;
-  licenseGrantUri?: string;
-  licenseGrantCid?: string;
+  payment: Payment;
+  /** License terms in effect at time of purchase. cid is folded into storefrontSig -- freezes the license atomically with the purchase, no separate consent record. */
+  licenseGrant: Ref;
   shippingAddress?: Address;
   fulfillmentUri?: string;
   /**
-   * Frozen download entitlement: the catalog.item URIs this purchase covers,
+   * Frozen download entitlement: the catalog.item refs this purchase covers,
    * captured at checkout. Absent on legacy receipts. Later edits to a
    * product's items[] do not change it.
    */
-  grantedItems?: string[];
-  appDid: string;
-  issuerScope: string;
-  appSig: string;
+  grantedItems?: Ref[];
+  storefrontDid: string;
+  merchantDid: string;
+  storefrontSig: string;
   purchasedAt: string;
   note?: string;
-};
-
-export type PurchaseConsent = {
-  $type: "diamonds.whereditgo.bazaar.purchase.consent";
-  receiptUri: string;
-  receiptCid: string;
-  licenseGrantUri: string;
-  licenseGrantCid: string;
-  buyerDid: string;
-  consentedAt: string;
-  appSig: string;
 };
 
 export type Recording = {
@@ -336,11 +331,11 @@ export type ActorMerchant = {
 
 /**
  * Merchant-side mirror of one non-current storefront key (a keyHistory entry of the
- * appDid DID document). rkey = the bare kid fragment. See ADR 0013 / ADR 0014.
+ * storefrontDid DID document). rkey = the bare kid fragment. See ADR 0013 / ADR 0014 / ADR 0015.
  */
-export type ActorMerchantKeys = {
-  $type: "diamonds.whereditgo.bazaar.actor.merchantKeys";
-  appDid: string;
+export type ActorStorefrontKeys = {
+  $type: "diamonds.whereditgo.bazaar.actor.storefrontKeys";
+  storefrontDid: string;
   id: string;
   type: "Multikey";
   controller?: string;
@@ -353,13 +348,14 @@ export type ActorMerchantKeys = {
 export type CatalogItem = DigitalItem | Collection | PhysicalItem | BazaarItem | Product;
 
 /**
- * catalog.item/catalog.product renamed artistDid -> sellerDid; the legacy
- * types (DigitalItem, Collection, PhysicalItem) still use artistDid. Reading
- * through this everywhere means legacy records keep resolving forever with
- * no republish required.
+ * The legacy types (DigitalItem, Collection, PhysicalItem) still carry their
+ * own artistDid field. The current types (BazaarItem, Product) carry no
+ * merchant field at all -- their own repo (at://merchantDid/{collection}/rkey)
+ * already identifies the merchant, so it's derived from `itemUri` instead.
  */
-export function catalogItemSellerDid(item: CatalogItem): string {
-  return "sellerDid" in item ? item.sellerDid : item.artistDid;
+export function catalogItemMerchantDid(item: CatalogItem, itemUri: string): string {
+  if ("artistDid" in item) return item.artistDid;
+  return repoDidFromAtUri(itemUri) ?? "";
 }
 
 /** catalog.item (BazaarItem) has no artworkCid of its own — artwork lives at the product level for the new type. */

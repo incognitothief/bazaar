@@ -152,7 +152,7 @@ export function MerchantProductDetailPage() {
       ),
     );
 
-    const rows = await listListingRows(p.sellerDid).catch(() => []);
+    const rows = await listListingRows(p.merchantDid).catch(() => []);
     const primary = rows
       .filter((r) => r.listing.item.uri === uri && !r.listing.parentListing)
       .sort((a, b) => {
@@ -167,9 +167,9 @@ export function MerchantProductDetailPage() {
       primary && !isTerminalStatus(primary.listing.status) ? primary : null;
     setListing(primaryActive?.listing ?? null);
     setListingUri(primaryActive?.uri ?? null);
-    if (primaryActive?.listing.licenseUri) {
+    if (primaryActive?.listing.licenseGrant?.uri) {
       const lt = await getRecordValueWithCid<LicenseTerms>(
-        primaryActive.listing.licenseUri,
+        primaryActive.listing.licenseGrant.uri,
       ).catch(() => null);
       setLicense(lt?.value ?? null);
       setLicenseCid(lt?.cid ?? null);
