@@ -20,7 +20,12 @@ import {
   sanitizeInventoryFilename,
 } from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
-import { buildProductZip, entitlementMatchesCurrentItems, zipFilenameFor } from "../lib/productZip";
+import {
+  buildProductZip,
+  entitlementMatchesCurrentItems,
+  rebuildProductZipCacheByUri,
+  zipFilenameFor,
+} from "../lib/productZip";
 import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 
 function lexiconNs(): string {
@@ -436,6 +441,15 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       } catch (e) {
         console.warn("product-zip: cache presign failed, falling back to live rebuild", e);
       }
+    }
+
+    // Self-heal a broken/missing cache so the next buyer can hit the
+    // presign path. Don't rebuild when status is already "ready" -- that
+    // case is entitlement drift (a different zip than the cache) or a
+    // transient presign failure, neither of which means the current-contents
+    // cache is wrong.
+    if (product.packageZipStatus !== "ready" || !product.packageZipKey) {
+      void rebuildProductZipCacheByUri(db, product.uri);
     }
 
     const result = await buildProductZip(db, cfg, product, entitledUris);

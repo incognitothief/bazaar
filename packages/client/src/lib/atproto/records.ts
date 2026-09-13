@@ -696,6 +696,14 @@ export type CatalogProductRow = {
   totalBytes: number | null;
   /** How many members are audio files -- the storefront card shows this for a music release. Computed on read. */
   trackCount: number;
+  /**
+   * ERP-only package-zip cache state. null = never built; "ready" = safe
+   * to list / presign; "failed" = last rebuild errored. Already on the
+   * product GET/list payloads via `...row`; the client just didn't read it.
+   */
+  packageZipStatus: "ready" | "failed" | null;
+  /** Last successful rebuild time, when status is "ready". */
+  packageZipUpdatedAt: string | null;
   recordCreatedAt: string | null;
   capturedAt: string;
   updatedAt: string;
@@ -830,6 +838,20 @@ export type ZipProgress = {
   fileName: string;
   updatedAt: number;
 };
+
+/** Kick a package-zip rebuild without re-syncing the PDS record. Returns immediately; poll getZipProgress / getCatalogProduct for status. */
+export async function rebuildCatalogProductZip(uri: string): Promise<boolean> {
+  const res = await fetch(
+    browserApiUrl("/api/merchant/catalog/products/rebuild-zip"),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uri }),
+    },
+  );
+  return res.ok;
+}
 
 /** Live "zipping item N of M" state for a product's in-flight package rebuild -- poll while a save/publish request is in flight. Null once nothing's in progress (or nothing has started yet). */
 export async function getZipProgress(productUri: string): Promise<ZipProgress | null> {

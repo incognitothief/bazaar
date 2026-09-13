@@ -659,6 +659,24 @@ export function createMerchantRouter(db: Db) {
     return c.json({ progress: getZipProgress(uri) });
   });
 
+  /**
+   * Store-owner: kick a package-zip rebuild without re-syncing the PDS
+   * record. Fire-and-forget -- the merchant UI polls zip-progress and
+   * packageZipStatus the same way a save does.
+   */
+  r.post("/catalog/products/rebuild-zip", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.MERCHANT_DID!.trim();
+    const body = (await c.req.json().catch(() => null)) as { uri?: string } | null;
+    const uri = body?.uri;
+    if (!uri) return c.json({ error: "uri required" }, 400);
+    const product = db.select().from(catalogProducts).where(eq(catalogProducts.uri, uri)).get();
+    if (!product || product.merchantDid !== owner) return c.json({ error: "not_found" }, 404);
+    void rebuildProductZipCacheByUri(db, uri);
+    return c.json({ ok: true });
+  });
+
   /** Store-owner: cover art + included assets for one product (see loadProductAssets). */
   r.get("/catalog/products/assets", async (c) => {
     const denied = merchantGuard(c);
@@ -857,6 +875,10 @@ export function createMerchantRouter(db: Db) {
 
     const r2 = r2ConfigFromEnv();
     if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
+
+    if (product.packageZipStatus !== "ready" || !product.packageZipKey) {
+      void rebuildProductZipCacheByUri(db, product.uri);
+    }
 
     const result = await buildProductZip(db, r2, product);
     if (result instanceof Response) return result;

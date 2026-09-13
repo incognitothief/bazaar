@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -46,6 +46,7 @@ import {
   listListingRows,
   putCatalogProduct,
   putListing,
+  rebuildCatalogProductZip,
   removeCatalogProductAsset,
   syncCatalogProduct,
   updateCatalogProductSettings,
@@ -111,6 +112,9 @@ export function MerchantProductDetailPage() {
   const settingsElapsed = useElapsedSeconds(savingSettings);
   const savingZipProgress = useZipProgress(uri, saving);
   const settingsZipProgress = useZipProgress(uri, savingSettings);
+  const [retryingZip, setRetryingZip] = useState(false);
+  const retryZipProgress = useZipProgress(uri, retryingZip);
+  const sawRetryProgressRef = useRef(false);
   const [assets, setAssets] = useState<CatalogProductAssets>({
     coverImages: [],
     includedAssets: [],
@@ -200,6 +204,69 @@ export function MerchantProductDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!retryingZip) {
+      sawRetryProgressRef.current = false;
+      return;
+    }
+    if (retryZipProgress) sawRetryProgressRef.current = true;
+  }, [retryingZip, retryZipProgress]);
+
+  useEffect(() => {
+    if (!retryingZip) return;
+    let cancelled = false;
+
+    const finish = async () => {
+      const p = await getCatalogProduct(uri);
+      if (cancelled) return;
+      if (p) setProduct(p);
+      setRetryingZip(false);
+      if (p?.packageZipStatus === "ready") {
+        toast.success("Download package rebuilt");
+      }
+    };
+
+    if (retryZipProgress) return () => {
+      cancelled = true;
+    };
+
+    if (sawRetryProgressRef.current) {
+      void finish();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const interval = setInterval(() => {
+      void getCatalogProduct(uri).then((p) => {
+        if (cancelled || !p) return;
+        if (p.packageZipStatus === "ready") {
+          setProduct(p);
+          setRetryingZip(false);
+          toast.success("Download package rebuilt");
+        }
+      });
+    }, 700);
+    const failSafe = setTimeout(() => {
+      if (!sawRetryProgressRef.current) void finish();
+    }, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      clearTimeout(failSafe);
+    };
+  }, [retryingZip, retryZipProgress, uri]);
+
+  async function onRetryPackageZip() {
+    if (retryingZip) return;
+    setRetryingZip(true);
+    const ok = await rebuildCatalogProductZip(uri);
+    if (!ok) {
+      toast.error("Could not start a rebuild");
+      setRetryingZip(false);
+    }
+  }
 
   async function onSaveSettings(next: {
     productType?: string;
@@ -816,6 +883,38 @@ export function MerchantProductDetailPage() {
           <TagTokens tags={tags} part="plain" />
         ) : null}
       </section>
+
+      {product.packageZipStatus === "failed" || retryingZip ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p>
+              This product's download package failed to build — customers will
+              get a slower first download until this is fixed.
+            </p>
+            {retryingZip ? (
+              <p className="text-xs text-muted-foreground">
+                {retryZipProgress
+                  ? `Repackaging ${retryZipProgress.fileName}`
+                  : "Retrying the download bundle…"}
+              </p>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={retryingZip}
+            onClick={() => void onRetryPackageZip()}
+          >
+            {retryingZip
+              ? retryZipProgress
+                ? `Zipping ${retryZipProgress.current}/${retryZipProgress.total}…`
+                : "Retrying…"
+              : "Retry"}
+          </Button>
+        </div>
+      ) : null}
 
       {/* Items */}
       <section className="space-y-3">
