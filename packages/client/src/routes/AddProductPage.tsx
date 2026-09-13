@@ -25,6 +25,7 @@ import {
   suggestedMacroFromFormat,
 } from "@/lib/itemContentClass";
 import { probeImageSize, probeVideoDuration } from "@/lib/media/probe";
+import { useElapsedSeconds } from "@/hooks/useElapsedSeconds";
 import {
   GENERIC_PRODUCT_TYPE,
   PRODUCT_TYPE_OPTIONS,
@@ -144,6 +145,7 @@ export function AddProductPage() {
   const [items, setItems] = useState<ItemDraftRow[]>([]);
   const [assets, setAssets] = useState<AssetDraftRow[]>([]);
   const [publishing, setPublishing] = useState(false);
+  const publishingElapsed = useElapsedSeconds(publishing);
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (sessionId) return sessionId;
@@ -781,16 +783,28 @@ export function AddProductPage() {
               </>
             ) : null}
           </div>
-          <div className="flex justify-between">
+          <div className="flex items-center justify-between">
             <Button variant="outline" onClick={() => setStep(2)} disabled={publishing}>
               Back
             </Button>
-            <Button
-              onClick={() => void publish()}
-              disabled={publishing || !allAssetsReady || !allCoverImagesReady}
-            >
-              {publishing ? "Publishing…" : "Publish"}
-            </Button>
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                onClick={() => void publish()}
+                disabled={publishing || !allAssetsReady || !allCoverImagesReady}
+              >
+                {publishing
+                  ? publishingElapsed >= 2
+                    ? `Publishing… (${publishingElapsed}s)`
+                    : "Publishing…"
+                  : "Publish"}
+              </Button>
+              {publishing && items.length > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Packaging the download bundle for buyers — this can take
+                  longer for larger products.
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

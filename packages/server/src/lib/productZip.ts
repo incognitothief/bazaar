@@ -222,11 +222,15 @@ export async function rebuildProductZipCache(
   }
 }
 
-/** Convenience wrapper for write-path handlers that only have a product URI in hand right after a mutation. No-ops if the product isn't found. */
+/** Convenience wrapper for write-path handlers that only have a product URI in hand right after a mutation. No-ops if the product isn't found. Never throws -- same best-effort contract as rebuildProductZipCache itself, since callers await this bare, with no try/catch of their own. */
 export async function rebuildProductZipCacheByUri(db: Db, productUri: string): Promise<void> {
-  const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, productUri)).get();
-  if (!row) return;
-  await rebuildProductZipCache(db, row);
+  try {
+    const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, productUri)).get();
+    if (!row) return;
+    await rebuildProductZipCache(db, row);
+  } catch (e) {
+    console.warn("rebuildProductZipCacheByUri: failed", productUri, e);
+  }
 }
 
 /**
