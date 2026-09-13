@@ -73,6 +73,20 @@ if (sweepMs > 0) {
 const api = createApiRouter(db, oauthClient);
 const app = new Hono();
 
+/**
+ * Safety net for any uncaught exception in any route -- without this, Hono's
+ * own default just returns bare "Internal Server Error" text with no detail
+ * client-side and nothing beyond Bun's own crash-dump in the server logs.
+ * Logs the full error server-side (name/message/stack) and returns enough
+ * of it to the client to diagnose without needing to go pull `fly logs`.
+ */
+app.onError((err, c) => {
+  console.error(`[unhandled] ${c.req.method} ${c.req.path}:`, err);
+  const name = err instanceof Error ? err.name : "Error";
+  const message = err instanceof Error ? err.message : String(err);
+  return c.json({ error: "internal_error", name, message }, 500);
+});
+
 app.get("/xrpc/com.atproto.lexicon.get", (c) => {
   const id = c.req.query("lexicon");
   if (!id) return c.json({ error: "LexiconNotFound" }, 404);

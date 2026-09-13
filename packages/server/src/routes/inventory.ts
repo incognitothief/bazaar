@@ -1362,11 +1362,25 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       if (it.category?.trim()) record.category = it.category.trim();
       if (it.tags?.length) record.tags = it.tags;
 
-      const res = await sess.agent.com.atproto.repo.createRecord({
-        repo: sess.did,
-        collection: itemType,
-        record,
-      });
+      let res;
+      try {
+        res = await sess.agent.com.atproto.repo.createRecord({
+          repo: sess.did,
+          collection: itemType,
+          record,
+        });
+      } catch (e) {
+        console.error("publish: item createRecord failed", it.objectId, e);
+        return c.json(
+          {
+            error: "pds_write_failed",
+            phase: "item",
+            objectId: it.objectId,
+            message: e instanceof Error ? e.message : String(e),
+          },
+          502,
+        );
+      }
       await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
         objectId: mo.id,
       });
@@ -1386,12 +1400,30 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     }
     if (draft.product.tags?.length) productRecord.tags = draft.product.tags;
 
-    const productRes = await sess.agent.com.atproto.repo.createRecord({
-      repo: sess.did,
-      collection: productType,
-      rkey: session.productRkey,
-      record: productRecord,
-    });
+    let productRes;
+    try {
+      productRes = await sess.agent.com.atproto.repo.createRecord({
+        repo: sess.did,
+        collection: productType,
+        rkey: session.productRkey,
+        record: productRecord,
+      });
+    } catch (e) {
+      // A retry after a prior attempt partially succeeded (e.g. items were
+      // created but the response was lost before the client saw it) will
+      // land here, since this reuses the same session.productRkey every
+      // time -- the PDS rejects a second createRecord at an already-used
+      // rkey. Surfacing that plainly beats an opaque 500 on retry.
+      console.error("publish-product: product createRecord failed", session.productRkey, e);
+      return c.json(
+        {
+          error: "pds_write_failed",
+          phase: "product",
+          message: e instanceof Error ? e.message : String(e),
+        },
+        502,
+      );
+    }
     await captureCatalogProduct(
       db,
       sess.did,
@@ -1513,11 +1545,25 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       if (it.category?.trim()) record.category = it.category.trim();
       if (it.tags?.length) record.tags = it.tags;
 
-      const res = await sess.agent.com.atproto.repo.createRecord({
-        repo: sess.did,
-        collection: itemType,
-        record,
-      });
+      let res;
+      try {
+        res = await sess.agent.com.atproto.repo.createRecord({
+          repo: sess.did,
+          collection: itemType,
+          record,
+        });
+      } catch (e) {
+        console.error("publish: item createRecord failed", it.objectId, e);
+        return c.json(
+          {
+            error: "pds_write_failed",
+            phase: "item",
+            objectId: it.objectId,
+            message: e instanceof Error ? e.message : String(e),
+          },
+          502,
+        );
+      }
       await captureCatalogItem(db, sess.did, record, res.data.uri, res.data.cid, {
         objectId: mo.id,
       });

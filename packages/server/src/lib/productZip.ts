@@ -1,6 +1,12 @@
 import { AtUri } from "@atproto/syntax";
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import { zipSync } from "fflate";
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  GetObjectCommand,
+  UploadPartCommand,
+} from "@aws-sdk/client-s3";
+import { Zip, ZipDeflate, zipSync } from "fflate";
 import { eq, inArray } from "drizzle-orm";
 import type { Db } from "../db";
 import { catalogItems, catalogProductAssets, catalogProducts, inventoryUploadObject } from "../db/schema";
@@ -9,6 +15,8 @@ import { newProductPackageZipKey } from "./r2/inventoryKey";
 import { r2ConfigFromEnv } from "./r2/env";
 
 const MAX_PRODUCT_ZIP_TOTAL_BYTES = 250 * 1024 * 1024;
+/** R2/S3 requires every multipart part except the last to be >= 5MiB; this gives headroom. */
+const MULTIPART_PART_SIZE = 8 * 1024 * 1024;
 
 /**
  * Only fixes characters that would actually break a zip entry / filesystem
@@ -54,20 +62,16 @@ function zipFilenameFor(product: Pick<CatalogProductRow, "title">): string {
 }
 
 /**
- * Fetches every file a product's package should contain and zips them in
- * memory. Shared by buildProductZip (buyer/merchant-facing, wraps this in
- * an HTTP Response) and rebuildProductZipCache (writes the bytes to R2
- * instead). Always reads inventoryUploadObject.r2Key, never webpR2Key --
- * the download is the original file, the webp derivative is display-only.
+ * Which inventoryUploadObject ids belong in a product's package -- its
+ * items' (or the entitled subset's) master files plus the generic
+ * included-assets bin (cover art only if artIncludedInDownload). Shared by
+ * both assembly paths below.
  */
-async function assembleProductZipBytes(
+function resolveProductZipObjectIds(
   db: Db,
-  r2: R2Config,
   product: CatalogProductRow,
   entitledItemUris?: string[],
-): Promise<{ bytes: Uint8Array } | { error: string; status: 400 | 413 }> {
-  const client = getR2S3Client(r2);
-
+): string[] {
   const itemRefs = JSON.parse(product.items) as Array<{ uri: string }>;
   const itemUris = entitledItemUris ?? itemRefs.map((ref) => ref.uri);
   const itemRows = itemUris.length
@@ -83,17 +87,41 @@ async function assembleProductZipBytes(
     (a) => a.role !== "coverArt" || product.artIncludedInDownload,
   );
 
-  const toFetch: Array<{ objectId: string }> = [
+  return [
     ...itemRows
       .filter((row): row is typeof row & { objectId: string } => !!row.objectId)
-      .map((row) => ({ objectId: row.objectId })),
-    ...includedAssetRows.map((a) => ({ objectId: a.objectId })),
+      .map((row) => row.objectId),
+    ...includedAssetRows.map((a) => a.objectId),
   ];
+}
+
+/**
+ * Fetches every file a product's package should contain and zips them in
+ * memory -- every file's raw bytes, plus the final compressed zip, resident
+ * at once. Used by buildProductZip (buyer live-rebuild fallback + merchant
+ * incident-response tool): both are low-frequency (entitlement drift or
+ * manual support, not routine merchant edits), and streaming a
+ * variable-length HTTP response can't cleanly reject an over-cap package
+ * once bytes have already started flowing to the client, so this stays
+ * simple rather than adopting streamProductZipToR2's approach below.
+ * rebuildProductZipCache (the hot path -- fires on every merchant edit)
+ * uses that streaming version instead. Always reads
+ * inventoryUploadObject.r2Key, never webpR2Key -- the download is the
+ * original file, the webp derivative is display-only.
+ */
+async function assembleProductZipBytes(
+  db: Db,
+  r2: R2Config,
+  product: CatalogProductRow,
+  entitledItemUris?: string[],
+): Promise<{ bytes: Uint8Array } | { error: string; status: 400 | 413 }> {
+  const client = getR2S3Client(r2);
+  const objectIds = resolveProductZipObjectIds(db, product, entitledItemUris);
 
   const zipEntries: Record<string, Uint8Array> = {};
   const usedNames = new Set<string>();
   let total = 0;
-  for (const { objectId } of toFetch) {
+  for (const objectId of objectIds) {
     const obj = db
       .select()
       .from(inventoryUploadObject)
@@ -122,6 +150,187 @@ async function assembleProductZipBytes(
   }
 
   return { bytes: zipSync(zipEntries, { level: 6 }) };
+}
+
+/**
+ * Removes exactly `n` bytes from the front of a queue of chunks (splitting
+ * a chunk if it straddles the boundary) and returns them as one contiguous
+ * buffer, mutating `chunks`/`chunks.length` in place to hold whatever's
+ * left. R2/S3 requires every non-final multipart part to be the exact same
+ * size, so parts can't just be "whatever accumulated past the threshold" --
+ * they have to be sliced to precise byte boundaries, carrying any remainder
+ * over to the next part.
+ */
+function takeBytes(chunks: Uint8Array[], n: number): Uint8Array {
+  const out = new Uint8Array(n);
+  let offset = 0;
+  let consumed = 0;
+  while (offset < n) {
+    const c = chunks[consumed];
+    const need = n - offset;
+    if (c.length <= need) {
+      out.set(c, offset);
+      offset += c.length;
+      consumed += 1;
+    } else {
+      out.set(c.subarray(0, need), offset);
+      chunks[consumed] = c.subarray(need);
+      offset += need;
+    }
+  }
+  chunks.splice(0, consumed);
+  return out;
+}
+
+/**
+ * Same package contents as assembleProductZipBytes, but never holds more
+ * than one file's raw bytes (streamed straight from R2's GetObject response
+ * body) or one multipart part's worth of compressed output in memory at a
+ * time -- regardless of how many files are in the product or how large the
+ * total package is. This is what actually fixes the OOM: the old
+ * buffer-everything-then-zipSync approach held every file simultaneously,
+ * which crashed a 512MB machine on a real 10-item product (confirmed via
+ * Fly's oom_killed=true machine event). Used only by rebuildProductZipCache.
+ */
+async function streamProductZipToR2(
+  db: Db,
+  r2: R2Config,
+  client: ReturnType<typeof getR2S3Client>,
+  product: CatalogProductRow,
+  key: string,
+): Promise<{ ok: true } | { error: string; status: 400 | 413 }> {
+  const objectIds = resolveProductZipObjectIds(db, product);
+
+  const created = await client.send(
+    new CreateMultipartUploadCommand({ Bucket: r2.bucket, Key: key, ContentType: "application/zip" }),
+  );
+  const uploadId = created.UploadId;
+  if (!uploadId) throw new Error("multipart_init_failed");
+
+  const abort = () =>
+    client
+      .send(new AbortMultipartUploadCommand({ Bucket: r2.bucket, Key: key, UploadId: uploadId }))
+      .catch((e) => console.warn("streamProductZipToR2: abort failed", key, e));
+
+  const parts: Array<{ PartNumber: number; ETag: string }> = [];
+  let partNumber = 0;
+  const pending: Uint8Array[] = [];
+  let pendingLen = 0;
+
+  async function uploadPart(body: Uint8Array): Promise<void> {
+    partNumber += 1;
+    const out = await client.send(
+      new UploadPartCommand({
+        Bucket: r2.bucket,
+        Key: key,
+        UploadId: uploadId,
+        PartNumber: partNumber,
+        Body: body,
+      }),
+    );
+    if (!out.ETag) throw new Error("multipart_missing_etag");
+    parts.push({ PartNumber: partNumber, ETag: out.ETag });
+  }
+
+  /**
+   * `final=false`: uploads as many exactly-MULTIPART_PART_SIZE parts as the
+   * queue currently allows, leaving any remainder (< one part's worth)
+   * queued. `final=true`: also flushes that remainder as the last part,
+   * whatever size it is -- only the last part is allowed to be undersized.
+   */
+  async function flushPart(final: boolean): Promise<void> {
+    while (pendingLen >= MULTIPART_PART_SIZE) {
+      const body = takeBytes(pending, MULTIPART_PART_SIZE);
+      pendingLen -= MULTIPART_PART_SIZE;
+      await uploadPart(body);
+    }
+    if (final && pendingLen > 0) {
+      const body = takeBytes(pending, pendingLen);
+      pendingLen = 0;
+      await uploadPart(body);
+    }
+  }
+
+  // fflate's Zip/ZipDeflate.push() is synchronous and calls this callback
+  // inline -- it only ever queues chunks. The async code below drains that
+  // queue (awaiting uploads as needed) right after each push() returns.
+  const zip = new Zip((err, chunk) => {
+    if (err) throw err;
+    if (chunk?.length) {
+      pending.push(chunk);
+      pendingLen += chunk.length;
+    }
+  });
+
+  try {
+    const usedNames = new Set<string>();
+    let total = 0;
+    let sawFile = false;
+
+    for (const objectId of objectIds) {
+      const obj = db
+        .select()
+        .from(inventoryUploadObject)
+        .where(eq(inventoryUploadObject.id, objectId))
+        .get();
+      if (!obj || obj.status !== "completed") continue;
+      let got;
+      try {
+        got = await client.send(new GetObjectCommand({ Bucket: r2.bucket, Key: obj.r2Key }));
+      } catch (e) {
+        console.warn("product zip stream: skip object", objectId, e);
+        continue;
+      }
+      if (!got.Body) continue;
+
+      const nameInZip = uniqueZipEntryName(usedNames, safeZipEntryName(obj.fileName));
+      const entry = new ZipDeflate(nameInZip, { level: 6 });
+      zip.add(entry);
+      sawFile = true;
+
+      const reader = got.Body.transformToWebStream().getReader();
+      let tooLarge = false;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value?.length) continue;
+        total += value.length;
+        if (total > MAX_PRODUCT_ZIP_TOTAL_BYTES) {
+          tooLarge = true;
+          await reader.cancel().catch(() => {});
+          break;
+        }
+        entry.push(value, false);
+        await flushPart(false);
+      }
+      if (tooLarge) {
+        await abort();
+        return { error: "package_too_large", status: 413 };
+      }
+      entry.push(new Uint8Array(0), true);
+      await flushPart(false);
+    }
+
+    if (!sawFile) {
+      await abort();
+      return { error: "no_downloadable_files", status: 400 };
+    }
+
+    zip.end();
+    await flushPart(true);
+    await client.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: r2.bucket,
+        Key: key,
+        UploadId: uploadId,
+        MultipartUpload: { Parts: parts },
+      }),
+    );
+    return { ok: true };
+  } catch (e) {
+    await abort();
+    throw e;
+  }
 }
 
 /**
@@ -184,7 +393,10 @@ export async function rebuildProductZipCache(
     return;
   }
   try {
-    const result = await assembleProductZipBytes(db, r2, product);
+    const rkey = new AtUri(product.uri).rkey;
+    const key = newProductPackageZipKey(product.merchantDid, rkey);
+    const client = getR2S3Client(r2);
+    const result = await streamProductZipToR2(db, r2, client, product, key);
     if ("error" in result) {
       console.warn("rebuildProductZipCache: assembly failed", product.uri, result.error);
       await db
@@ -193,17 +405,6 @@ export async function rebuildProductZipCache(
         .where(eq(catalogProducts.uri, product.uri));
       return;
     }
-    const rkey = new AtUri(product.uri).rkey;
-    const key = newProductPackageZipKey(product.merchantDid, rkey);
-    const client = getR2S3Client(r2);
-    await client.send(
-      new PutObjectCommand({
-        Bucket: r2.bucket,
-        Key: key,
-        Body: result.bytes,
-        ContentType: "application/zip",
-      }),
-    );
     await db
       .update(catalogProducts)
       .set({ packageZipKey: key, packageZipStatus: "ready", packageZipUpdatedAt: new Date() })
