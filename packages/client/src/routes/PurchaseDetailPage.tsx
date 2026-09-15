@@ -1,14 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
 
-import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { CopyButton } from "@/components/shared/CopyButton";
-import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
-import { MetadataChip } from "@/components/shared/MetadataChip";
 import { TagTokens } from "@/components/shared/TagTokens";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -23,12 +20,9 @@ import {
   getCatalogProduct,
   getRecordValue,
 } from "@/lib/atproto/records";
-import { createPublicAgent } from "@/lib/atproto/session";
 import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import { productTypeConfig } from "@/lib/productTypes";
 import {
-  catalogItemArtworkCid,
-  catalogItemMerchantDid,
   type CatalogItem,
   type LicenseTerms,
   type PurchaseReceipt,
@@ -122,7 +116,6 @@ export function PurchaseDetailPage() {
   const { receiptUri: enc } = useParams<{ receiptUri: string }>();
   const receiptUri = enc ? decodeURIComponent(enc) : "";
   const { session, loading } = useAtpSession();
-  const agent = useMemo(() => createPublicAgent(), []);
 
   const [receipt, setReceipt] = useState<PurchaseReceipt | null>(null);
   const [receiptCid, setReceiptCid] = useState<string | null>(null);
@@ -392,10 +385,8 @@ export function PurchaseDetailPage() {
         ? receipt.grantedItems.map((g) => g.uri)
         : item.items.map((r) => r.uri)
       : [];
-  const blobDid = catalogItemMerchantDid(item, receipt.purchasedGood.uri);
   const coverUrl = coverImages[0]?.url;
-  const artworkCid = catalogItemArtworkCid(item);
-  const hasArtwork = !!coverUrl || !!artworkCid;
+  const hasArtwork = !!coverUrl;
 
   return (
     <article className="mx-auto w-full min-w-0 max-w-2xl space-y-8 px-4 sm:px-6 pb-8">
@@ -423,16 +414,7 @@ export function PurchaseDetailPage() {
                 alt=""
                 className="h-full w-full object-cover"
               />
-            ) : (
-              <ArtworkImage
-                agent={agent}
-                did={blobDid}
-                cid={artworkCid}
-                itemUri={receipt.purchasedGood.uri}
-                alt=""
-                className="h-full w-full"
-              />
-            )}
+            ) : null}
           </button>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64" />
@@ -482,33 +464,11 @@ export function PurchaseDetailPage() {
         </div>
       </section>
 
-      {"formats" in item && item.formats?.length ? (
-        <div className="flex flex-wrap gap-2">
-          {item.formats.map((f: string) => (
-            <FormatBadge key={f} format={f} />
-          ))}
-        </div>
-      ) : null}
-
       {"tags" in item && item.tags?.length ? (
         <TagTokens tags={item.tags} part="tokens" />
       ) : null}
 
       <section className="flex flex-wrap gap-2" aria-label="Metadata">
-        {"releaseDate" in item && item.releaseDate ? (
-          <MetadataChip>
-            Released:{" "}
-            {new Date(item.releaseDate).toLocaleDateString("en-US", {
-              timeZone: "UTC",
-            })}
-          </MetadataChip>
-        ) : null}
-        {"durationMs" in item && item.durationMs ? (
-          <MetadataChip>{Math.round(item.durationMs / 60000)} min</MetadataChip>
-        ) : null}
-        {"genre" in item
-          ? item.genre?.map((g) => <MetadataChip key={g}>{g}</MetadataChip>)
-          : null}
         {"tags" in item && item.tags?.length ? (
           <TagTokens tags={item.tags} part="plain" />
         ) : null}
@@ -611,16 +571,7 @@ export function PurchaseDetailPage() {
                 alt=""
                 className="block max-h-[85vh] max-w-[85vw] object-contain"
               />
-            ) : (
-              <ArtworkImage
-                agent={agent}
-                did={blobDid}
-                cid={artworkCid}
-                itemUri={receipt.purchasedGood.uri}
-                alt=""
-                className="max-h-[85vh] max-w-[85vw]"
-              />
-            )}
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

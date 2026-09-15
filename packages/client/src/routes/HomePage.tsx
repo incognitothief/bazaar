@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { Helmet } from "react-helmet-async";
-import { createPublicAgent } from "@/lib/atproto/session";
 import {
   buildDummyProduct,
   buildDummyListing,
@@ -30,7 +29,6 @@ export function HomePage() {
   const { profile: merchantProfile, loading: merchantProfileLoading } =
     useActorMerchantProfile(merchantDid);
   const { entries, listingsByItemUri, loading, error } = useCatalog(merchantDid);
-  const agent = createPublicAgent();
 
   const merchantHeaderPending =
     merchantProfileLoading && merchantDid?.startsWith("did:");
@@ -169,8 +167,6 @@ export function HomePage() {
             </p>
           ) : null}
           <InventoryGrid
-            agent={agent}
-            artistDid={merchantDid}
             entries={gridEntries}
             listingsByItemUri={gridListings}
             previewItemUri={showStorefrontDummy ? dummyItemUri : null}

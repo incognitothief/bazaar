@@ -47,13 +47,10 @@ import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import {
   defaultOgImageAbsolute,
   firstLineForItemMeta,
-  itemSupportsOgArtwork,
   publicSiteOrigin,
   siteBrandName,
-  stableArtworkOpenUrl,
   truncMeta,
 } from "@/lib/seo";
-import { ArtworkImage } from "@/components/public/ArtworkImage";
 import { BuyButton } from "@/components/public/BuyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
@@ -65,7 +62,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn, formatBytes } from "@/lib/utils";
 import {
-  catalogItemArtworkCid,
   catalogItemMerchantDid,
   type ActorMerchant,
   type BazaarItem,
@@ -188,7 +184,6 @@ export function ItemDetailPage() {
   const [loading, setLoading] = useState(true);
   const [downloadBusyUri, setDownloadBusyUri] = useState<string | null>(null);
   const [zipBusy, setZipBusy] = useState(false);
-  const [legalOpen, setLegalOpen] = useState(false);
   const [artworkPreviewOpen, setArtworkPreviewOpen] = useState(false);
   const [relayAvatarUrl, setRelayAvatarUrl] = useState<string | null>(null);
   const [relayAvatarBroken, setRelayAvatarBroken] = useState(false);
@@ -639,8 +634,6 @@ export function ItemDetailPage() {
     }
   }
 
-  const blobDid = merchantDid ?? "";
-
   const showDummyBanner =
     catalogDummyEnabled() && isDummyStorefrontItem(itemUri, merchantDid);
 
@@ -650,17 +643,16 @@ export function ItemDetailPage() {
   const metaDesc =
     firstLineForItemMeta(item.description) ||
     `Available on ${siteBrandName()}.`;
-  const ogImage = itemSupportsOgArtwork(item)
-    ? stableArtworkOpenUrl(itemUri)
-    : defaultOgImageAbsolute();
+  // Per-item og:image was a legacy-only artwork blob path; product cover art
+  // lives in R2 with no public open-artwork endpoint, so this is the site default.
+  const ogImage = defaultOgImageAbsolute();
   const twSite = import.meta.env.VITE_PUBLIC_TWITTER_SITE?.trim();
 
   const coverUrl =
     (isProduct || isCatalogItemSingle) && coverImages[0]
       ? coverImages[0].url
       : null;
-  const artworkCid = catalogItemArtworkCid(item);
-  const hasArtwork = !!coverUrl || !!artworkCid;
+  const hasArtwork = !!coverUrl;
 
   // Music product: audio files are the numbered "Tracks" (in item-list order),
   // any non-audio member drops to an "Also included" group below. The
@@ -846,29 +838,9 @@ export function ItemDetailPage() {
                 alt=""
                 className="h-full w-full object-cover"
               />
-            ) : (
-              <ArtworkImage
-                agent={agent}
-                did={blobDid}
-                cid={artworkCid}
-                itemUri={itemUri}
-                alt=""
-                className="h-full w-full"
-              />
-            )}
+            ) : null}
           </button>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-[min(70vw,28rem)]">
-            <ArtworkImage
-              agent={agent}
-              did={blobDid}
-              cid={artworkCid}
-              itemUri={itemUri}
-              alt=""
-              className="h-full w-full"
-            />
-          </div>
-        )}
+        ) : null}
         <div className="space-y-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
@@ -964,13 +936,7 @@ export function ItemDetailPage() {
               <p>Not currently for sale.</p>
             </div>
           )}
-          {"formats" in item && item.formats?.length ? (
-            <div className="flex flex-wrap gap-2">
-              {item.formats.map((f: string) => (
-                <FormatBadge key={f} format={f} />
-              ))}
-            </div>
-          ) : bazaarItem?.format ? (
+          {bazaarItem?.format ? (
             <div className="flex flex-wrap gap-2">
               <FormatBadge format={bazaarItem.format} />
             </div>
@@ -1000,17 +966,6 @@ export function ItemDetailPage() {
         {isCatalogItemSingle && singleFileMeta?.byteSize ? (
           <MetadataChip>{formatBytes(singleFileMeta.byteSize)}</MetadataChip>
         ) : null}
-        {"releaseDate" in item && item.releaseDate ? (
-          <MetadataChip>
-            Released:{" "}
-            {new Date(item.releaseDate).toLocaleDateString("en-US", {
-              timeZone: "UTC",
-            })}
-          </MetadataChip>
-        ) : null}
-        {"durationMs" in item && item.durationMs ? (
-          <MetadataChip>{Math.round(item.durationMs / 60000)} min</MetadataChip>
-        ) : null}
         {isProduct && "items" in item ? (
           <MetadataChip>
             {item.items.length}{" "}
@@ -1026,11 +981,6 @@ export function ItemDetailPage() {
         {isProduct && productTotalBytes ? (
           <MetadataChip>{formatBytes(productTotalBytes)}</MetadataChip>
         ) : null}
-        {"genre" in item && item.genre
-          ? item.genre.map((g: string) => (
-              <MetadataChip key={g}>{g}</MetadataChip>
-            ))
-          : null}
         {"tags" in item && item.tags?.length ? (
           <TagTokens tags={item.tags} part="plain" />
         ) : null}
@@ -1127,26 +1077,6 @@ export function ItemDetailPage() {
         </section>
       ) : null}
 
-      {"isrc" in item && item.isrc ? (
-        <section>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mb-2 -ml-2"
-            onClick={() => setLegalOpen((o) => !o)}
-            aria-expanded={legalOpen}
-          >
-            Legal identifiers {legalOpen ? "▼" : "▶"}
-          </Button>
-          {legalOpen ? (
-            <ul className="text-sm text-muted-foreground space-y-1">
-              {item.isrc ? <li>ISRC: {item.isrc}</li> : null}
-            </ul>
-          ) : null}
-        </section>
-      ) : null}
-
       {listing &&
       listingUri &&
       !(isProduct && ownsProduct) &&
@@ -1173,16 +1103,7 @@ export function ItemDetailPage() {
                 alt=""
                 className="block max-h-[85vh] max-w-[85vw] object-contain"
               />
-            ) : (
-              <ArtworkImage
-                agent={agent}
-                did={blobDid}
-                cid={artworkCid}
-                itemUri={itemUri}
-                alt=""
-                className="max-h-[85vh] max-w-[85vw]"
-              />
-            )}
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

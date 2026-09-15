@@ -293,20 +293,16 @@ export type ActorStorefrontKeys = {
   syncedAt?: string;
 };
 
-export type CatalogItem = DigitalItem | Collection | PhysicalItem | BazaarItem | Product;
+export type CatalogItem = BazaarItem | Product;
 
 /**
- * The legacy types (DigitalItem, Collection, PhysicalItem) still carry their
- * own artistDid field. The current types (BazaarItem, Product) carry no
- * merchant field at all -- their own repo (at://merchantDid/{collection}/rkey)
- * already identifies the merchant, so it's derived from `itemUri` instead.
+ * catalog.item and catalog.product carry no merchant field: their own repo
+ * (at://merchantDid/{collection}/rkey) already identifies the merchant, so it
+ * is derived from `itemUri`. (The legacy types used to carry their own
+ * artistDid, which is why this takes the URI at all.)
  */
-export function catalogItemMerchantDid(item: CatalogItem, itemUri: string): string {
-  if ("artistDid" in item) return item.artistDid;
+export function catalogItemMerchantDid(_item: CatalogItem, itemUri: string): string {
   return repoDidFromAtUri(itemUri) ?? "";
 }
 
-/** catalog.item (BazaarItem) has no artworkCid of its own — artwork lives at the product level for the new type. */
-export function catalogItemArtworkCid(item: CatalogItem): string | undefined {
-  return "artworkCid" in item ? item.artworkCid : undefined;
-}
+

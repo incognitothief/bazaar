@@ -12,7 +12,6 @@ import {
   zipAutostopHoldToken,
 } from "./lib/flyZipAutostopHold";
 import { createInventoryRouter } from "./routes/inventory";
-import { createInventoryPublicRouter } from "./routes/inventoryPublic";
 import { createLicensesRouter } from "./routes/licenses";
 import { createMerchantRouter } from "./routes/merchant";
 import { createStripeRouter } from "./routes/stripe";
@@ -69,7 +68,6 @@ export function createApiRouter(db: Db, oauthClient: OAuthClient) {
   api.route("/catalog", createCatalogRouter(db));
   api.route("/merchant", createMerchantRouter(db, oauthClient));
   api.route("/inventory", createInventoryRouter(db, oauthClient));
-  api.route("/inventory-public", createInventoryPublicRouter());
   api.route("/licenses", createLicensesRouter(db));
   api.route("/download", createDownloadRouter(db, oauthClient));
 

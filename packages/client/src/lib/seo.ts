@@ -1,5 +1,3 @@
-import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
-import type { CatalogItem } from "@/types/lexicons";
 
 export function publicSiteOrigin(): string {
   const u = import.meta.env.VITE_APP_URL?.trim();
@@ -45,15 +43,3 @@ export function defaultOgImageAbsolute(): string {
   return "/og-default.png";
 }
 
-export function stableArtworkOpenUrl(itemUri: string): string {
-  const base = apiPublicBase();
-  return `${base}/api/inventory-public/artwork-open?itemUri=${encodeURIComponent(itemUri)}`;
-}
-
-export function itemSupportsOgArtwork(item: CatalogItem | null): boolean {
-  if (!item) return false;
-  return (
-    item.$type === BAZAAR_COLLECTION.digitalItem ||
-    item.$type === BAZAAR_COLLECTION.collection
-  );
-}
