@@ -5,7 +5,12 @@ function lexiconNs(): string {
 }
 
 /**
- * Resolve storefront catalog item AT-URI from TID rkey (digital → collection → physical).
+ * Resolve a storefront catalog AT-URI from a TID rkey by probing each
+ * collection an /item/:rkey URL can name.
+ *
+ * Product first: a single-item release mints its catalog.product with the
+ * same rkey as its item (see newProductItemKey's note), so both probes can
+ * hit, and the product is the page a visitor should land on.
  */
 export async function resolveCatalogItemUriFromRkey(
   repoDid: string,
@@ -14,9 +19,8 @@ export async function resolveCatalogItemUriFromRkey(
   if (!repoDid.startsWith("did:") || !rkey) return null;
   const ns = lexiconNs();
   const collections = [
-    `${ns}.catalog.item.digital`,
-    `${ns}.catalog.collection`,
-    `${ns}.catalog.item.physical`,
+    `${ns}.catalog.product`,
+    `${ns}.catalog.item`,
   ] as const;
   const agent = await getAgentForDid(repoDid);
   for (const collection of collections) {

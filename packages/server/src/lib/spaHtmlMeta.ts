@@ -109,14 +109,6 @@ async function getItemOg(
   }
 }
 
-function artworkSupportedCollection(collection: string): boolean {
-  const ns = lexiconNs();
-  return (
-    collection === `${ns}.catalog.item.digital` ||
-    collection === `${ns}.catalog.collection`
-  );
-}
-
 function buildMetaBlock(opts: {
   title: string;
   description: string;
@@ -234,9 +226,10 @@ export async function buildSpaHeadFragment(pathname: string): Promise<string> {
     const canonicalPath = `/item/${encodeURIComponent(rkey)}/${encodeURIComponent(slugSeg)}`;
     const canonicalUrl = `${origin}${canonicalPath}`;
 
-    const ogImage = artworkSupportedCollection(at.collection)
-      ? `${origin}/api/inventory-public/artwork-open?itemUri=${encodeURIComponent(itemUri)}`
-      : defImg;
+    // Per-item OG art was only ever wired for the legacy artwork blob path;
+    // catalog.product cover art lives in R2 (catalogProductAssets) and has no
+    // public open-artwork endpoint yet, so these fall back to the site image.
+    const ogImage = defImg;
 
     return buildMetaBlock({
       title: `${titleText} · ${siteName()}`,
