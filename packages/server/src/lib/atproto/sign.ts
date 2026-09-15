@@ -16,8 +16,8 @@ const STOREFRONT_KID_MAX = 64;
 /**
  * `storefrontSig` is a 64-byte IEEE-P1363 (raw `r || s`) ECDSA/P-256 signature, normalised to low-S,
  * base64url-encoded. This is the AT Protocol convention (`@atproto/crypto`, and the
- * `bazaar-vault/Demos/verify-receipt.ts` reference verifier). Older field receipts carry a
- * DER-encoded signature instead — see the fallback in `verifyCanonical` below.
+ * `bazaar-vault/Demos/verify-receipt.ts` reference verifier). This is the only accepted
+ * encoding; the DER fallback for pre-2026-08-29 field receipts was removed (ADR 0019).
  */
 const P256_SIG_BYTES = 64;
 
@@ -97,68 +97,56 @@ function signCanonical(message: string, privateKeyPem: string): string {
 /**
  * Verify `message` against a base64url signature.
  *
- * Current format: 64-byte IEEE-P1363 (`r || s`).
- *
- * TEMPORARY: falls back to a DER-encoded signature for pre-migration field receipts.
- * Remove this fallback once those records are migrated to the new attestation
- * structure — the target state is a single compact/low-S resolution path.
- * See `docs/adr/0013-key-rotation-and-did-document-v2.md` and the vault ticket
- * "2026-08-29 Remove DER appSig fallback after field-receipt migration".
+ * Single resolution path: a 64-byte IEEE-P1363 (`r || s`) low-S signature.
+ * Anything else -- including the DER encoding this used to accept from
+ * pre-2026-08-29 field receipts -- fails on length alone. See ADR 0013 §6
+ * and ADR 0019.
  */
 function verifyCanonical(
   message: string,
   storefrontSig: string,
   publicKeyPem: string,
 ): boolean {
-  const key = createPublicKey(publicKeyPem);
-  const msg = Buffer.from(message, "utf8");
   const sig = Buffer.from(storefrontSig, "base64url");
-  if (sig.length === P256_SIG_BYTES) {
-    try {
-      if (cryptoVerify(STOREFRONT_SIG_DIGEST, msg, { key, dsaEncoding: "ieee-p1363" }, sig)) {
-        return true;
-      }
-    } catch {
-      // fall through to the DER fallback
-    }
-  }
+  if (sig.length !== P256_SIG_BYTES) return false;
   try {
-    return cryptoVerify(STOREFRONT_SIG_DIGEST, msg, key, sig);
+    const key = createPublicKey(publicKeyPem);
+    const msg = Buffer.from(message, "utf8");
+    return cryptoVerify(STOREFRONT_SIG_DIGEST, msg, { key, dsaEncoding: "ieee-p1363" }, sig);
   } catch {
     return false;
   }
 }
 
+/**
+ * The signed payload: seven colon-delimited fields, always all seven.
+ *
+ * `licenseGrantCid` freezes the license terms atomically with the purchase
+ * (ADR 0016); `entitlementDigest` freezes exactly what was bought (see
+ * `entitlement.ts`). Both used to be optional and appended only when present,
+ * so a receipt could be verified against a five-, six- or seven-field payload.
+ * That variadic form is what made pre-2026-09 receipts verifiable, and it is
+ * gone: a receipt missing either field cannot produce this string and will not
+ * verify. See ADR 0019.
+ */
 function receiptPayloadString(params: {
   purchasedAt: string;
   paymentRef: string;
   itemUri: string;
   listingCid: string;
   buyerDid: string;
-  /**
-   * cid of the receipt's `licenseGrant` ref -- appended as a sixth
-   * colon-delimited field when present. This is what freezes the license
-   * terms atomically with the purchase (no separate consent record). Absent
-   * on receipts minted before this field existed.
-   */
-  licenseGrantCid?: string;
-  /**
-   * base64url(SHA-256(grantedItems...)) -- see `entitlement.ts`. Appended
-   * after licenseGrantCid when present. Legacy receipts have no
-   * `grantedItems` and sign only the base payload.
-   */
-  entitlementDigest?: string;
+  licenseGrantCid: string;
+  entitlementDigest: string;
 }): string {
-  const base = [
+  return [
     params.purchasedAt,
     params.paymentRef,
     params.itemUri,
     params.listingCid,
     params.buyerDid,
-  ];
-  if (params.licenseGrantCid) base.push(params.licenseGrantCid);
-  if (params.entitlementDigest) base.push(params.entitlementDigest);
-  return base.join(":");
+    params.licenseGrantCid,
+    params.entitlementDigest,
+  ].join(":");
 }
 
 export function signReceiptPayload(params: {
@@ -167,8 +155,8 @@ export function signReceiptPayload(params: {
   itemUri: string;
   listingCid: string;
   buyerDid: string;
-  licenseGrantCid?: string;
-  entitlementDigest?: string;
+  licenseGrantCid: string;
+  entitlementDigest: string;
   privateKeyPem: string;
 }): string {
   return signCanonical(receiptPayloadString(params), params.privateKeyPem);
@@ -180,8 +168,8 @@ export function verifyReceiptPayload(params: {
   itemUri: string;
   listingCid: string;
   buyerDid: string;
-  licenseGrantCid?: string;
-  entitlementDigest?: string;
+  licenseGrantCid: string;
+  entitlementDigest: string;
   storefrontSig: string;
   publicKeyPem: string;
 }): boolean {

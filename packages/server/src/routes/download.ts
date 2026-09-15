@@ -74,17 +74,6 @@ function receiptItemIsProduct(itemUri: string): boolean {
 }
 
 /** ERP-first (catalogProducts.items), not a PDS getRecord -- products are ERP-first everywhere else, and checkout already pinned the CID this receipt was issued against. */
-function productContainsItem(db: Db, productUri: string, itemUri: string): boolean {
-  const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, productUri)).get();
-  if (!row) return false;
-  try {
-    const refs = JSON.parse(row.items) as Array<{ uri: string }>;
-    return refs.some((ref) => ref.uri === itemUri);
-  } catch {
-    return false;
-  }
-}
-
 function safeVerifyReceiptForBuyer(
   rec: PurchaseReceipt,
   sessionDid: string,
@@ -139,32 +128,17 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
         const rec = row.value as PurchaseReceipt;
         if (!rec?.purchasedGood?.uri) continue;
 
-        // Current receipts: entitlement is exactly the frozen grant. A later
-        // edit to the product's items[] cannot add or remove access.
+        // Entitlement is exactly the frozen grant. A later edit to the
+        // product's items[] cannot add or remove access. A receipt with no
+        // frozen grant no longer verifies at all (ADR 0019), so there is no
+        // live-membership fallback behind this.
         const grant = frozenGrant(rec);
-        if (grant) {
-          if (!grant.some((g) => g.uri === itemUriRaw)) continue;
-          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-          entitled = true;
-          receipt = rec;
-          break;
-        }
-
-        // Legacy receipts (no grantedItems): resolve against live membership.
-        if (rec.purchasedGood.uri === itemUriRaw) {
-          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-          entitled = true;
-          receipt = rec;
-          break;
-        }
-        if (isCatalogItem && receiptItemIsProduct(rec.purchasedGood.uri)) {
-          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-          if (productContainsItem(db, rec.purchasedGood.uri, itemUriRaw)) {
-            entitled = true;
-            receipt = rec;
-            break;
-          }
-        }
+        if (!grant) continue;
+        if (!grant.some((g) => g.uri === itemUriRaw)) continue;
+        if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
+        entitled = true;
+        receipt = rec;
+        break;
       } catch (e) {
         console.warn("download: skip receipt row", e);
       }
@@ -263,8 +237,8 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       .get();
     if (!product) return c.json({ error: "not_found" }, 404);
 
-    // Current receipts package exactly the frozen grant; legacy receipts
-    // package the live product.
+    // The zip packages exactly the frozen grant. entitledReceipt verified, and
+    // verification requires a frozen grant (ADR 0019), so this is always set.
     const grant = frozenGrant(entitledReceipt);
     const entitledUris = grant?.map((g) => g.uri);
 
@@ -325,10 +299,13 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
       ? pems
       : [storefrontPublicKeyPemFromEnv()].filter((p): p is string => !!p);
 
-  // Current receipts fold the grantedItems digest into storefrontSig as a sixth
-  // payload field; legacy receipts sign only the five-field payload.
+  // The signed payload is a fixed seven fields (ADR 0019). A receipt without
+  // a frozen grant or a licenseGrant cid cannot reconstruct it, so it does not
+  // verify -- no five- or six-field fallback any more.
   const grant = frozenGrant(rec);
-  const digest = grant ? entitlementDigest(grant) : undefined;
+  const licenseGrantCid = rec.licenseGrant?.cid;
+  if (!grant || !licenseGrantCid) return false;
+  const digest = entitlementDigest(grant);
 
   return candidates.some((publicKeyPem) =>
     verifyReceiptPayload({
@@ -337,7 +314,7 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
       itemUri: rec.purchasedGood.uri,
       listingCid: rec.listing.cid ?? "",
       buyerDid: sessionDid,
-      licenseGrantCid: rec.licenseGrant?.cid,
+      licenseGrantCid,
       entitlementDigest: digest,
       storefrontSig: rec.storefrontSig,
       publicKeyPem,

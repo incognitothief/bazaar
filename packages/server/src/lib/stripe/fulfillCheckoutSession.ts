@@ -562,7 +562,15 @@ export async function fulfillCheckoutSession(opts: {
   if (
     privateKeyRaw &&
     !privateKeyRaw.includes("PLACEHOLDER") &&
-    buyerDidValid(buyerDid)
+    buyerDidValid(buyerDid) &&
+    // Both fields are part of the signed payload now, so a receipt that lacks
+    // either cannot be verified later. Leave it unsigned rather than mint a
+    // signature over a payload no verifier can reconstruct. In practice this
+    // never trips: resolveGrantedItems yields a ref for every catalog.item and
+    // every catalog.product (items is minLength 1), and checkout is gated on
+    // the listing carrying a licenseGrant.
+    grantedDigest &&
+    licenseGrantCid
   ) {
     try {
       storefrontSig = signReceiptPayload({
@@ -578,6 +586,13 @@ export async function fulfillCheckoutSession(opts: {
     } catch (e) {
       console.warn("Receipt signing failed:", e);
     }
+  } else if (!grantedDigest || !licenseGrantCid) {
+    console.warn(
+      `Receipt for ${paymentRef} left unsigned: ` +
+        `${!grantedDigest ? "no grantedItems digest" : ""}` +
+        `${!grantedDigest && !licenseGrantCid ? " and " : ""}` +
+        `${!licenseGrantCid ? "no licenseGrant cid" : ""}`,
+    );
   }
 
   const receiptKidEnv = storefrontKidFromEnv();
