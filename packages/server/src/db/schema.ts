@@ -86,7 +86,8 @@ export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
    * Pixel dimensions for raster image masters, read client-side at upload
    * (createImageBitmap) and passed through the publish draft -- ERP-only,
    * never on the PDS record, same lifecycle as durationMs. Null for
-   * non-image files, vector art (no intrinsic px size), or legacy uploads.
+   * non-image files, vector art (no intrinsic px size), or uploads predating
+   * this column.
    */
   mediaWidth: integer("media_width"),
   mediaHeight: integer("media_height"),
@@ -94,7 +95,7 @@ export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
   /**
    * R2 key of a webp derivative for this object, if one was generated
    * (best-effort, "artwork"-role objects only -- see lib/webpDerivative.ts).
-   * Null means either generation wasn't attempted (legacy upload, non-image
+   * Null means either generation wasn't attempted (upload predating this column, non-image
    * file) or it failed; either way the read path falls back to r2Key.
    * Never used for the product download package, only storefront display.
    */
@@ -302,7 +303,7 @@ export const catalogProductAssets = sqliteTable(
 export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   paymentIntentId: text("payment_intent_id").primaryKey(),
   checkoutSessionId: text("checkout_session_id"),
-  /** Purchaser repo DID (from Checkout Session metadata); nullable for legacy rows. */
+  /** Purchaser repo DID (from Checkout Session metadata); nullable for rows predating this column. */
   buyerDid: text("buyer_did"),
   status: text("status").notNull(),
   attemptCount: integer("attempt_count").notNull().default(0),

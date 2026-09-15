@@ -1064,7 +1064,7 @@ export function ItemDetailPage() {
           <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
             {typeof license.licenseText === "string"
               ? license.licenseText
-              : "Legacy license format — see full terms."}
+              : "License text unavailable — see full terms."}
           </p>
           {licenseCid ? (
             <a

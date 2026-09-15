@@ -468,11 +468,11 @@ export type CatalogItemRow = {
   supersedes: string | null;
   /** The owning product's cover images (an item has none of its own) -- see merchant.ts's GET /catalog/items. */
   coverImages: Array<{ objectId: string; url: string }>;
-  /** Audio/video runtime from the upload object (ERP-only), null for other types or legacy uploads with no parsed duration. */
+  /** Audio/video runtime from the upload object (ERP-only), null for other types or uploads with no parsed duration. */
   durationMs: number | null;
-  /** Authoritative file size in bytes from the upload object (ERP-only), null for legacy uploads. */
+  /** Authoritative file size in bytes from the upload object (ERP-only), null for uploads predating byte-size capture. */
   byteSize: number | null;
-  /** Raster image pixel dimensions from the upload object (ERP-only), null for non-image / vector / legacy uploads. */
+  /** Raster image pixel dimensions from the upload object (ERP-only), null for non-image / vector uploads, or ones predating dimension capture. */
   mediaWidth: number | null;
   mediaHeight: number | null;
   recordCreatedAt: string | null;

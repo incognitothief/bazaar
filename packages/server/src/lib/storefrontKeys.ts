@@ -166,7 +166,7 @@ export function parseKeyHistoryEnv(raw: string | undefined): KeyHistoryEntry[] {
   return parsed.map((v, i) => {
     const o = v as Record<string, unknown>;
     const where = `STOREFRONT_KEY_HISTORY[${i}]`;
-    const rawId = o.id ?? o.kid; // accept legacy "kid"
+    const rawId = o.id ?? o.kid; // some key-history entries name the field "kid"
     const publicKeyMultibase = o.publicKeyMultibase;
     const supersededBy = o.supersededBy;
     if (typeof rawId !== "string" || !rawId) {

@@ -1032,7 +1032,7 @@ export function MerchantProductDetailPage() {
           <p className="whitespace-pre-wrap text-sm text-muted-foreground">
             {typeof license.licenseText === "string"
               ? license.licenseText
-              : "Legacy license format — see full terms."}
+              : "License text unavailable — see full terms."}
           </p>
           {licenseCid ? (
             <a
