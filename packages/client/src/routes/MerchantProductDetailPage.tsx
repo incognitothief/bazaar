@@ -6,8 +6,9 @@ import {
   Download,
   Pencil,
   Tag,
+  Trash2,
 } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   BatchFileDropzone,
@@ -31,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DetailToolbar, type ToolAction } from "@/components/merchant/detailTools";
+import { DeleteEntryDialog } from "@/components/merchant/DeleteEntryDialog";
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useElapsedSeconds } from "@/hooks/useElapsedSeconds";
 import { useZipProgress } from "@/hooks/useZipProgress";
@@ -82,6 +84,8 @@ export function MerchantProductDetailPage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
 
+  const navigate = useNavigate();
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [product, setProduct] = useState<CatalogProductRow | null>(null);
@@ -609,6 +613,20 @@ export function MerchantProductDetailPage() {
           },
         ]
       : []),
+    ...(!editing
+      ? [
+          {
+            key: "delete",
+            Icon: Trash2,
+            label: "Delete permanently",
+            onClick: () => setDeleteTarget(uri),
+            // A live listing blocks deletion server-side regardless; surfacing
+            // it here saves the merchant a round trip into the dialog.
+            disabled: !!listing && !isTerminalStatus(listing.status),
+            disabledHint: "Unlist this product before deleting it",
+          },
+        ]
+      : []),
   ];
 
   // Music product: audio members are the numbered "Tracks"; any non-audio
@@ -836,6 +854,13 @@ export function MerchantProductDetailPage() {
               <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
             )}
             <DetailToolbar actions={toolActions} panelTitle="Product controls" />
+            <DeleteEntryDialog
+              entryUri={deleteTarget}
+              onClose={() => setDeleteTarget(null)}
+              onDeleted={() => {
+                navigate("/merchant/inventory", { replace: true });
+              }}
+            />
           </div>
 
           {listing ? (
