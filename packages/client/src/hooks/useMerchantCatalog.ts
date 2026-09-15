@@ -2,28 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import {
   listCatalogItemRows,
   listCatalogProductRows,
-  listCollectionRows,
-  listDigitalItemRows,
   listListingRows,
-  listPhysicalItemRows,
   type CatalogItemRow,
   type CatalogProductRow,
   type ListingRow,
 } from "@/lib/atproto/records";
-import type { Collection, DigitalItem, PhysicalItem } from "@/types/lexicons";
 
 export type MerchantItemRow =
-  | { kind: "digital"; uri: string; cid: string; item: DigitalItem }
-  | { kind: "collection"; uri: string; cid: string; item: Collection }
-  | { kind: "physical"; uri: string; cid: string; item: PhysicalItem }
   | { kind: "item"; uri: string; cid: string; item: CatalogItemRow }
   | { kind: "product"; uri: string; cid: string; item: CatalogProductRow };
 
 function rowCreatedAtMs(row: MerchantItemRow): number {
-  if (row.kind === "item" || row.kind === "product") {
-    return new Date(row.item.recordCreatedAt ?? row.item.capturedAt).getTime();
-  }
-  return new Date(row.item.createdAt).getTime();
+  return new Date(row.item.recordCreatedAt ?? row.item.capturedAt).getTime();
 }
 
 export type MerchantCatalogState = {
@@ -97,34 +87,12 @@ export function useMerchantCatalog(
     setLoading(true);
     setError(null);
     try {
-      const [digital, collections, physical, catalogItems, catalogProducts, listings] =
-        await Promise.all([
-          listDigitalItemRows(merchantDid),
-          listCollectionRows(merchantDid),
-          listPhysicalItemRows(merchantDid),
-          listCatalogItemRows(),
-          listCatalogProductRows(),
-          listListingRows(merchantDid),
-        ]);
+      const [catalogItems, catalogProducts, listings] = await Promise.all([
+        listCatalogItemRows(),
+        listCatalogProductRows(),
+        listListingRows(merchantDid),
+      ]);
       const merged: MerchantItemRow[] = [
-        ...digital.map((r) => ({
-          kind: "digital" as const,
-          uri: r.uri,
-          cid: r.cid,
-          item: r.item,
-        })),
-        ...collections.map((r) => ({
-          kind: "collection" as const,
-          uri: r.uri,
-          cid: r.cid,
-          item: r.item,
-        })),
-        ...physical.map((r) => ({
-          kind: "physical" as const,
-          uri: r.uri,
-          cid: r.cid,
-          item: r.item,
-        })),
         ...catalogItems.map((r) => ({
           kind: "item" as const,
           uri: r.uri,

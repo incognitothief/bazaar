@@ -1,5 +1,4 @@
 import { Link, useNavigate } from "react-router-dom";
-import type { Agent } from "@atproto/api";
 import {
   MoreHorizontal,
   Pause,
@@ -16,7 +15,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ArtworkImage } from "@/components/public/ArtworkImage";
 import type { MerchantItemRow } from "@/hooks/useMerchantCatalog";
 import type { ListingRow } from "@/lib/atproto/records";
 import { formatMoney } from "@/lib/format";
@@ -26,7 +24,6 @@ import {
   itemDetailText,
   kindLabel,
   listingStatusBadgeVariant,
-  rowArtworkCid,
   rowCoverImageUrl,
   storefrontHref,
 } from "./merchantItemDisplay";
@@ -34,8 +31,6 @@ import { RelationshipBadge } from "./RelationshipBadge";
 import type { MerchantRowActions } from "./MerchantItemRow";
 
 export function MerchantItemCard({
-  agent,
-  merchantDid,
   row,
   listingRow,
   pending,
@@ -44,8 +39,6 @@ export function MerchantItemCard({
   showKind = true,
   showRelationship = true,
 }: {
-  agent: Agent;
-  merchantDid: string;
   row: MerchantItemRow;
   listingRow: ListingRow | undefined;
   pending: boolean;
@@ -62,24 +55,13 @@ export function MerchantItemCard({
     <Card className="h-full gap-0 overflow-hidden py-0 ring-border transition-shadow hover:shadow-md">
       <Link to={editHref(row)} className="block focus-visible:outline-none">
         <div className="aspect-square w-full overflow-hidden bg-muted">
-          {row.kind === "product" || row.kind === "item" ? (
-            rowCoverImageUrl(row) ? (
-              <img
-                src={rowCoverImageUrl(row)}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : null
-          ) : (
-            <ArtworkImage
-              agent={agent}
-              did={merchantDid}
-              cid={rowArtworkCid(row)}
-              itemUri={row.uri}
+          {rowCoverImageUrl(row) ? (
+            <img
+              src={rowCoverImageUrl(row)}
               alt=""
-              className="h-full w-full"
+              className="h-full w-full object-cover"
             />
-          )}
+          ) : null}
         </div>
       </Link>
       <CardContent className="space-y-1.5 p-3">

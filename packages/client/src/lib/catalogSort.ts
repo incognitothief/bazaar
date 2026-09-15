@@ -1,16 +1,9 @@
-import { catalogItemUriKey } from "@/lib/atproto/records";
-import type {
-  BazaarItem,
-  Collection,
-  DigitalItem,
-  PhysicalItem,
-  Product,
-} from "@/types/lexicons";
+import type { BazaarItem, Product } from "@/types/lexicons";
 
 export type CatalogEntryForSort = {
   uri: string;
   cid: string;
-  item: DigitalItem | Collection | PhysicalItem | BazaarItem | Product;
+  item: BazaarItem | Product;
 };
 
 function parseIsoMs(s: string | undefined): number {
@@ -20,51 +13,20 @@ function parseIsoMs(s: string | undefined): number {
 }
 
 /**
- * Storefront ordering: newest first. Digital items use item `releaseDate`, else
- * their parent collection's `releaseDate` when `collectionUri` is set, else
- * `createdAt`. Collections use `releaseDate`. Physical items use `createdAt`.
+ * Storefront ordering: newest first by `createdAt`, ties broken by URI so the
+ * order is stable across reloads.
+ *
+ * This used to fan out per record type -- collections sorted by their own
+ * `releaseDate`, digital items by theirs or their parent collection's, physical
+ * items by `createdAt`. catalog.item and catalog.product have no releaseDate,
+ * so all of that collapsed when the legacy types were removed.
  */
-function storefrontSortMs(
-  entry: CatalogEntryForSort,
-  collectionReleaseByUriKey: Map<string, string>,
-): number {
-  const { item } = entry;
-  if (item.$type === "diamonds.whereditgo.bazaar.catalog.collection") {
-    return parseIsoMs(item.releaseDate);
-  }
-  if (item.$type === "diamonds.whereditgo.bazaar.catalog.item.physical") {
-    return parseIsoMs(item.createdAt);
-  }
-  if (
-    item.$type === "diamonds.whereditgo.bazaar.catalog.item" ||
-    item.$type === "diamonds.whereditgo.bazaar.catalog.product"
-  ) {
-    return parseIsoMs(item.createdAt);
-  }
-  const own = item.releaseDate;
-  if (own) return parseIsoMs(own);
-  if (item.collectionUri) {
-    const col = collectionReleaseByUriKey.get(
-      catalogItemUriKey(item.collectionUri),
-    );
-    if (col) return parseIsoMs(col);
-  }
-  return parseIsoMs(item.createdAt);
-}
-
 export function sortCatalogEntriesByRelease(
   entries: CatalogEntryForSort[],
 ): CatalogEntryForSort[] {
-  const collectionReleaseByUriKey = new Map<string, string>();
-  for (const e of entries) {
-    if (e.item.$type === "diamonds.whereditgo.bazaar.catalog.collection") {
-      collectionReleaseByUriKey.set(catalogItemUriKey(e.uri), e.item.releaseDate);
-    }
-  }
   return [...entries].sort((a, b) => {
-    const ma = storefrontSortMs(a, collectionReleaseByUriKey);
-    const mb = storefrontSortMs(b, collectionReleaseByUriKey);
-    if (mb !== ma) return mb - ma;
+    const delta = parseIsoMs(b.item.createdAt) - parseIsoMs(a.item.createdAt);
+    if (delta !== 0) return delta;
     return a.uri.localeCompare(b.uri);
   });
 }

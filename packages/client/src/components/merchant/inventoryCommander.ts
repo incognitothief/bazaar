@@ -57,9 +57,9 @@ export function saveExpandedProducts(uris: Set<string>): void {
   }
 }
 
-/** Products/collections group items for sale; everything else is atomic. */
+/** Products group items for sale; a bare item is atomic. */
 export function isGroupingKind(kind: MerchantItemRow["kind"]): boolean {
-  return kind === "product" || kind === "collection";
+  return kind === "product";
 }
 
 /** "Live" = there is a primary listing and it is currently active. */

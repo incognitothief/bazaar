@@ -1,5 +1,4 @@
 import { Link, useNavigate } from "react-router-dom";
-import type { Agent } from "@atproto/api";
 import {
   ChevronDown,
   ChevronRight,
@@ -17,7 +16,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ArtworkImage } from "@/components/public/ArtworkImage";
 import type { MerchantItemRow as MerchantItemRowData } from "@/hooks/useMerchantCatalog";
 import type { ListingRow } from "@/lib/atproto/records";
 import { formatMoney } from "@/lib/format";
@@ -27,7 +25,6 @@ import {
   itemDetailText,
   kindLabel,
   listingStatusBadgeVariant,
-  rowArtworkCid,
   rowCoverImageUrl,
   storefrontHref,
 } from "./merchantItemDisplay";
@@ -47,8 +44,6 @@ export type MerchantRowActions = {
 };
 
 export function MerchantItemRow({
-  agent,
-  merchantDid,
   row,
   listingRow,
   pending,
@@ -59,8 +54,6 @@ export function MerchantItemRow({
   showKind = true,
   showRelationship = true,
 }: {
-  agent: Agent;
-  merchantDid: string;
   row: MerchantItemRowData;
   listingRow: ListingRow | undefined;
   pending: boolean;
@@ -103,24 +96,13 @@ export function MerchantItemRow({
           to={editHref(row)}
           className="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {row.kind === "product" || row.kind === "item" ? (
-            rowCoverImageUrl(row) ? (
-              <img
-                src={rowCoverImageUrl(row)}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : null
-          ) : (
-            <ArtworkImage
-              agent={agent}
-              did={merchantDid}
-              cid={rowArtworkCid(row)}
-              itemUri={row.uri}
+          {rowCoverImageUrl(row) ? (
+            <img
+              src={rowCoverImageUrl(row)}
               alt=""
-              className="h-full w-full"
+              className="h-full w-full object-cover"
             />
-          )}
+          ) : null}
         </Link>
       )}
 

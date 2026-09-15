@@ -52,7 +52,6 @@ import {
   type ListingRow,
 } from "@/lib/atproto/records";
 import { collectionFromAtUri } from "@/lib/atUri";
-import { createPublicAgent } from "@/lib/atproto/session";
 import { cn } from "@/lib/utils";
 import type { Listing } from "@/types/lexicons";
 
@@ -98,7 +97,6 @@ export function MerchantInventoryPage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
   const navigate = useNavigate();
-  const artworkAgent = useMemo(() => createPublicAgent(), []);
   const {
     itemRows,
     listingRows,
@@ -329,8 +327,6 @@ export function MerchantInventoryPage() {
   ) {
     const lr = listingRowByItemUri[row.uri];
     return {
-      agent: artworkAgent,
-      merchantDid: session!.did,
       row,
       listingRow: lr,
       pending: lr ? pendingUris.has(lr.uri) : false,
