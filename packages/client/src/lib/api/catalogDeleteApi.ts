@@ -13,7 +13,12 @@ export type R2ObjectRef = {
   source: "indexed" | "recomputed";
 };
 
-export type DeletionBlocker = { kind: "listing"; uri: string; detail: string };
+export type DeletionBlocker = {
+  kind: "listing";
+  uri: string;
+  status: string;
+  targetUri: string;
+};
 
 export type DeletionManifest = {
   entryUri: string;

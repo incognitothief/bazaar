@@ -52,7 +52,14 @@ export type R2ObjectRef = {
   source: "indexed" | "recomputed";
 };
 
-export type DeletionBlocker = { kind: "listing"; uri: string; detail: string };
+export type DeletionBlocker = {
+  kind: "listing";
+  /** The listing record itself. */
+  uri: string;
+  status: string;
+  /** What the listing points at -- the entry or one of its children. */
+  targetUri: string;
+};
 
 export type DeletionManifest = {
   entryUri: string;
@@ -164,7 +171,8 @@ async function findBlockingListings(
       blockers.push({
         kind: "listing",
         uri: rec.uri,
-        detail: `Listing (${val.status ?? "unknown status"}) still points at ${target}`,
+        status: val.status ?? "unknown",
+        targetUri: target,
       });
     }
     cursor = res.data.cursor;
@@ -295,6 +303,20 @@ export async function buildDeletionManifest(
     }
   } else {
     entryKind = "legacy";
+    try {
+      const rec = await agent.com.atproto.repo.getRecord({
+        repo: ownerDid,
+        collection: at.collection,
+        rkey: at.rkey,
+      });
+      const val = rec.data.value as { title?: unknown };
+      if (typeof val?.title === "string" && val.title.trim()) {
+        title = val.title.trim();
+      }
+    } catch {
+      // Unreachable record: fall back to the rkey rather than failing the
+      // manifest -- the merchant still needs to be able to delete it.
+    }
     pdsRecords.push({
       uri: entryUri,
       collection: at.collection,

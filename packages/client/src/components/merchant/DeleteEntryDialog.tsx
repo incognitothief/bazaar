@@ -95,7 +95,7 @@ export function DeleteEntryDialog({ entryUri, onClose, onDeleted }: Props) {
         if (!open && !deleting) onClose();
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[85vh] overflow-x-hidden overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             Permanently delete {manifest ? `"${manifest.title}"` : "this entry"}?
@@ -113,7 +113,7 @@ export function DeleteEntryDialog({ entryUri, onClose, onDeleted }: Props) {
         )}
 
         {manifest && (
-          <div className="space-y-4 text-sm">
+          <div className="min-w-0 space-y-4 text-sm">
             {blocked && (
               <div className="border-destructive/40 bg-destructive/10 rounded-md border p-3">
                 <p className="font-medium">Remove these listings first</p>
@@ -121,10 +121,15 @@ export function DeleteEntryDialog({ entryUri, onClose, onDeleted }: Props) {
                   Deletion is blocked while this entry is still listed for sale.
                   Unlist it, then come back.
                 </p>
-                <ul className="mt-2 space-y-1">
+                <ul className="mt-2 space-y-1.5">
                   {manifest.blockers.map((b) => (
-                    <li key={b.uri} className="text-muted-foreground font-mono text-xs">
-                      {b.detail}
+                    <li key={b.uri} className="min-w-0">
+                      <span className="text-muted-foreground text-xs">
+                        Listing ({b.status}) still points at
+                      </span>
+                      <span className="text-muted-foreground block break-all font-mono text-xs">
+                        {b.targetUri}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -151,7 +156,7 @@ export function DeleteEntryDialog({ entryUri, onClose, onDeleted }: Props) {
               </p>
               <ul className="text-muted-foreground mt-1 space-y-0.5">
                 {manifest.pdsRecords.map((r) => (
-                  <li key={r.uri} className="text-xs">
+                  <li key={r.uri} className="break-all text-xs">
                     {r.label}
                   </li>
                 ))}
@@ -167,7 +172,7 @@ export function DeleteEntryDialog({ entryUri, onClose, onDeleted }: Props) {
               ) : (
                 <ul className="text-muted-foreground mt-1 space-y-0.5">
                   {manifest.r2Objects.map((o) => (
-                    <li key={o.key} className="text-xs">
+                    <li key={o.key} className="break-all text-xs">
                       {o.label}
                       {o.source === "recomputed" && (
                         <span className="text-destructive"> — unindexed</span>
@@ -188,7 +193,7 @@ export function DeleteEntryDialog({ entryUri, onClose, onDeleted }: Props) {
                 </p>
                 <ul className="text-muted-foreground mt-1 space-y-0.5">
                   {manifest.sharedItemsSkipped.map((s) => (
-                    <li key={s.uri} className="font-mono text-xs">
+                    <li key={s.uri} className="break-all font-mono text-xs">
                       {s.uri}
                     </li>
                   ))}
@@ -199,7 +204,7 @@ export function DeleteEntryDialog({ entryUri, onClose, onDeleted }: Props) {
             {!blocked && (
               <div className="space-y-2">
                 <Label htmlFor="delete-confirm">
-                  Type <span className="font-mono font-semibold">{manifest.title}</span> to
+                  Type <span className="break-all font-mono font-semibold">{manifest.title}</span> to
                   confirm
                 </Label>
                 <Input

@@ -115,7 +115,11 @@ describe("executeDeletion ordering guarantee", () => {
       explodingDb,
       agent,
       OWNER,
-      manifest({ blockers: [{ kind: "listing", uri: "at://x/l/1", detail: "live" }] }),
+      manifest({
+        blockers: [
+          { kind: "listing", uri: "at://x/l/1", status: "active", targetUri: ENTRY },
+        ],
+      }),
       client,
       "bucket",
     );
