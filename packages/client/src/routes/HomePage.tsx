@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Helmet } from "react-helmet-async";
 import { createPublicAgent } from "@/lib/atproto/session";
 import {
-  buildDummyDigitalItem,
+  buildDummyProduct,
   buildDummyListing,
   catalogDummyEnabled,
   resolveDummyItemAtUri,
@@ -53,7 +53,7 @@ export function HomePage() {
 
   const gridEntries: CatalogEntry[] = useMemo(() => {
     if (!showStorefrontDummy || !dummyItemUri) return entries;
-    const item = buildDummyDigitalItem(dummyItemUri, merchantDid!);
+    const item = buildDummyProduct(dummyItemUri, merchantDid!);
     const synthetic: CatalogEntry = {
       uri: dummyItemUri,
       cid: "bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

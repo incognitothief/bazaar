@@ -1,5 +1,5 @@
 import { DEV_STUB_LISTING_AT } from "@bazaar/shared";
-import type { DigitalItem, LicenseTerms, Listing } from "@/types/lexicons";
+import type { LicenseTerms, Listing, Product } from "@/types/lexicons";
 
 /** Placeholder rkey — usually no record; storefront still shows a card in dev. */
 export const DUMMY_ITEM_RKEY = "3l7j6vooln2f2";
@@ -24,9 +24,9 @@ export function resolveDummyItemAtUri(primaryDid: string | undefined): string | 
   if (explicit?.startsWith("at://")) return explicit;
   const merchant = import.meta.env.VITE_MERCHANT_DID?.trim();
   if (merchant?.startsWith("did:")) {
-    return `at://${merchant}/diamonds.whereditgo.bazaar.catalog.item.digital/${DUMMY_ITEM_RKEY}`;
+    return `at://${merchant}/diamonds.whereditgo.bazaar.catalog.product/${DUMMY_ITEM_RKEY}`;
   }
-  return `at://${primaryDid}/diamonds.whereditgo.bazaar.catalog.item.digital/${DUMMY_ITEM_RKEY}`;
+  return `at://${primaryDid}/diamonds.whereditgo.bazaar.catalog.product/${DUMMY_ITEM_RKEY}`;
 }
 
 export function isDummyStorefrontItem(
@@ -38,23 +38,23 @@ export function isDummyStorefrontItem(
   return resolved != null && itemUri === resolved;
 }
 
-export function buildDummyDigitalItem(
-  itemUri: string,
-  artistDid: string,
-): DigitalItem {
+/**
+ * Stands in for a real catalog.product so an empty storefront still renders a
+ * card in dev. `items` names a catalog.item under the same rkey -- the product
+ * lexicon requires at least one member, and nothing resolves it: the preview
+ * never fetches members.
+ */
+export function buildDummyProduct(itemUri: string, merchantDid: string): Product {
   return {
-    $type: "diamonds.whereditgo.bazaar.catalog.item.digital",
-    title: "Sample track (preview)",
-    artistDid,
-    itemClass: "track",
-    formats: ["flac"],
-    fileChecksum: "0".repeat(64),
-    fileCid: "bafyreibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    fileFormat: "audio/flac",
+    $type: "diamonds.whereditgo.bazaar.catalog.product",
+    title: "Sample product (preview)",
     description:
-      `Placeholder catalog entry for local storefront preview (${itemUri}). Replace by publishing a real item and listing.`,
-    defaultLicenseUri:
-      "at://dev.bazaar.invalid/diamonds.whereditgo.bazaar.license.terms/dummy",
+      `Placeholder catalog entry for local storefront preview (${itemUri}). Replace by publishing a real product and listing.`,
+    items: [
+      {
+        uri: `at://${merchantDid}/diamonds.whereditgo.bazaar.catalog.item/${DUMMY_ITEM_RKEY}`,
+      },
+    ],
     createdAt: new Date().toISOString(),
   };
 }
@@ -75,18 +75,14 @@ export function buildDummyListing(itemUri: string): Listing {
 }
 
 export function buildDummyLicenseTerms(): LicenseTerms {
-  const now = new Date().toISOString();
   return {
     $type: "diamonds.whereditgo.bazaar.license.terms",
     title: "Personal use (preview)",
-    tier: "personal",
-    rightsType: "master",
     version: "preview",
-    territoryCoverage: { scope: "worldwide" },
-    checkoutConsentRequired: true,
-    summary:
+    licenseText:
       "Sample license for UI preview only. Stripe checkout needs real listing and license records on your PDS.",
-    createdAt: now,
+    checkoutConsentRequired: true,
+    createdAt: new Date().toISOString(),
   };
 }
 

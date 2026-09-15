@@ -29,7 +29,7 @@ import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import { fetchActorPublicProfile } from "@/lib/actorTypeahead";
 import { pdslsRepoCollectionsUrl } from "@/lib/pdsls";
 import {
-  buildDummyDigitalItem,
+  buildDummyProduct,
   buildDummyListing,
   buildDummyLicenseTerms,
   catalogDummyEnabled,
@@ -266,7 +266,7 @@ export function ItemDetailPage() {
         let v = await getRecordValue<CatalogItem>(itemUri);
         if (cancelled) return;
         if (!v && dummyTarget) {
-          v = buildDummyDigitalItem(itemUri, merchantDid);
+          v = buildDummyProduct(itemUri, merchantDid);
         }
         setItem(v ?? null);
 
