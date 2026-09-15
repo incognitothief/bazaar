@@ -32,8 +32,6 @@ export function bazaarRepoOAuthScopes(): string[] {
     repoAction(col(ns, "catalog.item"), "update"),
     repoAction(col(ns, "catalog.product"), "create"),
     repoAction(col(ns, "catalog.product"), "update"),
-    repoAction(col(ns, "catalog.item.digital"), "create"),
-    repoAction(col(ns, "catalog.collection"), "create"),
     repoAction(col(ns, "catalog.listing"), "create"),
     repoAction(col(ns, "catalog.listing"), "update"),
     repoAction(col(ns, "catalog.listing"), "delete"),
@@ -43,9 +41,6 @@ export function bazaarRepoOAuthScopes(): string[] {
     // when it goes away.
     repoAction(col(ns, "catalog.item"), "delete"),
     repoAction(col(ns, "catalog.product"), "delete"),
-    repoAction(col(ns, "catalog.item.digital"), "delete"),
-    repoAction(col(ns, "catalog.collection"), "delete"),
-    repoAction(col(ns, "catalog.item.physical"), "delete"),
     repoAction(col(ns, "license.terms"), "delete"),
     repoAction(col(ns, "license.terms"), "create"),
     repoAction(col(ns, "purchase.receipt"), "create"),

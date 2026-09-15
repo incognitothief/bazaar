@@ -12,12 +12,9 @@ import type {
   ActorMerchant,
   BazaarItem,
   CatalogItem,
-  Collection,
-  DigitalItem,
   ItemRef,
   LicenseTerms,
   Listing,
-  PhysicalItem,
   Product,
   PurchaseReceipt,
 } from "@/types/lexicons";
@@ -160,32 +157,6 @@ export async function createReceipt(
   return { uri: res.data.uri, cid: res.data.cid };
 }
 
-function isDigitalItem(v: unknown): v is DigitalItem {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as DigitalItem).$type ===
-      "diamonds.whereditgo.bazaar.catalog.item.digital"
-  );
-}
-
-function isPhysicalItem(v: unknown): v is PhysicalItem {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as PhysicalItem).$type ===
-      "diamonds.whereditgo.bazaar.catalog.item.physical"
-  );
-}
-
-function isCollection(v: unknown): v is Collection {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as Collection).$type === "diamonds.whereditgo.bazaar.catalog.collection"
-  );
-}
-
 function isBazaarItem(v: unknown): v is BazaarItem {
   return (
     typeof v === "object" &&
@@ -274,64 +245,6 @@ export async function listPurchaseReceiptRows(
       receipt: r.value as PurchaseReceipt,
     }));
   return dedupePurchaseReceiptRows(rows);
-}
-
-export type DigitalItemRow = { uri: string; cid: string; item: DigitalItem };
-export type PhysicalItemRow = { uri: string; cid: string; item: PhysicalItem };
-export type CollectionRow = { uri: string; cid: string; item: Collection };
-
-export async function listDigitalItemRows(
-  did: string,
-): Promise<DigitalItemRow[]> {
-  const agent = await agentForRepo(did);
-  const res = (await agent.com.atproto.repo.listRecords({
-    repo: did,
-    collection: BAZAAR_COLLECTION.digitalItem,
-    limit: 100,
-  })) as ListRecordsResponse;
-  return res.data.records
-    .filter((r) => isDigitalItem(r.value))
-    .map((r) => ({
-      uri: r.uri,
-      cid: r.cid,
-      item: r.value as DigitalItem,
-    }));
-}
-
-export async function listPhysicalItemRows(
-  did: string,
-): Promise<PhysicalItemRow[]> {
-  const agent = await agentForRepo(did);
-  const res = (await agent.com.atproto.repo.listRecords({
-    repo: did,
-    collection: BAZAAR_COLLECTION.physicalItem,
-    limit: 100,
-  })) as ListRecordsResponse;
-  return res.data.records
-    .filter((r) => isPhysicalItem(r.value))
-    .map((r) => ({
-      uri: r.uri,
-      cid: r.cid,
-      item: r.value as PhysicalItem,
-    }));
-}
-
-export async function listCollectionRows(
-  did: string,
-): Promise<CollectionRow[]> {
-  const agent = await agentForRepo(did);
-  const res = (await agent.com.atproto.repo.listRecords({
-    repo: did,
-    collection: BAZAAR_COLLECTION.collection,
-    limit: 100,
-  })) as ListRecordsResponse;
-  return res.data.records
-    .filter((r) => isCollection(r.value))
-    .map((r) => ({
-      uri: r.uri,
-      cid: r.cid,
-      item: r.value as Collection,
-    }));
 }
 
 export type BazaarItemRow = { uri: string; cid: string; item: BazaarItem };
@@ -879,31 +792,6 @@ export function catalogProductDownloadUrl(uri: string): string {
 }
 
 /**
- * Presigned URL for a single legacy catalog.item.digital's master file --
- * an incident-response tool for the merchant dashboard, not the
- * buyer-facing download path.
- */
-export async function getLegacyDigitalDownloadUrl(
-  uri: string,
-): Promise<{ url: string; fileName: string } | null> {
-  const res = await fetch(
-    browserApiUrl(
-      `/api/merchant/catalog/legacy/item-download?uri=${encodeURIComponent(uri)}`,
-    ),
-    { credentials: "include" },
-  );
-  if (!res.ok) return null;
-  return (await res.json()) as { url: string; fileName: string };
-}
-
-/** URL for a legacy catalog.collection's full zip (same content a buyer's download would have). */
-export function legacyCollectionDownloadUrl(uri: string): string {
-  return browserApiUrl(
-    `/api/merchant/catalog/legacy/collection-download?uri=${encodeURIComponent(uri)}`,
-  );
-}
-
-/**
  * Listings currently pinned to itemUri's CID -- i.e. the ones a save is
  * about to invalidate. A record's post-edit CID isn't knowable ahead of
  * the actual putRecord (it's content-addressed), so the check works off
@@ -942,12 +830,12 @@ export async function resolveCatalogItemUriFromRkey(
   rkey: string,
 ): Promise<string | null> {
   if (!repoDid.startsWith("did:") || !rkey) return null;
+  // Product first: a single-item release shares its item's rkey, and the
+  // product is the page a visitor should land on. Mirrors the server-side
+  // resolveCatalogItemUriFromRkey.
   const collections = [
-    BAZAAR_COLLECTION.digitalItem,
-    BAZAAR_COLLECTION.collection,
-    BAZAAR_COLLECTION.physicalItem,
-    BAZAAR_COLLECTION.item,
     BAZAAR_COLLECTION.product,
+    BAZAAR_COLLECTION.item,
   ] as const;
   const agent = await agentForRepo(repoDid);
   for (const collection of collections) {
@@ -1052,129 +940,8 @@ export async function putListing(
 }
 
 /** Updates a digital item; immutable fields are always taken from the current record. */
-export async function putDigitalItem(
-  agent: ATPRepoClient,
-  uri: string,
-  draft: DigitalItem,
-): Promise<void> {
-  const did = agent.session?.did;
-  if (!did) throw new Error("Not authenticated");
-  const at = new AtUri(uri);
-  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
-  if (at.hostname !== did) throw new Error("Record must be in your repo");
-  if (at.collection !== BAZAAR_COLLECTION.digitalItem) {
-    throw new Error("Not a digital item record");
-  }
-  const readAgent = await agentForRepo(did);
-  const cur = (await readAgent.com.atproto.repo.getRecord({
-    repo: did,
-    collection: at.collection,
-    rkey: at.rkey,
-  })) as GetRecordResponse;
-  const prev = cur.data.value as DigitalItem;
-  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.item.digital") {
-    throw new Error("Invalid record type");
-  }
-  const merged: DigitalItem = {
-    ...draft,
-    artistDid: prev.artistDid,
-    itemClass: prev.itemClass,
-    formats: prev.formats,
-    fileChecksum: prev.fileChecksum,
-    fileCid: prev.fileCid,
-    fileFormat: prev.fileFormat,
-    durationMs: prev.durationMs,
-    supersedes: prev.supersedes,
-    createdAt: prev.createdAt,
-    bazaarRid: prev.bazaarRid,
-  };
-  await agent.com.atproto.repo.putRecord({
-    repo: did,
-    collection: at.collection,
-    rkey: at.rkey,
-    swapRecord: cur.data.cid,
-    record: merged as unknown as Record<string, unknown>,
-  });
-}
-
 /** Updates a collection; immutable fields are always taken from the current record. */
-export async function putCollection(
-  agent: ATPRepoClient,
-  uri: string,
-  draft: Collection,
-): Promise<void> {
-  const did = agent.session?.did;
-  if (!did) throw new Error("Not authenticated");
-  const at = new AtUri(uri);
-  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
-  if (at.hostname !== did) throw new Error("Record must be in your repo");
-  if (at.collection !== BAZAAR_COLLECTION.collection) {
-    throw new Error("Not a collection record");
-  }
-  const readAgent = await agentForRepo(did);
-  const cur = (await readAgent.com.atproto.repo.getRecord({
-    repo: did,
-    collection: at.collection,
-    rkey: at.rkey,
-  })) as GetRecordResponse;
-  const prev = cur.data.value as Collection;
-  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.collection") {
-    throw new Error("Invalid record type");
-  }
-  const merged: Collection = {
-    ...draft,
-    artistDid: prev.artistDid,
-    createdAt: prev.createdAt,
-    bazaarPid: prev.bazaarPid,
-  };
-  await agent.com.atproto.repo.putRecord({
-    repo: did,
-    collection: at.collection,
-    rkey: at.rkey,
-    swapRecord: cur.data.cid,
-    record: merged as unknown as Record<string, unknown>,
-  });
-}
-
 /** Updates a physical item; immutable fields are always taken from the current record. */
-export async function putPhysicalItem(
-  agent: ATPRepoClient,
-  uri: string,
-  draft: PhysicalItem,
-): Promise<void> {
-  const did = agent.session?.did;
-  if (!did) throw new Error("Not authenticated");
-  const at = new AtUri(uri);
-  if (!at.rkey || !at.collection) throw new Error("Invalid URI");
-  if (at.hostname !== did) throw new Error("Record must be in your repo");
-  if (at.collection !== BAZAAR_COLLECTION.physicalItem) {
-    throw new Error("Not a physical item record");
-  }
-  const readAgent = await agentForRepo(did);
-  const cur = (await readAgent.com.atproto.repo.getRecord({
-    repo: did,
-    collection: at.collection,
-    rkey: at.rkey,
-  })) as GetRecordResponse;
-  const prev = cur.data.value as PhysicalItem;
-  if (prev.$type !== "diamonds.whereditgo.bazaar.catalog.item.physical") {
-    throw new Error("Invalid record type");
-  }
-  const merged: PhysicalItem = {
-    ...draft,
-    artistDid: prev.artistDid,
-    itemClass: prev.itemClass,
-    createdAt: prev.createdAt,
-  };
-  await agent.com.atproto.repo.putRecord({
-    repo: did,
-    collection: at.collection,
-    rkey: at.rkey,
-    swapRecord: cur.data.cid,
-    record: merged as unknown as Record<string, unknown>,
-  });
-}
-
 /** Only title/category/description are editable -- fileCid/fileChecksum/format/merchantDid are preserved as-authored. */
 export async function putCatalogItem(
   agent: ATPRepoClient,

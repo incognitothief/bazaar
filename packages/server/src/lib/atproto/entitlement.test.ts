@@ -10,8 +10,9 @@ const A = { uri: "at://did:plc:aaa/diamonds.whereditgo.bazaar.catalog.item/1", c
 const B = { uri: "at://did:plc:bbb/diamonds.whereditgo.bazaar.catalog.item/2", cid: "bafyreibbb" };
 const C = { uri: "at://did:plc:ccc/diamonds.whereditgo.bazaar.catalog.item/3", cid: "bafyreiccc" };
 const PRODUCT = "at://did:plc:ppp/diamonds.whereditgo.bazaar.catalog.product/p1";
-const COLLECTION =
-  "at://did:plc:ppp/diamonds.whereditgo.bazaar.catalog.collection/c1";
+/** Any NSID resolveGrantedItems does not recognise as a product. */
+const UNKNOWN_KIND =
+  "at://did:plc:ppp/diamonds.whereditgo.bazaar.catalog.somethingElse/x1";
 
 describe("canonicalGrantedItems", () => {
   test("sorts by UTF-8 byte order and de-duplicates by uri", () => {
@@ -88,10 +89,8 @@ describe("resolveGrantedItems", () => {
     expect(resolveGrantedItems(PRODUCT, null)).toBeUndefined();
   });
 
-  test("collections stay on the legacy path", () => {
-    expect(
-      resolveGrantedItems(COLLECTION, { items: [A] }),
-    ).toBeUndefined();
+  test("a non-product collection -> undefined, even carrying items", () => {
+    expect(resolveGrantedItems(UNKNOWN_KIND, { items: [A] })).toBeUndefined();
   });
 
   test("unparseable URI -> undefined", () => {

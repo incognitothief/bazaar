@@ -7,30 +7,9 @@ export type Money = { amount: number; currency: string };
 /** Which payment system settled a receipt, plus its opaque reference in that system. */
 export type Payment = { processor: string; ref: string };
 
-export type Dimensions = {
-  width?: number;
-  height?: number;
-  depth?: number;
-  unit: "mm" | "cm" | "in";
-};
-
-export type Weight = { value: number; unit: "g" | "kg" | "oz" | "lb" };
-
-export type Variant = {
-  sku: string;
-  attributes?: Record<string, string>;
-  weight?: Weight;
-  dimensions?: Dimensions;
-  additionalPrice?: Money;
-  artworkCid?: string;
-};
-
 export type BazaarItemType =
   | "diamonds.whereditgo.bazaar.catalog.item"
-  | "diamonds.whereditgo.bazaar.catalog.product"
-  | "diamonds.whereditgo.bazaar.catalog.item.digital"
-  | "diamonds.whereditgo.bazaar.catalog.item.physical"
-  | "diamonds.whereditgo.bazaar.catalog.collection";
+  | "diamonds.whereditgo.bazaar.catalog.product";
 
 export type ItemRef = {
   uri: string;
@@ -58,94 +37,7 @@ export type TerritoryCoverage = {
   territories?: string[];
 };
 
-export type CollectionItemRole =
-  | "track"
-  | "video"
-  | "document"
-  | "artwork"
-  | "bonus"
-  | "other";
-
-export type CollectionItemEntry = {
-  uri: string;
-  cid?: string;
-  role: CollectionItemRole;
-  trackNumber?: number;
-  discNumber?: number;
-  title?: string;
-};
-
-export type PhysicalItem = {
-  $type: "diamonds.whereditgo.bazaar.catalog.item.physical";
-  title: string;
-  artistDid: string;
-  itemClass:
-    | "clothing"
-    | "vinyl"
-    | "cd"
-    | "cassette"
-    | "poster"
-    | "print"
-    | "accessory"
-    | "hardGood"
-    | "other";
-  description?: string;
-  variants: Variant[];
-  artworkCid?: string;
-  countryOfOrigin?: string;
-  harmonizedCode?: string;
-  requiresShipping?: boolean;
-  createdAt: string;
-};
-
-export type DigitalItem = {
-  $type: "diamonds.whereditgo.bazaar.catalog.item.digital";
-  title: string;
-  artistDid: string;
-  itemClass:
-    | "track"
-    | "album"
-    | "samplePack"
-    | "preset"
-    | "stems"
-    | "video"
-    | "document"
-    | "ebook"
-    | "other";
-  description?: string;
-  formats: string[];
-  fileChecksum: string;
-  fileCid: string;
-  fileFormat?: string;
-  durationMs?: number;
-  releaseDate?: string;
-  artworkCid?: string;
-  genre?: string[];
-  isrc?: string;
-  defaultLicenseUri?: string;
-  bazaarRid?: unknown;
-  collectionUri?: string;
-  supersedes?: string;
-  createdAt: string;
-};
-
-export type Collection = {
-  $type: "diamonds.whereditgo.bazaar.catalog.collection";
-  title: string;
-  artistDid: string;
-  collectionType?: "album" | "ep" | "single" | "compilation" | "other";
-  description?: string;
-  releaseDate: string;
-  items: CollectionItemEntry[];
-  defaultLicenseUri?: string;
-  artworkCid?: string;
-  genre?: string[];
-  upc?: string;
-  bazaarPid?: unknown;
-  createdAt: string;
-};
-
-/** diamonds.whereditgo.bazaar.catalog.item — successor to DigitalItem (physical excluded, no fixed itemClass taxonomy). */
+/** diamonds.whereditgo.bazaar.catalog.item — a single sellable file or dispensable item. */
 export type BazaarItem = {
   $type: "diamonds.whereditgo.bazaar.catalog.item";
   title: string;

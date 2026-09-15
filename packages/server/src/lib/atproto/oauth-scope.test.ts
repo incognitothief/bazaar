@@ -77,8 +77,8 @@ describe("oauth-scope", () => {
     expect(s).toContain(
       "repo:diamonds.whereditgo.bazaar.purchase.receipt?action=create",
     );
-    expect(s).not.toContain("catalog.item.digital");
-    expect(s).not.toContain("catalog.collection");
+    expect(s).not.toContain("catalog.item");
+    expect(s).not.toContain("catalog.product");
     expect(s).not.toContain("catalog.listing");
     expect(s).not.toContain("license.terms");
     expect(s).not.toContain("actor.merchant");

@@ -46,16 +46,14 @@ export function buildDevStubListingJson(itemUri: string): Record<string, unknown
   };
 }
 
-/** Minimal digital item JSON for merchantDid / title when the item is not on a PDS. */
+/** Minimal catalog.item JSON for title when the item is not on a PDS. The
+ * merchant is the repo in `itemUri`, so the record carries no DID of its own. */
 export function buildDevStubItemJson(itemUri: string): Record<string, unknown> {
-  const did = repoFromAtUri(itemUri);
   const now = new Date().toISOString();
   return {
-    $type: "diamonds.whereditgo.bazaar.catalog.item.digital",
+    $type: "diamonds.whereditgo.bazaar.catalog.item",
     title: "Dev checkout stub item",
-    artistDid: did ?? "did:plc:unknown",
-    itemClass: "track",
-    formats: ["flac"],
+    format: "audio/flac",
     fileChecksum: "0".repeat(64),
     fileCid: "bafyreibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     createdAt: now,

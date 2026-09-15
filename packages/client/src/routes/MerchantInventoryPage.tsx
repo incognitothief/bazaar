@@ -181,9 +181,7 @@ export function MerchantInventoryPage() {
         listingRow.listing.status === "active" ? "paused" : "active";
       const next: Listing = { ...listingRow.listing, status: nextStatus };
       const rowCollection = collectionFromAtUri(listingRow.listing.item.uri);
-      const isParentListing =
-        rowCollection === BAZAAR_COLLECTION.collection ||
-        rowCollection === BAZAAR_COLLECTION.product;
+      const isParentListing = rowCollection === BAZAAR_COLLECTION.product;
       const activeChildren = listingRows.filter(
         (x) =>
           x.listing.parentListing === listingRow.uri &&

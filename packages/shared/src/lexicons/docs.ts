@@ -2,11 +2,8 @@ import type { LexiconDoc } from "@atproto/lexicon";
 
 import actorMerchant from "./actor.merchant.json" with { type: "json" };
 import actorStorefrontKeys from "./actor.storefrontKeys.json" with { type: "json" };
-import catalogCollection from "./catalog.collection.json" with { type: "json" };
-import catalogDigital from "./catalog.item.digital.json" with { type: "json" };
 import catalogItem from "./catalog.item.json" with { type: "json" };
 import catalogListing from "./catalog.listing.json" with { type: "json" };
-import catalogPhysical from "./catalog.item.physical.json" with { type: "json" };
 import catalogProduct from "./catalog.product.json" with { type: "json" };
 import defs from "./defs.json" with { type: "json" };
 import licenseTerms from "./license.terms.json" with { type: "json" };
@@ -18,9 +15,6 @@ const RAW_DOCS = [
   defs,
   catalogItem,
   catalogProduct,
-  catalogDigital,
-  catalogPhysical,
-  catalogCollection,
   catalogListing,
   licenseTerms,
   purchaseReceipt,

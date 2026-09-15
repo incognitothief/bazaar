@@ -72,7 +72,7 @@ describe("signReceiptPayload / verifyReceiptPayload", () => {
   const params = {
     purchasedAt: new Date().toISOString(),
     paymentRef: "pi_test",
-    itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item.digital/rkey",
+    itemUri: "at://did:plc:test/diamonds.whereditgo.bazaar.catalog.item/rkey",
     listingCid: "bafyrei",
     buyerDid: "did:plc:buyer",
   };
