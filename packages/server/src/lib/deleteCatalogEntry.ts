@@ -326,8 +326,8 @@ export type DeletionOutcome = {
  *
  * A failure at 1 or 2 aborts with the records untouched, which is recoverable:
  * the merchant retries and the manifest still resolves. The inverse order --
- * record first, bytes second -- fails unrecoverably, because for a legacy
- * entry the record's rkey is the only thing that can regenerate its R2 key.
+ * record first, bytes second -- fails unrecoverably: with the record gone,
+ * nothing names the orphaned bytes.
  * Bytes without a record are invisible garbage; a record without bytes is a
  * visible, retryable inconsistency. We fail toward the latter.
  *

@@ -108,24 +108,6 @@ export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
 });
 
 /** Append-only publish hints for merchant listings UI (not lexicon). */
-export const inventoryPrefillLog = sqliteTable(
-  "inventory_prefill_log",
-  {
-    id: text("id").primaryKey(),
-    merchantDid: text("merchant_did").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp" })
-      .notNull()
-      .$defaultFn(() => new Date()),
-    payloadJson: text("payload_json").notNull(),
-  },
-  (t) => ({
-    merchantCreatedIdx: index("idx_inventory_prefill_merchant_created").on(
-      t.merchantDid,
-      t.createdAt,
-    ),
-  }),
-);
-
 export const inventoryUploadPart = sqliteTable(
   "inventory_upload_part",
   {

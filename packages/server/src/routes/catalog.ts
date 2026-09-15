@@ -73,7 +73,7 @@ export function createCatalogRouter(db: Db) {
      * Runtime / byte size / pixel dimensions live on the upload object
      * (ERP-only, never on the PDS record) -- same "resolve alongside the ERP
      * row" pattern as a product's coverImages. Any of them is null for a file
-     * type it doesn't apply to, or for a legacy upload predating the capture.
+     * type it doesn't apply to, or for an upload predating the capture.
      */
     const media = row.objectId
       ? await db
@@ -143,7 +143,7 @@ export function createCatalogRouter(db: Db) {
      * Computed on read so they always reflect the current item set (ERP-only,
      * never on the PDS record):
      * - totalBytes: sum of member master-file sizes (companion assets excluded);
-     *   null when no member has a known size (all legacy uploads).
+     *   null when no member has a known size (all predate byte-size capture).
      * - trackCount: how many members are audio -- the storefront card shows this
      *   for a music release, and items.length for anything else.
      */

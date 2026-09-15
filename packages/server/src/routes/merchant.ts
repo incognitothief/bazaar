@@ -256,7 +256,7 @@ export function createMerchantRouter(db: Db, oauthClient: OAuthClient) {
       .limit(LIST_LIMIT)
       .all();
 
-    /** ERP-first title lookup -- covers every catalog.item/catalog.product sale with no PDS round trip. Rows from before this pipeline recorded itemUri, or sales of a legacy digital/physical/collection item, fall back to null and the client shows the raw URI. */
+    /** ERP-first title lookup -- covers every catalog.item/catalog.product sale with no PDS round trip. Rows from before this pipeline recorded itemUri fall back to null and the client shows the raw URI. */
     const itemUris = Array.from(
       new Set(rows.map((r) => r.itemUri).filter((u): u is string => !!u)),
     );

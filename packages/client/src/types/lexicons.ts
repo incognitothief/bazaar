@@ -195,8 +195,7 @@ export type CatalogItem = BazaarItem | Product;
 /**
  * catalog.item and catalog.product carry no merchant field: their own repo
  * (at://merchantDid/{collection}/rkey) already identifies the merchant, so it
- * is derived from `itemUri`. (The legacy types used to carry their own
- * artistDid, which is why this takes the URI at all.)
+ * is derived from `itemUri` -- which is why this takes the URI at all.
  */
 export function catalogItemMerchantDid(_item: CatalogItem, itemUri: string): string {
   return repoDidFromAtUri(itemUri) ?? "";

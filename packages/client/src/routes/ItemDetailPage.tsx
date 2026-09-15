@@ -154,11 +154,12 @@ export function ItemDetailPage() {
   const [ownsProduct, setOwnsProduct] = useState(false);
   /**
    * The buyer's frozen `grantedItems` for this product, or null when they
-   * don't own it or the receipt predates the field. When null but ownsProduct
-   * is true, every current member counts as owned (legacy behavior).
+   * don't own it. Null with ownsProduct true means a receipt carrying no
+   * grant, which cannot verify (ADR 0019); every current member is shown as
+   * owned for display only.
    */
   const [productGrant, setProductGrant] = useState<string[] | null>(null);
-  /** Ownership of a standalone purchase (legacy digital item or a catalog.item single) -- collection/product have their own owns* flags above since a bundle purchase is entitlement-checked differently. */
+  /** Ownership of a standalone catalog.item purchase -- a product has its own owns* flag above, since a product purchase is entitlement-checked differently. */
   const [ownsItem, setOwnsItem] = useState(false);
   /** catalog.product's own cover art, or a catalog.item single's borrowed from its owning product -- neither is ever a PDS blob CID. */
   const [coverImages, setCoverImages] = useState<

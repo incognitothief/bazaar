@@ -31,10 +31,10 @@ export function resolveDummyItemAtUri(primaryDid: string | undefined): string | 
 
 export function isDummyStorefrontItem(
   itemUri: string,
-  artistDid: string | undefined,
+  merchantDid: string | undefined,
 ): boolean {
   if (!catalogDummyEnabled()) return false;
-  const resolved = resolveDummyItemAtUri(artistDid);
+  const resolved = resolveDummyItemAtUri(merchantDid);
   return resolved != null && itemUri === resolved;
 }
 

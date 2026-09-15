@@ -44,7 +44,7 @@ type PurchaseReceipt = {
   kid?: string;
   /**
    * Frozen entitlement: the catalog.item refs this purchase covers, captured
-   * at checkout. Present on current receipts; absent on legacy ones, which
+   * at checkout. Required: a receipt without one does not verify, which
    * fall back to live product/collection membership.
    */
   grantedItems?: ItemRef[];

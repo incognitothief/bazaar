@@ -15,14 +15,14 @@ export function sanitizeInventoryFilename(name: string): string {
  * every catalog.item is created as part of some catalog.product (even a
  * single-item release is a one-item product), so the product's rkey is a
  * stable grouping key available at upload-registration time: it's minted
- * up front (TID.nextStr(), same pattern as the legacy itemTid reservation)
+ * up front (TID.nextStr())
  * for a new product, or taken from the existing product's own URI when
  * adding items/assets to one already published. See
  * inventoryUploadSession.productRkey. The product's createRecord call at
  * publish time passes this same rkey explicitly rather than letting the
  * PDS assign one, so the R2 folder and the PDS record rkey always match.
  *
- * Unlike the legacy scheme, resolving one of these keys back to bytes
+ * Resolving one of these keys back to bytes
  * always goes through inventoryUploadObject.r2Key (a DB lookup), never
  * recomputation -- acceptable now that Bazaar is ERP-first everywhere
  * else too. What this buys back over the flat, UUID-only scheme it

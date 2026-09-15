@@ -103,11 +103,7 @@ export type RelationshipDescriptor =
   | { kind: "unlisted"; label: string }
   | { kind: "none"; label: string };
 
-/**
- * How an inventory row relates to the listing graph. Only meaningful for the
- * new `item` / `product` grain -- legacy digital/physical/collection rows get
- * `none` (their pages are frozen; the list just shows their kind label).
- */
+/** How an inventory row relates to the listing graph. */
 export function relationshipFor(
   row: MerchantItemRow,
   listingRow: ListingRow | undefined,

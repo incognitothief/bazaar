@@ -174,9 +174,6 @@ export function DeleteEntryDialog({ entryUri, onClose, onDeleted }: Props) {
                   {manifest.r2Objects.map((o) => (
                     <li key={o.key} className="break-all text-xs">
                       {o.label}
-                      {o.source === "recomputed" && (
-                        <span className="text-destructive"> — unindexed</span>
-                      )}
                     </li>
                   ))}
                 </ul>

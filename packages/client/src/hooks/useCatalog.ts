@@ -41,7 +41,7 @@ function indexActiveListings(rows: ListingRow[]): Record<string, Listing> {
   return map;
 }
 
-export function useCatalog(artistDid: string | undefined): CatalogState {
+export function useCatalog(merchantDid: string | undefined): CatalogState {
   const [entries, setEntries] = useState<CatalogEntry[]>([]);
   const [listingsByItemUri, setListingsByItemUri] = useState<
     Record<string, Listing>
@@ -51,7 +51,7 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
   const [error, setError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
-    if (!artistDid?.startsWith("did:")) {
+    if (!merchantDid?.startsWith("did:")) {
       setEntries([]);
       setListingsByItemUri({});
       setListingRows([]);
@@ -63,9 +63,9 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
     setError(null);
     try {
       const [bazaarItemRows, productRows, listings] = await Promise.all([
-        listBazaarItemRows(artistDid),
-        listProductRows(artistDid),
-        listListingRows(artistDid),
+        listBazaarItemRows(merchantDid),
+        listProductRows(merchantDid),
+        listListingRows(merchantDid),
       ]);
       const byItem = indexActiveListings(listings);
       const productCoverImages = await Promise.all(
@@ -102,7 +102,7 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
     } finally {
       setLoading(false);
     }
-  }, [artistDid]);
+  }, [merchantDid]);
 
   useEffect(() => {
     void refetch();

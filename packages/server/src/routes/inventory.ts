@@ -19,7 +19,6 @@ import type { Db } from "../db";
 import {
   catalogProductAssets,
   catalogProducts,
-  inventoryPrefillLog,
   inventoryUploadObject,
   inventoryUploadPart,
   inventoryUploadSession,
@@ -107,11 +106,9 @@ function loadR2():
 }
 
 /**
- * Best-effort webp derivative, only for "artwork"-role objects in a
- * "product"-kind session (cover images / the generic included-assets bin --
- * see newProductAssetKey). Legacy digital/collection artwork is
- * untouched, same "new types get new capabilities, legacy stays frozen"
- * pattern as everywhere else in this reshape. Stored as `${r2Key}.webp`,
+ * Best-effort webp derivative, only for "artwork"-role objects (cover images
+ * / the generic included-assets bin -- see newProductAssetKey). Stored as
+ * `${r2Key}.webp`,
  * a sibling object -- never touches the original, and the product
  * download package always reads r2Key directly, never this.
  */
@@ -244,30 +241,6 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       ? (body.existingProductUri ?? `at://${sess.did}/${col("catalog.product")}/${productRkey}`)
       : null;
     return c.json({ sessionId: id, productUri });
-  });
-
-  r.get("/prefill/latest", async (c) => {
-    const sess = await getSessionAgent(c, oauthClient);
-    if (!sess) return c.json({ error: "Unauthorized" }, 401);
-    const row = await db
-      .select()
-      .from(inventoryPrefillLog)
-      .where(eq(inventoryPrefillLog.merchantDid, sess.did))
-      .orderBy(desc(inventoryPrefillLog.createdAt))
-      .limit(1)
-      .get();
-    if (!row) return c.json({ prefill: null });
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(row.payloadJson);
-    } catch {
-      return c.json({ error: "prefill_corrupt" }, 500);
-    }
-    return c.json({
-      prefill: parsed,
-      id: row.id,
-      createdAt: row.createdAt?.toISOString?.() ?? null,
-    });
   });
 
   r.get("/sessions", async (c) => {

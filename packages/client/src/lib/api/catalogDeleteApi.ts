@@ -10,7 +10,7 @@ export type PdsRecordRef = {
 export type R2ObjectRef = {
   key: string;
   label: string;
-  source: "indexed" | "recomputed";
+  source: "indexed";
 };
 
 export type DeletionBlocker = {
@@ -22,7 +22,7 @@ export type DeletionBlocker = {
 
 export type DeletionManifest = {
   entryUri: string;
-  entryKind: "product" | "legacy";
+  entryKind: "product" | "item";
   title: string;
   blockers: DeletionBlocker[];
   pdsRecords: PdsRecordRef[];

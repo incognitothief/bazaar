@@ -37,7 +37,7 @@
           },
           "licenseGrant": {
             "$ref": "diamonds.whereditgo.bazaar.defs#ref",
-            "description": "The license.terms record governing this listing, pinned at listing creation. Required. Takes precedence over defaultLicenseUri on the item or collection. Different listings for the same item may reference different license.terms records, enabling per-tier pricing (e.g. personal vs. commercial). cid anchors the offered terms so that receipt resolution is consistent even if the license.terms record is later updated."
+            "description": "The license.terms record governing this listing, pinned at listing creation. Required. Different listings for the same item may reference different license.terms records, enabling per-tier pricing (e.g. personal vs. commercial). cid anchors the offered terms so that receipt resolution is consistent even if the license.terms record is later updated."
           },
           "parentListing": {
             "type": "string",

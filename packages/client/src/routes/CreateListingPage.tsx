@@ -17,7 +17,6 @@ import { listingStatusBadgeVariant } from "@/components/merchant/merchantItemDis
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { useZipProgress } from "@/hooks/useZipProgress";
-import { fetchLatestInventoryPrefill } from "@/lib/api/inventoryApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   buildItemRefFromUri,
@@ -111,22 +110,6 @@ export function CreateListingPage() {
     setLoading(true);
     try {
       let targetUri = uriParam;
-      let prefill: {
-        licenseUri?: string;
-        licenseGrantCid?: string;
-        priceUsd?: string;
-      } | null = null;
-      if (!targetUri && source === "upload") {
-        const { prefill: p } = await fetchLatestInventoryPrefill().catch(
-          () => ({
-            prefill: null,
-          }),
-        );
-        if (p?.primaryItemUri) {
-          targetUri = p.primaryItemUri;
-          prefill = p;
-        }
-      }
       if (!targetUri) {
         setEntity(null);
         setPackageZipStatus(null);
@@ -228,11 +211,6 @@ export function CreateListingPage() {
         }
       }
 
-      if (prefill) {
-        setLicenseUri(prefill.licenseUri ?? "");
-        setLicenseCid(prefill.licenseGrantCid ?? "");
-        if (prefill.priceUsd) setPriceUsd(prefill.priceUsd);
-      }
     } finally {
       setLoading(false);
     }
