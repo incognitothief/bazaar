@@ -10,7 +10,7 @@ import {
   inventoryUploadObject,
   paymentFulfillment,
 } from "../db/schema";
-import { isS3NoSuchKey } from "./r2/diagnostics";
+import { isS3NotFound } from "./r2/diagnostics";
 import { INVENTORY_MASTER_OBJECT_NAME, inventoryObjectKey } from "./r2/inventoryKey";
 
 function lexiconNs(): string {
@@ -363,12 +363,13 @@ export async function executeDeletion(
   const deletedObjects: string[] = [];
   const alreadyGone: string[] = [];
 
-  // 1. bytes
+  // 1. bytes. DeleteObject is idempotent -- S3/R2 answer 204 for a key that
+  // was never there -- so a throw here is a real failure, never "missing".
   for (const obj of manifest.r2Objects) {
     try {
       await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: obj.key }));
     } catch (e) {
-      if (isS3NoSuchKey(e)) {
+      if (isS3NotFound(e)) {
         alreadyGone.push(obj.key);
         continue;
       }
@@ -377,21 +378,29 @@ export async function executeDeletion(
     }
   }
 
-  // 2. verify -- a delete that silently no-ops must not reach step 4
+  // 2. verify -- a delete that silently no-ops must not reach step 4.
+  //
+  // HeadObject signals absence with `NotFound` (404), NOT `NoSuchKey`: a HEAD
+  // has no response body to carry an error code, so the SDK synthesizes one.
+  // This is the same check the SDK's waitUntilObjectNotExists waiter makes.
   for (const obj of manifest.r2Objects) {
     if (alreadyGone.includes(obj.key)) continue;
     try {
       await client.send(new HeadObjectCommand({ Bucket: bucket, Key: obj.key }));
-      console.error("executeDeletion: object still present after delete", obj.key);
-      return { error: "r2_verify_failed", status: 502 };
     } catch (e) {
-      if (isS3NoSuchKey(e)) {
+      if (isS3NotFound(e)) {
         deletedObjects.push(obj.key);
         continue;
       }
+      // Distinct from the case below: we could not determine the object's
+      // state at all (permissions, network, throttling). Retrying is safe.
       console.error("executeDeletion: R2 verify errored", obj.key, e);
       return { error: "r2_verify_failed", status: 502 };
     }
+    // Head succeeded: the object survived a delete that reported success.
+    // Usually a credential that can read but not delete, or a bucket mismatch.
+    console.error("executeDeletion: object still present after delete", obj.key);
+    return { error: "r2_delete_incomplete", status: 502 };
   }
 
   // 3. ERP rows

@@ -63,6 +63,23 @@ Step 2 exists because a delete that silently no-ops (wrong bucket, permissions,
 a key that never matched) would otherwise reach step 4 and strand the bytes. An
 object already absent is treated as success, not failure.
 
+Two S3 details the verify step depends on, both easy to get backwards:
+
+- **`HeadObject` signals absence with `NotFound` (404), not `NoSuchKey`.** A HEAD
+  response has no body to carry an error code, so the SDK synthesizes a bare
+  `NotFound`; `NoSuchKey` is what `GetObject` throws. Checking the wrong one
+  makes every *successful* delete fail verification. `isS3NotFound()` in
+  `r2/diagnostics.ts` is for HEAD; `isS3NoSuchKey()` remains for GET. This is
+  the same check the SDK's own `waitUntilObjectNotExists` waiter makes.
+- **`DeleteObject` is idempotent.** Deleting a key that was never there returns
+  204, not an error, so a throw in step 1 is always a real failure.
+
+Failure to confirm is reported separately from failure to delete:
+`r2_delete_incomplete` means the object survived a delete that reported success
+(typically a credential that can read but not delete, or a bucket mismatch);
+`r2_verify_failed` means the object's state could not be determined at all
+(permissions, network, throttling). Both abort; they need different fixes.
+
 ### Cascade
 
 - **Listings block.** Deletion is refused while any `catalog.listing` points at

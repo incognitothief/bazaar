@@ -26,3 +26,27 @@ export function isS3NoSuchKey(e: unknown): boolean {
   const o = e as { name?: string; Code?: string };
   return o.name === "NoSuchKey" || o.Code === "NoSuchKey";
 }
+
+/**
+ * True when an error means "this key does not exist" for a HEAD request.
+ *
+ * HEAD responses have no body, so S3 cannot return a `NoSuchKey` error code
+ * the way GetObject does -- the SDK surfaces a bare `NotFound` (404) instead.
+ * Matches what the SDK's own `waitUntilObjectNotExists` waiter checks for.
+ * Use this for HeadObject; use isS3NoSuchKey for GetObject.
+ */
+export function isS3NotFound(e: unknown): boolean {
+  if (typeof e !== "object" || e === null) return false;
+  const o = e as {
+    name?: string;
+    Code?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  return (
+    o.name === "NotFound" ||
+    o.Code === "NotFound" ||
+    o.name === "NoSuchKey" ||
+    o.Code === "NoSuchKey" ||
+    o.$metadata?.httpStatusCode === 404
+  );
+}

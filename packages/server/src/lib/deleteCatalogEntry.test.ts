@@ -24,6 +24,18 @@ function manifest(over: Partial<DeletionManifest> = {}): DeletionManifest {
   };
 }
 
+/**
+ * What HeadObject actually throws for an absent key. NOT NoSuchKey -- a HEAD
+ * has no response body to carry an error code, so the SDK synthesizes a bare
+ * NotFound. Getting this wrong is what made an earlier version of these tests
+ * pass against a verify step that rejected every successful delete.
+ */
+class NotFound extends Error {
+  name = "NotFound";
+  $metadata = { httpStatusCode: 404 };
+}
+
+/** What GetObject throws for an absent key, for contrast. */
 class NoSuchKey extends Error {
   name = "NoSuchKey";
   $metadata = { httpStatusCode: 404 };
@@ -87,7 +99,7 @@ describe("executeDeletion ordering guarantee", () => {
 
     const res = await executeDeletion(explodingDb, agent, OWNER, manifest(), client, "bucket");
 
-    expect(res).toEqual({ error: "r2_verify_failed", status: 502 });
+    expect(res).toEqual({ error: "r2_delete_incomplete", status: 502 });
     expect(deleted).toEqual([]);
   });
 
@@ -117,7 +129,7 @@ describe("executeDeletion ordering guarantee", () => {
     const client = {
       send: async (cmd: unknown) => {
         if (cmd instanceof DeleteObjectCommand) return {};
-        if (cmd instanceof HeadObjectCommand) throw new NoSuchKey();
+        if (cmd instanceof HeadObjectCommand) throw new NotFound();
         return {};
       },
     };
@@ -134,9 +146,12 @@ describe("executeDeletion ordering guarantee", () => {
 
   test("an already-absent object is success, not failure", async () => {
     const { agent } = fakeAgent();
+    // DeleteObject is idempotent, so a missing key deletes "successfully" and
+    // the HEAD is what reports it gone -- the realistic path for this case.
     const client = {
-      send: async () => {
-        throw new NoSuchKey();
+      send: async (cmd: unknown) => {
+        if (cmd instanceof HeadObjectCommand) throw new NotFound();
+        return {};
       },
     };
     const noopDb = {
@@ -147,8 +162,44 @@ describe("executeDeletion ordering guarantee", () => {
 
     expect("error" in res).toBe(false);
     if (!("error" in res)) {
-      expect(res.alreadyGone).toEqual(["inventory/x/master"]);
-      expect(res.deletedObjects).toEqual([]);
+      expect(res.deletedObjects).toEqual(["inventory/x/master"]);
     }
+  });
+
+  /**
+   * Regression: the verify step used to test for NoSuchKey, which HeadObject
+   * never throws. Every successful delete failed verification.
+   */
+  test("treats a HEAD NotFound as gone, not as a verification failure", async () => {
+    const { agent, deleted } = fakeAgent();
+    const client = {
+      send: async (cmd: unknown) => {
+        if (cmd instanceof HeadObjectCommand) throw new NotFound();
+        return {};
+      },
+    };
+    const noopDb = {
+      delete: () => ({ where: () => ({ run: () => {} }) }),
+    } as never;
+
+    const res = await executeDeletion(noopDb, agent, OWNER, manifest(), client, "bucket");
+
+    expect("error" in res).toBe(false);
+    expect(deleted).toEqual(["i1", "p1"]);
+  });
+
+  test("a non-404 verify error is reported as unverifiable, not as incomplete", async () => {
+    const { agent, deleted } = fakeAgent();
+    const client = {
+      send: async (cmd: unknown) => {
+        if (cmd instanceof HeadObjectCommand) throw new Error("AccessDenied");
+        return {};
+      },
+    };
+
+    const res = await executeDeletion(explodingDb, agent, OWNER, manifest(), client, "bucket");
+
+    expect(res).toEqual({ error: "r2_verify_failed", status: 502 });
+    expect(deleted).toEqual([]);
   });
 });
