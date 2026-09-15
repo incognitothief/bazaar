@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { AtUri } from "@atproto/syntax";
 import { ArrowLeft } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import {
   Link,
-  Navigate,
   useNavigate,
   useParams,
   useSearchParams,
@@ -41,7 +39,6 @@ import {
 import { resolveListingMerchantDid } from "@/lib/atUri";
 import {
   catalogItemRkey,
-  isLegacyItemPathSegment,
   itemPathCanonical,
   itemPathPretty,
 } from "@/lib/itemPath";
@@ -64,10 +61,6 @@ import { MetadataChip } from "@/components/shared/MetadataChip";
 import { TagTokens } from "@/components/shared/TagTokens";
 import { productTypeConfig } from "@/lib/productTypes";
 import { contentClassCopy, resolveContentClass } from "@/lib/itemContentClass";
-import {
-  CollectionMemberDownloads,
-  TrackList,
-} from "@/components/public/TrackList";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn, formatBytes } from "@/lib/utils";
@@ -77,7 +70,6 @@ import {
   type ActorMerchant,
   type BazaarItem,
   type CatalogItem,
-  type DigitalItem,
   type LicenseTerms,
   type Listing,
 } from "@/types/lexicons";
@@ -151,7 +143,6 @@ export function ItemDetailPage() {
    * back button then returns there instead of doing a plain history pop. */
   const fromRkey = searchParams.get("from")?.trim() || null;
   const merchantDidEnv = import.meta.env.VITE_MERCHANT_DID?.trim() ?? "";
-  const legacySegment = !!rkeyParam && isLegacyItemPathSegment(rkeyParam);
 
   const agent = useMemo(() => createPublicAgent(), []);
   const { session } = useAtpSession();
@@ -164,7 +155,6 @@ export function ItemDetailPage() {
   const [listing, setListing] = useState<Listing | null>(null);
   const [listingUri, setListingUri] = useState<string | null>(null);
   const [allArtistListings, setAllArtistListings] = useState<ListingRow[]>([]);
-  const [ownsCollection, setOwnsCollection] = useState(false);
   const [ownsProduct, setOwnsProduct] = useState(false);
   /**
    * The buyer's frozen `grantedItems` for this product, or null when they
@@ -215,11 +205,6 @@ export function ItemDetailPage() {
       setRkeyResolved(true);
       return;
     }
-    if (legacySegment) {
-      setResolvedItemUri(null);
-      setRkeyResolved(true);
-      return;
-    }
     setResolvedItemUri(null);
     setRkeyResolved(false);
     let cancelled = false;
@@ -243,9 +228,9 @@ export function ItemDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [rkeyParam, merchantDidEnv, legacySegment]);
+  }, [rkeyParam, merchantDidEnv]);
 
-  const itemUri = legacySegment ? "" : (resolvedItemUri ?? "");
+  const itemUri = resolvedItemUri ?? "";
   const merchantDid = resolveListingMerchantDid(itemUri);
 
   useEffect(() => {
@@ -286,30 +271,7 @@ export function ItemDetailPage() {
         if (
           v &&
           "$type" in v &&
-          v.$type === "diamonds.whereditgo.bazaar.catalog.collection" &&
-          buyerAgent &&
-          session?.did
-        ) {
-          const receipts = await listPurchaseReceiptRows(session.did);
-          if (!cancelled) {
-            setOwnsCollection(
-              receipts.some(
-                (r) =>
-                  r.receipt.purchasedGood?.uri === itemUri &&
-                  new AtUri(r.receipt.purchasedGood.uri).collection ===
-                    BAZAAR_COLLECTION.collection,
-              ),
-            );
-          }
-        } else if (!cancelled) {
-          setOwnsCollection(false);
-        }
-
-        if (
-          v &&
-          "$type" in v &&
-          (v.$type === BAZAAR_COLLECTION.digitalItem ||
-            v.$type === BAZAAR_COLLECTION.item) &&
+          v.$type === BAZAAR_COLLECTION.item &&
           buyerAgent &&
           session?.did
         ) {
@@ -404,14 +366,6 @@ export function ItemDetailPage() {
         }
 
         let licUri = listingRow?.licenseGrant?.uri;
-        if (
-          !licUri &&
-          v &&
-          "$type" in v &&
-          v.$type === "diamonds.whereditgo.bazaar.catalog.item.digital"
-        ) {
-          licUri = (v as DigitalItem).defaultLicenseUri;
-        }
         if (licUri) {
           const lt = await getRecordValueWithCid<LicenseTerms>(licUri);
           if (cancelled) return;
@@ -527,26 +481,10 @@ export function ItemDetailPage() {
     };
   }, [agent, item ? catalogItemMerchantDid(item, itemUri) : undefined]);
 
-  const isCollection =
-    item?.$type === "diamonds.whereditgo.bazaar.catalog.collection";
   const isProduct = item?.$type === BAZAAR_COLLECTION.product;
   const isCatalogItemSingle = item?.$type === BAZAAR_COLLECTION.item;
   const isMusicProduct =
     isProduct && productTypeConfig(productType).value === "music";
-
-  const purchaseByTrackUri = useMemo(() => {
-    const m = new Map<string, { listingUri: string; listing: Listing }>();
-    if (!isCollection || !listingUri) return m;
-    for (const row of allArtistListings) {
-      const L = row.listing;
-      if (L.status !== "active") continue;
-      if (L.parentListing !== listingUri) continue;
-      if (new AtUri(L.item.uri).collection !== BAZAAR_COLLECTION.digitalItem)
-        continue;
-      m.set(L.item.uri, { listingUri: row.uri, listing: L });
-    }
-    return m;
-  }, [isCollection, listingUri, allArtistListings]);
 
   /**
    * Active listing a buyer can follow to purchase a single product member --
@@ -572,17 +510,6 @@ export function ItemDetailPage() {
     return m;
   }, [isProduct, item, listingUri, allArtistListings]);
 
-  if (legacySegment && rkeyParam) {
-    try {
-      const at = new AtUri(decodeURIComponent(rkeyParam));
-      if (at.rkey) {
-        return <Navigate to={itemPathCanonical(at.rkey)} replace />;
-      }
-    } catch {
-      /* invalid legacy segment */
-    }
-  }
-
   if (!rkeyParam) {
     return <p className="text-muted-foreground">Missing item.</p>;
   }
@@ -602,12 +529,8 @@ export function ItemDetailPage() {
     );
   }
 
-  if (!legacySegment && !itemUri) {
+  if (!itemUri) {
     return <p className="text-muted-foreground">Item not found.</p>;
-  }
-
-  if (legacySegment) {
-    return <p className="text-muted-foreground">Invalid item link.</p>;
   }
 
   if (!merchantDid.startsWith("did:")) {
@@ -639,16 +562,12 @@ export function ItemDetailPage() {
   }
 
   const title = item.title;
-  const collectionTrackCount = isCollection
-    ? item.items.filter((i) => i.role === "track").length
-    : 0;
   const authorDid = catalogItemMerchantDid(item, itemUri);
   const authorInitial =
     authorDisplayName?.trim()?.charAt(0)?.toUpperCase() ?? "?";
 
   // catalog.item single: page shape is inferred from the item's immutable
-  // `format`. Legacy types (digital/collection/physical) keep their frozen
-  // layouts and are deliberately not routed through this.
+  // `format`.
   const bazaarItem: BazaarItem | null = isCatalogItemSingle
     ? (item as BazaarItem)
     : null;
@@ -680,35 +599,6 @@ export function ItemDetailPage() {
       toast.error(e instanceof Error ? e.message : "Download failed");
     } finally {
       setDownloadBusyUri(null);
-    }
-  }
-
-  async function downloadCollectionZip() {
-    if (!session) {
-      toast.error("Sign in to download");
-      return;
-    }
-    setZipBusy(true);
-    try {
-      const url = createBrowserApiURL("/api/download/collection-zip");
-      url.searchParams.set("collectionUri", itemUri);
-      const res = await fetch(url.href, { credentials: "include" });
-      if (!res.ok) {
-        throw new Error(await inventoryHttpErrorMessage(res));
-      }
-      const blob = await res.blob();
-      const dispo = res.headers.get("Content-Disposition");
-      const match = dispo?.match(/filename="([^"]+)"/);
-      const name = match?.[1] ?? "collection.zip";
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Download failed");
-    } finally {
-      setZipBusy(false);
     }
   }
 
@@ -749,9 +639,7 @@ export function ItemDetailPage() {
     }
   }
 
-  const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
-
-  const blobDid = isDigital ? item.artistDid : (merchantDid ?? "");
+  const blobDid = merchantDid ?? "";
 
   const showDummyBanner =
     catalogDummyEnabled() && isDummyStorefrontItem(itemUri, merchantDid);
@@ -1036,9 +924,8 @@ export function ItemDetailPage() {
               <p className="text-2xl font-medium">
                 {formatMoney(listing.price)}
               </p>
-              {(isCollection && ownsCollection) ||
-              (isProduct && ownsProduct) ||
-              ((isDigital || isCatalogItemSingle) && ownsItem) ? (
+              {(isProduct && ownsProduct) ||
+              (isCatalogItemSingle && ownsItem) ? (
                 <>
                   <p className="text-sm text-muted-foreground">
                     You have purchased this item. Your downloads are available
@@ -1052,10 +939,7 @@ export function ItemDetailPage() {
                     </p>
                   ) : null}
                 </>
-              ) : isDigital ||
-                isCollection ||
-                isProduct ||
-                isCatalogItemSingle ? (
+              ) : isProduct || isCatalogItemSingle ? (
                 <p className="text-sm text-muted-foreground">
                   After purchase, you can{" "}
                   <a
@@ -1063,7 +947,7 @@ export function ItemDetailPage() {
                     className="text-primary underline underline-offset-2"
                   >
                     download this{" "}
-                    {isCollection || isMusicProduct
+                    {isMusicProduct
                       ? "release"
                       : isProduct
                         ? "product"
@@ -1127,12 +1011,6 @@ export function ItemDetailPage() {
         {"durationMs" in item && item.durationMs ? (
           <MetadataChip>{Math.round(item.durationMs / 60000)} min</MetadataChip>
         ) : null}
-        {isCollection ? (
-          <MetadataChip>
-            {collectionTrackCount}{" "}
-            {collectionTrackCount === 1 ? "track" : "tracks"}
-          </MetadataChip>
-        ) : null}
         {isProduct && "items" in item ? (
           <MetadataChip>
             {item.items.length}{" "}
@@ -1157,28 +1035,6 @@ export function ItemDetailPage() {
           <TagTokens tags={item.tags} part="plain" />
         ) : null}
       </section>
-
-      {isCollection ? (
-        <section className="space-y-4">
-          <h2 className="text-lg font-medium">
-            {ownsCollection ? "Your downloads" : "Tracks"}
-          </h2>
-          {ownsCollection ? (
-            <CollectionMemberDownloads
-              collection={item}
-              onDownloadItem={(u) => void downloadDigitalItemUri(u)}
-              onDownloadZip={() => void downloadCollectionZip()}
-              zipBusy={zipBusy}
-              itemBusyUri={downloadBusyUri}
-            />
-          ) : (
-            <TrackList
-              collection={item}
-              purchaseByTrackUri={purchaseByTrackUri}
-            />
-          )}
-        </section>
-      ) : null}
 
       {isProduct && "items" in item ? (
         <section className="space-y-4">
@@ -1224,7 +1080,7 @@ export function ItemDetailPage() {
         </section>
       ) : null}
 
-      {(isDigital || isCatalogItemSingle) && ownsItem ? (
+      {isCatalogItemSingle && ownsItem ? (
         <section className="space-y-2">
           <h2 className="text-lg font-medium">
             {isCatalogItemSingle && itemClassCopy.label
@@ -1293,9 +1149,8 @@ export function ItemDetailPage() {
 
       {listing &&
       listingUri &&
-      !(isCollection && ownsCollection) &&
       !(isProduct && ownsProduct) &&
-      !((isDigital || isCatalogItemSingle) && ownsItem) ? (
+      !(isCatalogItemSingle && ownsItem) ? (
         <section>
           <BuyButton
             listingUri={listingUri}

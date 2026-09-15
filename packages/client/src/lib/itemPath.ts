@@ -26,13 +26,3 @@ export function itemPathPretty(rkey: string, title: string | undefined): string 
   if (!title?.trim()) return base;
   return `${base}/${encodeURIComponent(slugifyItemTitle(title))}`;
 }
-
-/** Single path segment that decodes to an `at://` URI (legacy item links). */
-export function isLegacyItemPathSegment(segment: string): boolean {
-  try {
-    const d = decodeURIComponent(segment);
-    return d.startsWith("at://");
-  } catch {
-    return false;
-  }
-}

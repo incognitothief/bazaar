@@ -5,7 +5,6 @@ import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
 
 import { ArtworkImage } from "@/components/public/ArtworkImage";
-import { CollectionMemberDownloads } from "@/components/public/TrackList";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
@@ -31,7 +30,6 @@ import {
   catalogItemArtworkCid,
   catalogItemMerchantDid,
   type CatalogItem,
-  type Collection,
   type LicenseTerms,
   type PurchaseReceipt,
 } from "@/types/lexicons";
@@ -285,32 +283,6 @@ export function PurchaseDetailPage() {
     }
   }
 
-  async function downloadCollectionZip(collectionUri: string) {
-    if (!session) return;
-    setZipBusy(true);
-    try {
-      const url = createBrowserApiURL("/api/download/collection-zip");
-      url.searchParams.set("collectionUri", collectionUri);
-      const res = await fetch(url.href, { credentials: "include" });
-      if (!res.ok) {
-        throw new Error(await inventoryHttpErrorMessage(res));
-      }
-      const blob = await res.blob();
-      const dispo = res.headers.get("Content-Disposition");
-      const match = dispo?.match(/filename="([^"]+)"/);
-      const name = match?.[1] ?? "collection.zip";
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Download failed");
-    } finally {
-      setZipBusy(false);
-    }
-  }
-
   if (loading || pageLoading) {
     return (
       <div className="px-4 py-8 text-muted-foreground sm:px-6">Loading…</div>
@@ -408,8 +380,6 @@ export function PurchaseDetailPage() {
     );
   }
 
-  const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
-  const isCollection = item.$type === BAZAAR_COLLECTION.collection;
   const isProduct = item.$type === BAZAAR_COLLECTION.product;
   const isMusicProduct =
     isProduct && productTypeConfig(productType).value === "music";
@@ -512,7 +482,7 @@ export function PurchaseDetailPage() {
         </div>
       </section>
 
-      {isDigital && "formats" in item && item.formats?.length ? (
+      {"formats" in item && item.formats?.length ? (
         <div className="flex flex-wrap gap-2">
           {item.formats.map((f: string) => (
             <FormatBadge key={f} format={f} />
@@ -557,19 +527,6 @@ export function PurchaseDetailPage() {
           {license?.licenseText ?? "License terms could not be loaded."}
         </p>
       </section>
-
-      {isCollection ? (
-        <section className="space-y-4">
-          <h2 className="text-lg font-medium">Your downloads</h2>
-          <CollectionMemberDownloads
-            collection={item as Collection}
-            onDownloadItem={(u) => void downloadDigitalItemUri(u)}
-            onDownloadZip={() => void downloadCollectionZip(receipt.purchasedGood.uri)}
-            zipBusy={zipBusy}
-            itemBusyUri={itemDownloadingUri}
-          />
-        </section>
-      ) : null}
 
       {isProduct && "items" in item ? (
         <section className="space-y-4">
@@ -623,7 +580,7 @@ export function PurchaseDetailPage() {
         </section>
       ) : null}
 
-      {isDigital || isCatalogItemSingle ? (
+      {isCatalogItemSingle ? (
         <section>
           <Button
             type="button"
@@ -635,7 +592,7 @@ export function PurchaseDetailPage() {
         </section>
       ) : null}
 
-      {!isDigital && !isCollection && !isProduct && !isCatalogItemSingle ? (
+      {!isProduct && !isCatalogItemSingle ? (
         <p className="text-sm text-muted-foreground">
           Download is not available for this item type.
         </p>
