@@ -18,6 +18,7 @@ import {
 } from "@/components/merchant/InventoryViewToggle";
 import { Segmented } from "@/components/shared/Segmented";
 import { MerchantItemCard } from "@/components/merchant/MerchantItemCard";
+import { DeleteEntryDialog } from "@/components/merchant/DeleteEntryDialog";
 import {
   MerchantItemRow,
   type MerchantRowActions,
@@ -123,6 +124,8 @@ export function MerchantInventoryPage() {
   const [pendingUris, setPendingUris] = useState<Set<string>>(new Set());
 
   const [deleteRow, setDeleteRow] = useState<ListingRow | null>(null);
+
+  const [deleteEntryUri, setDeleteEntryUri] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const productUriByItemUri = useMemo(
@@ -265,6 +268,7 @@ export function MerchantInventoryPage() {
         onDeleteListing: () => {
           if (lr) setDeleteRow(lr);
         },
+        onDeleteEntry: () => setDeleteEntryUri(row.uri),
       };
     },
     [listingRowByItemUri, productUriByItemUri, titleByUri, openCreateListing],
@@ -522,6 +526,14 @@ export function MerchantInventoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteEntryDialog
+        entryUri={deleteEntryUri}
+        onClose={() => setDeleteEntryUri(null)}
+        onDeleted={() => {
+          void refetch();
+        }}
+      />
     </div>
   );
 }

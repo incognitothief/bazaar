@@ -42,6 +42,8 @@ export type MerchantRowActions = {
   canEditListing: boolean;
   onEditListing: () => void;
   onDeleteListing: () => void;
+  /** Permanently delete the entry itself -- records and files. See ADR 0017. */
+  onDeleteEntry: () => void;
 };
 
 export function MerchantItemRow({
@@ -231,6 +233,10 @@ export function MerchantItemRow({
                 Delete listing
               </DropdownMenuItem>
             ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem destructive onSelect={actions.onDeleteEntry}>
+              Delete permanently
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

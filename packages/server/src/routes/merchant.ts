@@ -18,7 +18,13 @@ import {
   merchantStripeConfig,
   paymentFulfillment,
 } from "../db/schema";
+import type { OAuthClient } from "../lib/atproto/oauth";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
+import { getSessionAgent } from "../lib/atproto/session";
+import {
+  buildDeletionManifest,
+  executeDeletion,
+} from "../lib/deleteCatalogEntry";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import { isS3NoSuchKey } from "../lib/r2/diagnostics";
 import {
@@ -80,7 +86,7 @@ function merchantGuard(c: Context): Response | null {
   return null;
 }
 
-export function createMerchantRouter(db: Db) {
+export function createMerchantRouter(db: Db, oauthClient: OAuthClient) {
   const r = new Hono();
 
   /** Store-owner: business details for KYC pages (DB + optional env override). */
@@ -1017,6 +1023,86 @@ export function createMerchantRouter(db: Db) {
     const result = await buildLegacyCollectionZip(client, r2, uri);
     if (result instanceof Response) return result;
     return c.json({ error: result.error }, result.status);
+  });
+
+
+  /**
+   * Store-owner: enumerate exactly what deleting `uri` would destroy, without
+   * destroying any of it. Backs the confirmation dialog -- the merchant sees
+   * this list before the irreversible call, and the same manifest is rebuilt
+   * server-side on the actual delete (never trusted from the client).
+   */
+  r.post("/catalog/entry/delete-manifest", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.MERCHANT_DID!.trim();
+
+    const sess = await getSessionAgent(c, oauthClient);
+    if (!sess) return c.json({ error: "unauthorized" }, 401);
+
+    const body = (await c.req.json().catch(() => null)) as { uri?: unknown } | null;
+    const uri = typeof body?.uri === "string" ? body.uri.trim() : "";
+    if (!uri) return c.json({ error: "invalid_body" }, 400);
+
+    const manifest = await buildDeletionManifest(db, sess.agent, owner, uri);
+    if ("error" in manifest) return c.json({ error: manifest.error }, manifest.status);
+    return c.json(manifest);
+  });
+
+  /**
+   * Store-owner: PERMANENTLY delete a catalog entry -- PDS record(s), R2
+   * bytes, ERP rows. Irreversible, with no undo and no migration path.
+   *
+   * `confirm` must be the entry's exact title, mirroring what the UI asks the
+   * merchant to type. That is a deliberate second gate on top of the session
+   * check: a mistyped or replayed URI cannot delete the wrong thing.
+   */
+  r.post("/catalog/entry/delete", async (c) => {
+    const denied = merchantGuard(c);
+    if (denied) return denied;
+    const owner = process.env.MERCHANT_DID!.trim();
+
+    const sess = await getSessionAgent(c, oauthClient);
+    if (!sess) return c.json({ error: "unauthorized" }, 401);
+
+    const body = (await c.req.json().catch(() => null)) as {
+      uri?: unknown;
+      confirm?: unknown;
+    } | null;
+    const uri = typeof body?.uri === "string" ? body.uri.trim() : "";
+    const confirm = typeof body?.confirm === "string" ? body.confirm.trim() : "";
+    if (!uri) return c.json({ error: "invalid_body" }, 400);
+
+    // Rebuilt, never accepted from the client -- the client's copy may be
+    // stale (a listing added since it was fetched must still block).
+    const manifest = await buildDeletionManifest(db, sess.agent, owner, uri);
+    if ("error" in manifest) return c.json({ error: manifest.error }, manifest.status);
+
+    if (confirm !== manifest.title) {
+      return c.json({ error: "confirmation_mismatch", expected: manifest.title }, 400);
+    }
+    if (manifest.blockers.length > 0) {
+      return c.json({ error: "blocked_by_listings", blockers: manifest.blockers }, 409);
+    }
+
+    const r2 = r2ConfigFromEnv();
+    if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
+
+    const result = await executeDeletion(
+      db,
+      sess.agent,
+      owner,
+      manifest,
+      getR2S3Client(r2),
+      r2.bucket,
+    );
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+
+    console.warn(
+      `catalog/entry/delete: ${owner} permanently deleted ${uri} ` +
+        `(${result.deletedRecords.length} record(s), ${result.deletedObjects.length} object(s))`,
+    );
+    return c.json({ ok: true, ...result, manifest });
   });
 
   return r;

@@ -36,6 +36,17 @@ export function bazaarRepoOAuthScopes(): string[] {
     repoAction(col(ns, "catalog.collection"), "create"),
     repoAction(col(ns, "catalog.listing"), "create"),
     repoAction(col(ns, "catalog.listing"), "update"),
+    repoAction(col(ns, "catalog.listing"), "delete"),
+    // Permanent catalog deletion (lib/deleteCatalogEntry.ts). Declared for
+    // correctness -- `transition:generic` is what actually authorizes these
+    // today, but that scope is transitional and these become load-bearing
+    // when it goes away.
+    repoAction(col(ns, "catalog.item"), "delete"),
+    repoAction(col(ns, "catalog.product"), "delete"),
+    repoAction(col(ns, "catalog.item.digital"), "delete"),
+    repoAction(col(ns, "catalog.collection"), "delete"),
+    repoAction(col(ns, "catalog.item.physical"), "delete"),
+    repoAction(col(ns, "license.terms"), "delete"),
     repoAction(col(ns, "license.terms"), "create"),
     repoAction(col(ns, "purchase.receipt"), "create"),
     repoAction(col(ns, "actor.merchant"), "create"),
