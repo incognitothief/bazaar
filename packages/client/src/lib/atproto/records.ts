@@ -13,7 +13,6 @@ import type {
   BazaarItem,
   CatalogItem,
   Collection,
-  Composition,
   DigitalItem,
   ItemRef,
   LicenseTerms,
@@ -21,7 +20,6 @@ import type {
   PhysicalItem,
   Product,
   PurchaseReceipt,
-  Recording,
 } from "@/types/lexicons";
 import { BAZAAR_COLLECTION } from "./ns";
 
@@ -85,46 +83,6 @@ export function licenseTermsPayloadFromTemplateId(
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-export async function createDigitalItem(
-  agent: ATPRepoClient,
-  record: Omit<DigitalItem, "$type" | "createdAt">,
-  opts?: { rkey?: string },
-): Promise<{ uri: string; cid: string }> {
-  const did = agent.session?.did;
-  if (!did) throw new Error("Not authenticated");
-  const full: DigitalItem = {
-    $type: "diamonds.whereditgo.bazaar.catalog.item.digital",
-    ...record,
-    createdAt: nowIso(),
-  };
-  const res = await agent.com.atproto.repo.createRecord({
-    repo: did,
-    collection: BAZAAR_COLLECTION.digitalItem,
-    record: full as unknown as Record<string, unknown>,
-    ...(opts?.rkey ? { rkey: opts.rkey } : {}),
-  });
-  return { uri: res.data.uri, cid: res.data.cid };
-}
-
-export async function createCollection(
-  agent: ATPRepoClient,
-  record: Omit<Collection, "$type" | "createdAt">,
-): Promise<{ uri: string; cid: string }> {
-  const did = agent.session?.did;
-  if (!did) throw new Error("Not authenticated");
-  const full: Collection = {
-    $type: "diamonds.whereditgo.bazaar.catalog.collection",
-    ...record,
-    createdAt: nowIso(),
-  };
-  const res = await agent.com.atproto.repo.createRecord({
-    repo: did,
-    collection: BAZAAR_COLLECTION.collection,
-    record: full as unknown as Record<string, unknown>,
-  });
-  return { uri: res.data.uri, cid: res.data.cid };
 }
 
 export async function createListing(
@@ -217,23 +175,6 @@ function isPhysicalItem(v: unknown): v is PhysicalItem {
     v !== null &&
     (v as PhysicalItem).$type ===
       "diamonds.whereditgo.bazaar.catalog.item.physical"
-  );
-}
-
-function isRecording(v: unknown): v is Recording {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as Recording).$type === "diamonds.whereditgo.bazaar.catalog.recording"
-  );
-}
-
-function isComposition(v: unknown): v is Composition {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as Composition).$type ===
-      "diamonds.whereditgo.bazaar.catalog.composition"
   );
 }
 
@@ -375,44 +316,6 @@ export async function listPhysicalItemRows(
     }));
 }
 
-export type RecordingRow = { uri: string; cid: string; recording: Recording };
-
-export async function listRecordingRows(did: string): Promise<RecordingRow[]> {
-  const records = await listAllRecordsForCollection(
-    did,
-    BAZAAR_COLLECTION.recording,
-  );
-  return records
-    .filter((r) => isRecording(r.value))
-    .map((r) => ({
-      uri: r.uri,
-      cid: r.cid,
-      recording: r.value as Recording,
-    }));
-}
-
-export type CompositionRow = {
-  uri: string;
-  cid: string;
-  composition: Composition;
-};
-
-export async function listCompositionRows(
-  did: string,
-): Promise<CompositionRow[]> {
-  const records = await listAllRecordsForCollection(
-    did,
-    BAZAAR_COLLECTION.composition,
-  );
-  return records
-    .filter((r) => isComposition(r.value))
-    .map((r) => ({
-      uri: r.uri,
-      cid: r.cid,
-      composition: r.value as Composition,
-    }));
-}
-
 export async function listCollectionRows(
   did: string,
 ): Promise<CollectionRow[]> {
@@ -473,16 +376,6 @@ export async function listProductRows(did: string): Promise<ProductRow[]> {
       cid: r.cid,
       item: r.value as Product,
     }));
-}
-
-export async function listCatalogItems(did: string): Promise<DigitalItem[]> {
-  const rows = await listDigitalItemRows(did);
-  return rows.map((r) => r.item);
-}
-
-export async function listCollections(did: string): Promise<Collection[]> {
-  const rows = await listCollectionRows(did);
-  return rows.map((r) => r.item);
 }
 
 export async function listListings(did: string): Promise<Listing[]> {
@@ -1375,11 +1268,6 @@ export async function putCatalogProduct(
     record: merged as unknown as Record<string, unknown>,
   })) as { cid: string };
   return { cid: res.cid };
-}
-
-export async function listTracksForArtist(did: string): Promise<DigitalItem[]> {
-  const items = await listCatalogItems(did);
-  return items.filter((i) => i.itemClass === "track");
 }
 
 export async function findLicenseByTemplateId(

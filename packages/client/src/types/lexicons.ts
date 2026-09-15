@@ -75,40 +75,6 @@ export type CollectionItemEntry = {
   title?: string;
 };
 
-export type CompositionWriter = {
-  name: string;
-  ipi?: string;
-  did?: string;
-  share?: number;
-  role?: string;
-};
-
-export type CompositionPublisher = {
-  name: string;
-  ipi?: string;
-  did?: string;
-  pro?: string;
-  share?: number;
-};
-
-export type Composition = {
-  $type: "diamonds.whereditgo.bazaar.catalog.composition";
-  title: string;
-  artistDid: string;
-  iswc?: string;
-  bazaarWid?: unknown;
-  writers?: CompositionWriter[];
-  publishers?: CompositionPublisher[];
-  proRegistrations?: Array<{
-    pro: string;
-    registrationId?: string;
-    territory?: string;
-  }>;
-  copyrightYear?: number;
-  copyrightRegistrationId?: string;
-  createdAt: string;
-};
-
 export type PhysicalItem = {
   $type: "diamonds.whereditgo.bazaar.catalog.item.physical";
   title: string;
@@ -258,24 +224,6 @@ export type PurchaseReceipt = {
   storefrontSig: string;
   purchasedAt: string;
   note?: string;
-};
-
-export type Recording = {
-  $type: "diamonds.whereditgo.bazaar.catalog.recording";
-  itemUri: string;
-  itemCid: string;
-  isrc?: string;
-  iswc?: string;
-  recordingMetaUri?: string;
-  songMetaUri?: string;
-  masterOwnerDid?: string;
-  publishingOwnerDid?: string;
-  publishingOwnerIpi?: string;
-  masterLicenseTermsUri?: string;
-  publishingLicenseTermsUri?: string;
-  bazaarRid?: unknown;
-  bazaarWid?: unknown;
-  createdAt: string;
 };
 
 export type Stock = {
