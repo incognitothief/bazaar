@@ -36,13 +36,21 @@ and a legacy entry differ in exactly one respect — how their bytes are resolve
 
 - **Product**: `catalogItems.objectId` → `inventory_upload_object.r2Key`, plus
   `catalogProductAssets` objects and the `packageZipKey` precomputed download.
-- **Legacy**: no `objectId` link exists, so look up `inventory_upload_object`
-  by the record's own `rkey`, and only if that misses, recompute the key via
-  `inventoryObjectKey()` the way the legacy download path does.
+- **Legacy**: no `objectId` link existed, so it looked up
+  `inventory_upload_object` by the record's own `rkey`, and only if that
+  missed, recomputed the key via `inventoryObjectKey()`.
 
 Everything else — ownership, listing checks, cascade, verification, record
-deletion — is shared. When the legacy record types are removed, one branch goes
-with them and the feature is untouched.
+deletion — is shared.
+
+**Superseded (2026-09-15):** the legacy record types were removed, and with
+them that branch, exactly as designed. Both remaining kinds — a product and a
+standalone `catalog.item` — now resolve bytes through
+`catalogItems.objectId` → `inventory_upload_object.r2Key`. `EntryKind` is
+`"product" | "item"`, and `R2ObjectRef.source` lost its `"recomputed"` case:
+every object is backed by an index row. Note this also corrected a latent
+bug — a standalone `catalog.item` used to fall into the legacy branch and
+resolve its bytes by a coincidental `rkey` match rather than its `objectId`.
 
 ### Order is the safety argument
 

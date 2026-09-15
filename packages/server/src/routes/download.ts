@@ -6,19 +6,12 @@ import { Hono } from "hono";
 import type { Db } from "../db";
 import { catalogItems, catalogProducts, inventoryUploadObject } from "../db/schema";
 import type { OAuthClient } from "../lib/atproto/oauth";
-import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { getSessionAgent } from "../lib/atproto/session";
 import { storefrontPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
 import { entitlementDigest } from "../lib/atproto/entitlement";
 import { candidatePemsForKid, getStorefrontKeys } from "../lib/storefrontKeys";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import { isS3NoSuchKey } from "../lib/r2/diagnostics";
-import {
-  extensionForDigital,
-  INVENTORY_MASTER_OBJECT_NAME,
-  inventoryObjectKey,
-  sanitizeInventoryFilename,
-} from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import {
   buildProductZip,
@@ -178,8 +171,6 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
     }
 
     if (!entitled || !receipt) return c.json({ error: "not_entitled" }, 403);
-
-    const artistDid = itemAt.hostname;
     const rkey = itemAt.rkey;
 
     if (isCatalogItem) {
@@ -209,56 +200,6 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
           502,
         );
       }
-    }
-
-    const key = inventoryObjectKey(artistDid, rkey, INVENTORY_MASTER_OBJECT_NAME);
-
-    let filenameForDownload = `track_${rkey}.bin`;
-    try {
-      const catalogAgent = await getAgentForDid(artistDid);
-      const dig = await catalogAgent.com.atproto.repo.getRecord({
-        repo: artistDid,
-        collection: itemAt.collection,
-        rkey: itemAt.rkey,
-      });
-      const digital = dig.data.value as Record<string, unknown>;
-      const title =
-        typeof digital.title === "string" && digital.title.trim()
-          ? digital.title.trim()
-          : rkey;
-      const formats = digital.formats as string[] | undefined;
-      const ext = extensionForDigital(
-        formats,
-        digital.fileFormat as string | undefined,
-      );
-      const safeBase = sanitizeInventoryFilename(
-        title.replace(/\.[^./\\]+$/g, "") || `track_${rkey}`,
-      );
-      filenameForDownload = `${safeBase}.${ext}`;
-    } catch (e) {
-      console.warn("download: could not resolve digital title for filename", e);
-    }
-
-    const disp = `attachment; filename="${filenameForDownload.replace(/"/g, "")}"`;
-
-    try {
-      const cmd = new GetObjectCommand({
-        Bucket: cfg.bucket,
-        Key: key,
-        ResponseContentDisposition: disp,
-      });
-      const url = await getSignedUrl(client, cmd, { expiresIn: 900 });
-      const expiresAt = new Date(Date.now() + 900_000).toISOString();
-      return c.json({ url, expiresAt, filename: filenameForDownload });
-    } catch (e) {
-      if (isS3NoSuchKey(e)) {
-        return c.json({ error: "master_not_in_r2" }, 404);
-      }
-      console.error("download presign failed:", e);
-      return c.json(
-        { error: "download_failed", message: e instanceof Error ? e.message : String(e) },
-        502,
-      );
     }
   });
 

@@ -2,7 +2,19 @@
 
 ## Status
 
-Accepted
+Accepted, partially superseded.
+
+- `purchase.consent` was retired by [ADR 0016](0016-retire-purchase-consent.md).
+- The v5 catalog record set below (`catalog.item.digital`, `catalog.collection`,
+  `catalog.item.physical`, `catalog.recording`, `catalog.composition`) and the
+  `bazaarIdentifier` scheme were removed by
+  [ADR 0018](0018-remove-legacy-record-types.md). The live catalog model is
+  `catalog.item` + `catalog.product`.
+- `actor.profile` was renamed `actor.merchant` (ADR 0005) and
+  `catalog.item.bundle` was never implemented.
+
+Sections 4, 6 and 7 below describe the original v5 design and are kept as the
+record of what was decided then, not as a description of the current schema.
 
 ## Date
 

@@ -30,9 +30,6 @@ import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import { cidFromSha256Digest32 } from "../lib/r2/cid";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import {
-  INVENTORY_ARTWORK_OBJECT_NAME,
-  INVENTORY_MASTER_OBJECT_NAME,
-  inventoryObjectKey,
   newProductAssetKey,
   newProductItemKey,
 } from "../lib/r2/inventoryKey";
@@ -194,7 +191,13 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
 
     const rawBody = await c.req.json().catch(() => ({}));
     const body = rawBody as { inventoryKind?: string; existingProductUri?: string };
-    const inventoryKind = body.inventoryKind ?? "digital";
+    // "product" is the only kind that can still be published: the legacy
+    // /publish route and the record types it wrote are gone. Reject anything
+    // else rather than opening a session that can upload but never publish.
+    const inventoryKind = body.inventoryKind ?? "product";
+    if (inventoryKind !== "product") {
+      return c.json({ error: "unsupported_inventory_kind" }, 400);
+    }
 
     // "product" sessions reserve a product rkey up front so every object
     // uploaded in this session (items + assets) can be R2-keyed under it
@@ -202,28 +205,26 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     // of an already-existing product (adding items/assets to it) or a
     // freshly minted TID that becomes that new product's actual rkey at
     // publish time.
-    let productRkey: string | null = null;
-    if (inventoryKind === "product") {
-      if (body.existingProductUri) {
-        const product = db
-          .select()
-          .from(catalogProducts)
-          .where(eq(catalogProducts.uri, body.existingProductUri))
-          .get();
-        if (!product || product.merchantDid !== sess.did) {
-          return c.json({ error: "product_not_found" }, 404);
-        }
-        let at: AtUri;
-        try {
-          at = new AtUri(body.existingProductUri);
-        } catch {
-          return c.json({ error: "invalid_product_uri" }, 400);
-        }
-        if (!at.rkey) return c.json({ error: "invalid_product_uri" }, 400);
-        productRkey = at.rkey;
-      } else {
-        productRkey = TID.nextStr();
+    let productRkey: string;
+    if (body.existingProductUri) {
+      const product = db
+        .select()
+        .from(catalogProducts)
+        .where(eq(catalogProducts.uri, body.existingProductUri))
+        .get();
+      if (!product || product.merchantDid !== sess.did) {
+        return c.json({ error: "product_not_found" }, 404);
       }
+      let at: AtUri;
+      try {
+        at = new AtUri(body.existingProductUri);
+      } catch {
+        return c.json({ error: "invalid_product_uri" }, 400);
+      }
+      if (!at.rkey) return c.json({ error: "invalid_product_uri" }, 400);
+      productRkey = at.rkey;
+    } else {
+      productRkey = TID.nextStr();
     }
 
     const id = randomUUID();
@@ -363,15 +364,9 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
       }
       const id = randomUUID();
       const r2Key =
-        session.inventoryKind === "product"
-          ? o.role === "master"
-            ? newProductItemKey(sess.did, session.productRkey!, id, o.fileName)
-            : newProductAssetKey(sess.did, session.productRkey!, id, o.fileName)
-          : inventoryObjectKey(
-              sess.did,
-              rkey,
-              o.role === "artwork" ? INVENTORY_ARTWORK_OBJECT_NAME : INVENTORY_MASTER_OBJECT_NAME,
-            );
+        o.role === "master"
+          ? newProductItemKey(sess.did, session.productRkey!, id, o.fileName)
+          : newProductAssetKey(sess.did, session.productRkey!, id, o.fileName);
       const uploadKind =
         o.byteSize != null && o.byteSize >= MULTIPART_MIN_BYTES
           ? "multipart"
