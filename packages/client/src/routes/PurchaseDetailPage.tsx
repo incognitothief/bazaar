@@ -377,8 +377,9 @@ export function PurchaseDetailPage() {
   const isMusicProduct =
     isProduct && productTypeConfig(productType).value === "music";
   const isCatalogItemSingle = item.$type === BAZAAR_COLLECTION.item;
-  // What this receipt actually entitles: the frozen grant, or every current
-  // member for a legacy receipt that predates grantedItems.
+  // What this receipt actually entitles: the frozen grant. The fallback to
+  // every current member only catches a receipt with no grant, which cannot
+  // verify and so cannot download anyway (ADR 0019) -- display only.
   const entitledMemberUris =
     isProduct && "items" in item
       ? Array.isArray(receipt.grantedItems) && receipt.grantedItems.length > 0

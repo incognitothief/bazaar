@@ -673,8 +673,9 @@ export function ItemDetailPage() {
     ? productItems.filter((r) => !isAudioProductItem(r))
     : [];
 
-  // A member the buyer's frozen grant covers. A legacy receipt carries no
-  // grant -- treat every current member as covered, as before the freeze.
+  // A member the buyer's frozen grant covers. A receipt with no grant falls
+  // back to every current member for display; it cannot verify, so it grants
+  // no actual downloads (ADR 0019).
   const grantCoversMember = (uri: string) =>
     ownsProduct && (productGrant == null || productGrant.includes(uri));
   const addedSincePurchase =

@@ -107,8 +107,13 @@ export type PurchaseReceipt = {
   fulfillmentUri?: string;
   /**
    * Frozen download entitlement: the catalog.item refs this purchase covers,
-   * captured at checkout. Absent on legacy receipts. Later edits to a
-   * product's items[] do not change it.
+   * captured at checkout. Later edits to a product's items[] do not change it.
+   *
+   * Required by the lexicon, and part of the signed payload (ADR 0019): a
+   * receipt without it does not verify and grants no downloads. Kept optional
+   * here on purpose -- these records live in buyers' own repos, so a malformed
+   * or pre-2026-09 one can still be read back, and the UI should render it
+   * rather than crash.
    */
   grantedItems?: Ref[];
   storefrontDid: string;

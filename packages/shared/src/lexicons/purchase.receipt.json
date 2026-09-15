@@ -13,6 +13,7 @@
           "pricePaid",
           "payment",
           "licenseGrant",
+          "grantedItems",
           "storefrontDid",
           "merchantDid",
           "storefrontSig",
@@ -39,7 +40,7 @@
           },
           "shippingAddress": {
             "$ref": "diamonds.whereditgo.bazaar.defs#address",
-            "description": "For physical items. Lives in buyer's own PDS — they control this data."
+            "description": "For physical items. Lives in buyer's own PDS \u2014 they control this data."
           },
           "fulfillmentUri": {
             "type": "string",
@@ -47,8 +48,10 @@
           },
           "grantedItems": {
             "type": "array",
-            "items": { "$ref": "diamonds.whereditgo.bazaar.defs#ref" },
-            "description": "The catalog.item refs (uri + cid) this purchase entitles the buyer to download, frozen at purchase time. Single-item purchase: the one item ref. Product purchase: the product's member item refs at time of sale — later edits to product.items do NOT change this grant (a removed item stays downloadable for this buyer; an added item is not). Sorted by uri UTF-8 byte order and de-duplicated by uri. Covered by storefrontSig — see storefrontSig's description for the digest algorithm. Freezes which items, not which bytes: re-uploading an item's master still serves the current file for that URI. Absent on legacy receipts and on collection purchases, which fall back to live membership resolution. Immutable."
+            "items": {
+              "$ref": "diamonds.whereditgo.bazaar.defs#ref"
+            },
+            "description": "The catalog.item refs (uri + cid) this purchase entitles the buyer to download, frozen at purchase time. Single-item purchase: the one item ref. Product purchase: the product's member item refs at time of sale \u2014 later edits to product.items do NOT change this grant (a removed item stays downloadable for this buyer; an added item is not). Sorted by uri UTF-8 byte order and de-duplicated by uri. Covered by storefrontSig \u2014 see storefrontSig's description for the digest algorithm. Freezes which items, not which bytes: re-uploading an item's master still serves the current file for that URI. Required: a receipt without it cannot reconstruct the signed payload and will not verify. Immutable."
           },
           "storefrontDid": {
             "type": "string",
@@ -58,16 +61,16 @@
           "merchantDid": {
             "type": "string",
             "format": "did",
-            "description": "DID of the merchant this receipt was issued under — the ATProto identity hosting the catalog/storefront (actor.merchant)."
+            "description": "DID of the merchant this receipt was issued under \u2014 the ATProto identity hosting the catalog/storefront (actor.merchant)."
           },
           "storefrontSig": {
             "type": "string",
-            "description": "Base64url signature by the storefront service keypair (storefrontDid) over SHA-256(purchasedAt:payment.ref:purchasedGood.uri:listing.cid:buyerDid), colon-delimited in that order. buyerDid is the authenticated buyer at mint time -- not a stored field, since the receipt's own repo already establishes whose purchase this is; verifiers supply their own session DID when reconstructing the payload. licenseGrant.cid is appended as a sixth field when present (every receipt from a listing gated by license.terms has one -- see licenseGrant's description). grantedItems, when present, is folded in as a further field: base64url(SHA-256(canonical grantedItems joined by '\\n')), where each entry is canonicalized as 'uri|cid' (empty string for a missing cid), sorted by uri UTF-8 byte order and de-duplicated by uri -- '|' never occurs in an AT-URI or a CID, so the per-entry join is unambiguous, and '\\n' never occurs in either, so the overall join is too. Each of licenseGrant.cid and the grantedItems digest is appended only when its source field is present on the receipt, in that fixed order -- legacy receipts from before either field existed sign only the five-field base payload. Verifiers reconstruct this payload from the receipt's plaintext fields (recomputing the grantedItems digest) and verify against the public key resolved from storefrontDid — using kid to select the correct historical key if the keypair has been rotated. Immutable."
+            "description": "Base64url signature by the storefront service keypair (storefrontDid) over a colon-delimited payload of exactly seven fields, in this fixed order: purchasedAt, payment.ref, purchasedGood.uri, listing.cid, buyerDid, licenseGrant.cid, and the grantedItems digest. All seven are always present \u2014 there are no optional trailing fields. buyerDid is the authenticated buyer at mint time, not a stored field, since the receipt's own repo already establishes whose purchase this is; verifiers supply their own session DID when reconstructing the payload. The grantedItems digest is base64url(SHA-256(canonical grantedItems joined by '\\n')), where each entry is canonicalized as 'uri|cid' (empty string for a missing cid), sorted by uri UTF-8 byte order and de-duplicated by uri \u2014 '|' never occurs in an AT-URI or a CID, so the per-entry join is unambiguous, and '\\n' never occurs in either, so the overall join is too. The signature itself is a 64-byte IEEE-P1363 (r || s) ECDSA/P-256 signature normalised to low-S; no other encoding is accepted. Verifiers reconstruct the payload from the receipt's plaintext fields (recomputing the grantedItems digest) and verify against the public key resolved from storefrontDid \u2014 using kid to select the correct historical key if the keypair has been rotated. Immutable."
           },
           "kid": {
             "type": "string",
             "maxLength": 64,
-            "description": "Key identifier for the storefront service keypair that produced storefrontSig. Format: storefront-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. storefront-key-2026-08-29. Allows verifiers to select the correct historical key from the storefrontDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint — verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
+            "description": "Key identifier for the storefront service keypair that produced storefrontSig. Format: storefront-key-{YYYY-MM-DD} where the date is the keypair's activation date, e.g. storefront-key-2026-08-29. Allows verifiers to select the correct historical key from the storefrontDid DID document verificationMethod array without trying all keys exhaustively. kid is a hint \u2014 verifiers still verify cryptographically and should fall back to trying all non-revoked keys if the hinted key fails. Immutable."
           },
           "purchasedAt": {
             "type": "string",
