@@ -74,7 +74,13 @@ fly secrets set KEY=value -a <app>   # bazaar-g5nqca (prod) / bazaar-jwkvxw (sta
 At minimum:
 
 - `MERCHANT_DID` — store owner DID, required for `/api/merchant/*`
-- `STOREFRONT_PRIVATE_KEY` — signs `purchase.receipt.storefrontSig`
+- **Storefront signing identity — all four, from `./scripts/gen-did.sh` (see below)**:
+  `STOREFRONT_DID`, `STOREFRONT_PRIVATE_KEY`, `STOREFRONT_KID`,
+  `STOREFRONT_PUBLIC_MULTIBASE`. These build the DID document served at
+  `/.well-known/did.json`, which is how anyone verifies a receipt your store issued. If they
+  are unset the app still starts, serves a DID document with no `verificationMethod`, and
+  signs receipts nobody can verify — one warning line at boot is the only signal.
+  (`STOREFRONT_KEY_HISTORY` is added later, on key rotation.)
 - Inventory uploads: `CF_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`
 - **Litestream DB backups — a separate credential set from the one above, all four required
   together**: `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`. If even one
@@ -86,7 +92,9 @@ See `packages/server/.env.example` for the full list of server env vars.
 
 ## Create a DID for the bazaar instance
 
-Your storefront needs an identifier. Create one using the included script:
+Your storefront needs an identifier. It is a `did:web:` DID, which means it resolves to
+`https://<your-domain>/.well-known/did.json` — served by this app from the env vars below.
+So the domain in the DID must be the domain your store is reachable at.
 
 _run_
 
@@ -96,7 +104,21 @@ chmod 700 scripts/gen-did.sh
 ./scripts/gen-did.sh
 ```
 
-be sure to save all of this information somewhere secure. Without it, you will not be able to prove ownership of your store
+The script writes `scripts/service-{private,public}.pem` and prints the values to set:
+
+| Printed as | Set as | Notes |
+| --- | --- | --- |
+| `STOREFRONT_DID` | Fly secret | `did:web:<your-domain>` |
+| contents of `service-private.pem` | `STOREFRONT_PRIVATE_KEY` | PEM, `\n`-escaped onto one line |
+| `STOREFRONT_KID` | Fly secret | must match the `verificationMethod` fragment |
+| `STOREFRONT_PUBLIC_MULTIBASE` | Fly secret | derived from the private key if omitted |
+
+Keep `service-private.pem` somewhere secure and out of the repo. It is the only thing that
+proves receipts came from your store; losing it means every receipt you have already issued
+becomes unverifiable, and there is no way to re-sign them.
+
+Confirm it worked by fetching `https://<your-domain>/.well-known/did.json` — it should contain
+a `verificationMethod` entry whose fragment matches your `STOREFRONT_KID`.
 
 ## Setting up OAuth
 
@@ -105,5 +127,3 @@ make sure you have a domain for your store. If have a domain registered elsewher
 ## Allowing multipart uploads direct to R2
 
 Set CORS settings on bucket to point to your bazaar instance. This will speed up upload times. Defaults to uploading files through backend proxy
-
-## GH level secrets are half for client injection, half for CICD (not to be confused with inventory bucket/server config)
