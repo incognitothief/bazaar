@@ -22,7 +22,13 @@
  *            outright -- use it when a key leaked, not when you rotated on schedule.
  */
 import { createPublicKey, generateKeyPairSync } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { formatMultikey } from "@atproto/crypto";
@@ -46,6 +52,19 @@ type KeyFile = {
 function fail(message: string): never {
   console.error(message);
   process.exit(1);
+}
+
+/**
+ * Suggest the command the operator actually used. make exports MAKELEVEL into recipes, so a run
+ * through `make storefront-key` can be told apart from a direct one -- otherwise the error from
+ * a make invocation teaches an npx command, which is how you end up passing a bare argument to
+ * make and having it treated as a target.
+ */
+const VIA_MAKE = process.env.MAKELEVEL !== undefined;
+function how(makeForm: string, directArgs: string): string {
+  return VIA_MAKE
+    ? `make ${makeForm}`
+    : `npx tsx scripts/gen-storefront-key.ts ${directArgs}`.trimEnd();
 }
 
 /**
@@ -112,15 +131,25 @@ function readKeyFiles(): { path: string; key: KeyFile }[] {
     try {
       key = JSON.parse(readFileSync(path, "utf8")) as KeyFile;
     } catch (e) {
-      fail(`gen-storefront-key: ${name} is not valid JSON (${(e as Error).message}).`);
+      fail(
+        `gen-storefront-key: ${name} is not valid JSON (${(e as Error).message}).`,
+      );
     }
-    for (const field of ["did", "kid", "created", "status", "publicKeyMultibase"] as const) {
+    for (const field of [
+      "did",
+      "kid",
+      "created",
+      "status",
+      "publicKeyMultibase",
+    ] as const) {
       if (typeof key[field] !== "string" || !key[field]) {
         fail(`gen-storefront-key: ${name} is missing "${field}".`);
       }
     }
     if (!["active", "retired", "revoked"].includes(key.status)) {
-      fail(`gen-storefront-key: ${name} has status "${key.status}" (expected active/retired/revoked).`);
+      fail(
+        `gen-storefront-key: ${name} has status "${key.status}" (expected active/retired/revoked).`,
+      );
     }
     out.push({ path, key });
   }
@@ -165,7 +194,7 @@ function printEnv(active: KeyFile, files: { key: KeyFile }[]): void {
   const revoked = files.filter((f) => f.key.status === "revoked").length;
   const divider = "─".repeat(72);
   console.log(`
-Set these on your deployment
+Set these as your fly.io environment variables
 ${divider}
 
   STOREFRONT_DID=${active.did}
@@ -181,16 +210,9 @@ ${divider}
 
 ${divider}
 
-Set them together, in one command. Deploying a new key without its matching
-STOREFRONT_KEY_HISTORY drops the old key out of the DID document, and every receipt it signed
-stops verifying until you fix it.
-
 Keys: 1 active, ${retired} retired, ${revoked} revoked.
 
-Your key files are in keys/. Keep them — a later rotation rebuilds STOREFRONT_KEY_HISTORY from
-them, so losing them means losing the ability to prove past receipts were yours. They are
-gitignored, but they hold private keys in plain text: keep them out of shared folders and
-backups, and delete any you are certain you no longer need.
+Your key files are in keys/. Save them in a secure location and do not share them with anyone. If you need to rotate your key, you will need these files to rebuild your keychain.
 
 After deploying, check https://${active.did.slice("did:web:".length)}/.well-known/did.json lists a
 verificationMethod whose fragment is ${active.kid}.
@@ -206,14 +228,21 @@ function newKey(did: string, taken: Set<string>): KeyFile {
     while (taken.has(`storefront-key-${day}-${n}`)) n++;
     kid = `storefront-key-${day}-${n}`;
   }
-  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" }) as string;
+  const { privateKey, publicKey } = generateKeyPairSync("ec", {
+    namedCurve: "prime256v1",
+  });
+  const privateKeyPem = privateKey.export({
+    type: "pkcs8",
+    format: "pem",
+  }) as string;
   return {
     did,
     kid,
     created,
     status: "active",
-    publicKeyMultibase: multibaseOfPem(publicKey.export({ type: "spki", format: "pem" }) as string),
+    publicKeyMultibase: multibaseOfPem(
+      publicKey.export({ type: "spki", format: "pem" }) as string,
+    ),
     privateKeyPem,
     supersededBy: null,
   };
@@ -227,10 +256,15 @@ const revokeAt = args.indexOf("--revoke");
 const revokeKid = revokeAt === -1 ? null : args[revokeAt + 1];
 // revokeAt is -1 when --revoke is absent; guard it, or index 0 gets eaten as its value.
 const revokeValueAt = revokeAt === -1 ? -1 : revokeAt + 1;
-const positional = args.filter((a, i) => !a.startsWith("--") && i !== revokeValueAt);
+const positional = args.filter(
+  (a, i) => !a.startsWith("--") && i !== revokeValueAt,
+);
 
 if (revokeAt !== -1 && !revokeKid) {
-  fail("gen-storefront-key: --revoke needs a kid, e.g. --revoke storefront-key-2026-09-16");
+  fail(
+    "gen-storefront-key: which key should be revoked?\n\n" +
+      `  ${how("storefront-key-revoke KID=storefront-key-2026-09-16", "--revoke storefront-key-2026-09-16")}`,
+  );
 }
 
 const files = readKeyFiles();
@@ -246,17 +280,24 @@ if (actives.length > 1) {
 
 if (revokeKid) {
   const target = files.find((f) => f.key.kid === revokeKid);
-  if (!target) fail(`gen-storefront-key: no key file with kid "${revokeKid}" in keys/.`);
+  if (!target)
+    fail(`gen-storefront-key: no key file with kid "${revokeKid}" in keys/.`);
   if (target.key.status === "active") {
     fail(
-      `gen-storefront-key: ${revokeKid} is the active key. Rotate first (--rotate), then revoke it.`,
+      `gen-storefront-key: ${revokeKid} is the key your store signs with, so it cannot be\n` +
+        "revoked — that would leave the store unable to issue a verifiable receipt.\n" +
+        "Rotate to a new key first, then revoke this one:\n\n" +
+        `  ${how("storefront-key-rotate", "--rotate")}`,
     );
   }
   target.key.status = "revoked";
   write(target.path, target.key);
-  console.log(`\nRevoked ${revokeKid}. Receipts naming it will now be rejected outright.`);
+  console.log(
+    `\nRevoked ${revokeKid}. Receipts naming it will now be rejected outright.`,
+  );
   const active = actives[0];
-  if (!active) fail("gen-storefront-key: no active key to print an env block for.");
+  if (!active)
+    fail("gen-storefront-key: no active key to print an env block for.");
   printEnv(active.key, files);
   process.exit(0);
 }
@@ -266,9 +307,9 @@ if (actives.length === 0) {
   const arg = positional[0];
   if (!arg) {
     fail(
-      "gen-storefront-key: no key files in keys/, so this is a first key — pass the address\n" +
-        "your store is reachable at.\n" +
-        "  npx tsx scripts/gen-storefront-key.ts store.example.com",
+      "gen-storefront-key: You need to provide your storefront URL.\n\n" +
+        "example:\n" +
+        `  ${how("storefront-key DOMAIN=store.example.com", "store.example.com")}`,
     );
   }
   const host = hostnameFrom(arg);
@@ -293,7 +334,8 @@ if (!rotate) {
   if (positional.length) {
     console.error(
       `gen-storefront-key: ignoring "${positional[0]}" — keys/ already has an active key, so the\n` +
-        `DID comes from it (${active.key.did}). Use --rotate to replace the key.\n`,
+        `DID comes from it (${active.key.did}).\n` +
+        `To replace the key instead:  ${how("storefront-key-rotate", "--rotate")}\n`,
     );
   }
   printEnv(active.key, files);
