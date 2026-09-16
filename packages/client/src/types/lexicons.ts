@@ -57,21 +57,10 @@ export type Listing = {
   $type: "diamonds.whereditgo.bazaar.catalog.listing";
   item: Ref;
   price: Money;
-  compareAtPrice?: Money;
-  status:
-    | "active"
-    | "paused"
-    | "soldOut"
-    | "scheduled"
-    | "archived"
-    | "superseded";
+  status: "active" | "paused" | "soldOut" | "archived" | "superseded";
   licenseGrant: Ref;
-  /** Parent collection listing AT-URI when this listing is a per-track single under that album. */
+  /** Parent product listing AT-URI when this listing sells a member item individually. */
   parentListing?: string;
-  supersededBy?: string;
-  availableFrom?: string;
-  availableUntil?: string;
-  maxPurchasesPerBuyer?: number;
   createdAt: string;
 };
 

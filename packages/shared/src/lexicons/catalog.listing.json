@@ -21,16 +21,12 @@
           "price": {
             "$ref": "diamonds.whereditgo.bazaar.defs#money"
           },
-          "compareAtPrice": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#money"
-          },
           "status": {
             "type": "string",
             "knownValues": [
               "active",
               "paused",
               "soldOut",
-              "scheduled",
               "archived",
               "superseded"
             ]
@@ -43,22 +39,6 @@
             "type": "string",
             "format": "at-uri",
             "description": "When this listing sells a member catalog.item individually, the AT-URI of the parent catalog.listing for the product it belongs to. Absent for standalone items and for the product listing itself. Used for storefront grouping and cascade pause when the product listing is paused."
-          },
-          "supersededBy": {
-            "type": "string",
-            "format": "at-uri",
-            "description": "AT-URI of the listing record that replaced this one following a material change. Set when status is superseded."
-          },
-          "availableFrom": {
-            "type": "string",
-            "format": "datetime"
-          },
-          "availableUntil": {
-            "type": "string",
-            "format": "datetime"
-          },
-          "maxPurchasesPerBuyer": {
-            "type": "integer"
           },
           "createdAt": {
             "type": "string",

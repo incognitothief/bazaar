@@ -58,7 +58,6 @@ export function listingStatusBadgeVariant(
     case "soldOut":
       return "destructive";
     case "paused":
-    case "scheduled":
     case "archived":
     case "superseded":
       return "secondary";

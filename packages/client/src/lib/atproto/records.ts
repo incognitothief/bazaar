@@ -1,10 +1,4 @@
 import { AtUri } from "@atproto/syntax";
-import {
-  getLicenseTemplateDefinition,
-  licenseRecordMatchesTemplate,
-  stripLicenseTemplateType,
-  type LicenseTemplateId,
-} from "@bazaar/shared";
 import { browserApiUrl } from "@/lib/browserApi";
 import { agentForRepo } from "./pdsResolve";
 import type { ATPRepoClient } from "./session";
@@ -20,17 +14,6 @@ import type {
 } from "@/types/lexicons";
 import { BAZAAR_COLLECTION } from "./ns";
 
-export type { LicenseTemplateId } from "@bazaar/shared";
-
-/** Stable key for comparing AT-URIs to the same repo record. */
-export function catalogItemUriKey(uri: string): string {
-  try {
-    const a = new AtUri(uri);
-    return `${a.hostname}/${a.collection}/${a.rkey}`;
-  } catch {
-    return uri;
-  }
-}
 
 type ListRecordsResponse = {
   data: {
@@ -65,18 +48,6 @@ async function listAllRecordsForCollection(
 type GetRecordResponse = {
   data: { cid: string; value: unknown };
 };
-
-/** Fields for `createLicenseTerms` derived from a shared template (excludes `$type`, `createdAt`). */
-export function licenseTermsPayloadFromTemplateId(
-  templateId: LicenseTemplateId,
-): Omit<LicenseTerms, "$type" | "createdAt"> | null {
-  const def = getLicenseTemplateDefinition(templateId);
-  if (!def) return null;
-  return stripLicenseTemplateType(def.record) as Omit<
-    LicenseTerms,
-    "$type" | "createdAt"
-  >;
-}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -134,24 +105,6 @@ export async function createLicenseTerms(
   const res = await agent.com.atproto.repo.createRecord({
     repo: did,
     collection: BAZAAR_COLLECTION.licenseTerms,
-    record: full as unknown as Record<string, unknown>,
-  });
-  return { uri: res.data.uri, cid: res.data.cid };
-}
-
-export async function createReceipt(
-  agent: ATPRepoClient,
-  record: Omit<PurchaseReceipt, "$type">,
-): Promise<{ uri: string; cid: string }> {
-  const did = agent.session?.did;
-  if (!did) throw new Error("Not authenticated");
-  const full: PurchaseReceipt = {
-    $type: "diamonds.whereditgo.bazaar.purchase.receipt",
-    ...record,
-  };
-  const res = await agent.com.atproto.repo.createRecord({
-    repo: did,
-    collection: BAZAAR_COLLECTION.receipt,
     record: full as unknown as Record<string, unknown>,
   });
   return { uri: res.data.uri, cid: res.data.cid };
@@ -289,16 +242,6 @@ export async function listProductRows(did: string): Promise<ProductRow[]> {
       cid: r.cid,
       item: r.value as Product,
     }));
-}
-
-export async function listListings(did: string): Promise<Listing[]> {
-  const agent = await agentForRepo(did);
-  const res = (await agent.com.atproto.repo.listRecords({
-    repo: did,
-    collection: BAZAAR_COLLECTION.listing,
-    limit: 100,
-  })) as ListRecordsResponse;
-  return res.data.records.map((r) => r.value).filter(isListing);
 }
 
 export type ListingRow = { uri: string; cid: string; listing: Listing };
@@ -792,36 +735,6 @@ export function catalogProductDownloadUrl(uri: string): string {
 }
 
 /**
- * Listings currently pinned to itemUri's CID -- i.e. the ones a save is
- * about to invalidate. A record's post-edit CID isn't knowable ahead of
- * the actual putRecord (it's content-addressed), so the check works off
- * the *current* CID instead: any listing accurately pinned to it right now
- * is exactly the set that will go stale the moment this save succeeds
- * (the checkout-time pin check in stripe.ts /checkout would otherwise
- * reject them cold for a buyer with no warning). Terminal statuses are
- * excluded since they're already not purchasable for unrelated reasons.
- */
-export function findStaleListingsForItem(
-  listingRows: ListingRow[],
-  itemUri: string,
-  currentCid: string,
-): ListingRow[] {
-  return listingRows.filter((row) => {
-    const status = row.listing.status;
-    if (
-      status === "archived" ||
-      status === "soldOut" ||
-      status === "superseded"
-    ) {
-      return false;
-    }
-    return (
-      row.listing.item.uri === itemUri && row.listing.item.cid === currentCid
-    );
-  });
-}
-
-/**
  * Resolve a storefront catalog AT-URI from a record key (TID) in the merchant's repo.
  */
 export async function resolveCatalogItemUriFromRkey(
@@ -1033,24 +946,3 @@ export async function putCatalogProduct(
   return { cid: res.cid };
 }
 
-export async function findLicenseByTemplateId(
-  did: string,
-  templateId: LicenseTemplateId,
-): Promise<{ uri: string; cid: string } | null> {
-  const def = getLicenseTemplateDefinition(templateId);
-  if (!def) return null;
-  const agent = await agentForRepo(did);
-  const res = (await agent.com.atproto.repo.listRecords({
-    repo: did,
-    collection: BAZAAR_COLLECTION.licenseTerms,
-    limit: 100,
-  })) as ListRecordsResponse;
-  for (const row of res.data.records) {
-    const v = row.value;
-    if (!isLicenseTerms(v)) continue;
-    if (licenseRecordMatchesTemplate(v, def)) {
-      return { uri: row.uri, cid: row.cid };
-    }
-  }
-  return null;
-}

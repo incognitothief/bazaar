@@ -26,10 +26,6 @@ export function zipAutostopHoldToken(): string {
   return HOLD_TOKEN;
 }
 
-export function isZipAutostopHoldWanted(): boolean {
-  return wantHold;
-}
-
 function onFly(): boolean {
   return Boolean(process.env.FLY_MACHINE_ID?.trim());
 }

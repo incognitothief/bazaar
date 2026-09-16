@@ -86,6 +86,3 @@ export function buildDummyLicenseTerms(): LicenseTerms {
   };
 }
 
-export function isDummyListingRowUri(listingUri: string): boolean {
-  return listingUri === DEV_STUB_LISTING_AT;
-}

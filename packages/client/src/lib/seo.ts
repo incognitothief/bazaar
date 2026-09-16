@@ -6,14 +6,6 @@ export function publicSiteOrigin(): string {
   return "";
 }
 
-/** Base URL for `/api/*` in the browser (same as createBrowserApiURL). */
-export function apiPublicBase(): string {
-  const o = import.meta.env.VITE_API_ORIGIN?.trim();
-  if (o) return o.replace(/\/$/, "");
-  if (typeof window !== "undefined") return window.location.origin;
-  return publicSiteOrigin();
-}
-
 export function siteBrandName(): string {
   return import.meta.env.VITE_PUBLIC_SITE_NAME?.trim() || "Bazaar";
 }
