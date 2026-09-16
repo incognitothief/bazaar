@@ -21,7 +21,7 @@
         ],
         "properties": {
           "purchasedGood": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef",
+            "$ref": "diamonds.whereditgo.bazaar.defs#ref",
             "description": "The catalog.item or catalog.product purchased -- Bazaar sells both under one receipt shape, hence the generic name."
           },
           "listing": {

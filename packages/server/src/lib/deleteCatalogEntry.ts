@@ -74,14 +74,14 @@ export type DeletionManifest = {
   receiptCount: number;
 };
 
-type ItemRef = { uri: string; cid?: string };
+type Ref = { uri: string; cid?: string };
 
-function parseItemRefs(raw: string | null | undefined): ItemRef[] {
+function parseItemRefs(raw: string | null | undefined): Ref[] {
   if (!raw) return [];
   try {
     const v = JSON.parse(raw);
     if (!Array.isArray(v)) return [];
-    return v.filter((e): e is ItemRef => !!e && typeof e.uri === "string");
+    return v.filter((e): e is Ref => !!e && typeof e.uri === "string");
   } catch {
     return [];
   }

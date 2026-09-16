@@ -11,12 +11,13 @@ export type BazaarItemType =
   | "diamonds.whereditgo.bazaar.catalog.item"
   | "diamonds.whereditgo.bazaar.catalog.product";
 
-export type ItemRef = {
-  uri: string;
-  cid?: string;
-};
-
-/** A plain AT-URI + CID pointer. Interchangeable with ItemRef now that variants are gone; kept because the lexicons still declare both. */
+/**
+ * An AT-URI + CID pointer to another record — mirrors `defs#ref`.
+ *
+ * Used for every record-to-record pointer: a receipt's purchasedGood, listing, licenseGrant
+ * and grantedItems entries, a listing's item, a product's items. The AT-URI's own collection
+ * segment says what it points to, so no type field is carried.
+ */
 export type Ref = {
   uri: string;
   cid?: string;
@@ -48,13 +49,13 @@ export type Product = {
   title: string;
   description?: string;
   tags?: string[];
-  items: ItemRef[];
+  items: Ref[];
   createdAt: string;
 };
 
 export type Listing = {
   $type: "diamonds.whereditgo.bazaar.catalog.listing";
-  item: ItemRef;
+  item: Ref;
   price: Money;
   compareAtPrice?: Money;
   status:
@@ -86,7 +87,7 @@ export type LicenseTerms = {
 export type PurchaseReceipt = {
   $type: "diamonds.whereditgo.bazaar.purchase.receipt";
   /** The catalog.item or catalog.product purchased. */
-  purchasedGood: ItemRef;
+  purchasedGood: Ref;
   /** Listing purchased. cid is pinned at checkout as the immutable price anchor. */
   listing: Ref;
   pricePaid: Money;

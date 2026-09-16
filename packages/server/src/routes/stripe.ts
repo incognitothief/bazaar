@@ -177,7 +177,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
       return c.json({ error: "Could not resolve item" }, 404);
     }
     // Buyer/seller protection: if the listing pinned the item's CID at
-    // listing-creation time (the existing optional itemRef.cid field), the
+    // listing-creation time (the existing optional ref.cid field), the
     // live-fetched content must still match it. Otherwise the merchant
     // changed the underlying item between page-load and checkout and the
     // buyer would be paying against terms they never actually saw.

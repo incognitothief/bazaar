@@ -12,7 +12,7 @@ import type {
   ActorMerchant,
   BazaarItem,
   CatalogItem,
-  ItemRef,
+  Ref,
   LicenseTerms,
   Listing,
   Product,
@@ -896,7 +896,7 @@ export async function getRecordValueWithCid<T>(
 /** Resolve `item` + `cid` (for listing-time CID pinning) for a catalog AT-URI. */
 export async function buildItemRefFromUri(
   itemUri: string,
-): Promise<ItemRef | null> {
+): Promise<Ref | null> {
   try {
     const at = new AtUri(itemUri);
     if (!at.collection || !at.rkey) return null;
@@ -992,7 +992,7 @@ export async function putCatalogProduct(
     title: string;
     description?: string;
     tags?: string[];
-    items: ItemRef[];
+    items: Ref[];
   },
 ): Promise<{ cid: string }> {
   const did = agent.session?.did;

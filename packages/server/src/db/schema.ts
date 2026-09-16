@@ -218,7 +218,7 @@ export const catalogProducts = sqliteTable("catalog_products", {
   description: text("description"),
   /** JSON-serialized string[] -- freeform, seller-authored, no taxonomy. Mirrors catalog.item's own tags field. */
   tags: text("tags"),
-  /** JSON-serialized itemRef[] — the product's declared composition. */
+  /** JSON-serialized defs#ref[] — the product's declared composition. */
   items: text("items").notNull(),
   /**
    * UI-only classification (e.g. "music", "generic") -- deliberately NOT on

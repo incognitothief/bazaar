@@ -129,9 +129,17 @@ buyer-scope exclusion test now names collections that actually exist.
   `purchase.stock` had become incoherent rather than merely unused: `variantSku` no longer had
   a definition behind it, and `catalog.item` has no quantity concept. `fulfillCheckoutSession`
   was still writing `variantSku` onto `purchasedGood`, a field the lexicon no longer declares.
-- Removing `variantSku` leaves `defs#itemRef` and `defs#ref` structurally identical. Both are
-  kept for now because existing records reference each; their descriptions say so. Collapsing
-  them is a separate schema decision.
+- Removing `variantSku` left `defs#itemRef` and `defs#ref` structurally identical, so they
+  were collapsed into `#ref`. `#itemRef` is deleted and its three `$ref` sites
+  (`catalog.listing.item`, `catalog.product.items[]`, `purchase.receipt.purchasedGood`) now
+  point at `#ref`. `#ref` survived rather than `#itemRef` because after the collapse the
+  definition also covers listings and license terms, which `itemRef` would misname — the
+  TypeScript `ItemRef` was the more-used of the two (26 call sites vs 5), but naming accuracy
+  won over rename churn since the compiler verifies the rename.
+
+  Existing records are unaffected: the two shapes were identical, and a record stores data,
+  not the `$ref` target its schema used. The breaking surface is external: anything resolving
+  `diamonds.whereditgo.bazaar.defs#itemRef` against the served lexicon now 404s.
 
 **Deferred**
 - Receipt shape and signature encoding (axes 2 and 3).

@@ -20,23 +20,6 @@
         }
       }
     },
-    "itemRef": {
-      "type": "object",
-      "description": "An AT-URI + CID pointer to a catalog record. The AT-URI's own collection segment already identifies what kind of record this points to (at://did/{collection}/rkey), so no separate type field is stored. NOTE: structurally identical to #ref since variants were removed -- the two are kept separate only because existing records reference both; they are candidates to collapse.",
-      "required": [
-        "uri"
-      ],
-      "properties": {
-        "uri": {
-          "type": "string",
-          "format": "at-uri"
-        },
-        "cid": {
-          "type": "string",
-          "format": "cid"
-        }
-      }
-    },
     "payment": {
       "type": "object",
       "description": "Which payment system a receipt was settled through, plus its opaque reference in that system. Grouped because neither field means anything alone -- ref is only interpretable relative to processor.",
@@ -58,7 +41,7 @@
     },
     "ref": {
       "type": "object",
-      "description": "A plain AT-URI + CID pointer to another record -- e.g. purchase.receipt's listing, licenseGrant, and grantedItems entries. NOTE: structurally identical to #itemRef; see that definition.",
+      "description": "An AT-URI + CID pointer to another record -- a catalog.item or catalog.product (purchase.receipt's purchasedGood, catalog.listing's item, catalog.product's items), a listing, or a license.terms (purchase.receipt's listing, licenseGrant and grantedItems entries). The AT-URI's own collection segment already identifies what kind of record this points to (at://did/{collection}/rkey), so no separate type field is stored. Supersedes #itemRef, which was identical once variants were removed.",
       "required": [
         "uri"
       ],

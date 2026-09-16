@@ -16,7 +16,7 @@
         ],
         "properties": {
           "item": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
+            "$ref": "diamonds.whereditgo.bazaar.defs#ref"
           },
           "price": {
             "$ref": "diamonds.whereditgo.bazaar.defs#money"

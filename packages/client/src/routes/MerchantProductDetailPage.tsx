@@ -62,7 +62,7 @@ import { itemMetaLabel, isAudioMeta } from "@/lib/itemMetaLabel";
 import { formatMoney } from "@/lib/format";
 import { probeImageSize, probeVideoDuration } from "@/lib/media/probe";
 import { cn, formatBytes, moveArrayItem } from "@/lib/utils";
-import type { ItemRef, LicenseTerms, Listing } from "@/types/lexicons";
+import type { Ref, LicenseTerms, Listing } from "@/types/lexicons";
 
 const titleFromFileName = (name: string) => name.replace(/\.[^./\\]+$/, "");
 
@@ -104,7 +104,7 @@ export function MerchantProductDetailPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
-  const [items, setItems] = useState<ItemRef[]>([]);
+  const [items, setItems] = useState<Ref[]>([]);
   const [productType, setProductType] = useState<string | null>(null);
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(false);
 
@@ -147,7 +147,7 @@ export function MerchantProductDetailPage() {
     setTitle(p.title);
     setDescription(p.description ?? "");
     setTags(p.tags ?? []);
-    setItems(p.items as ItemRef[]);
+    setItems(p.items as Ref[]);
     setProductType(p.productType);
     setArtIncludedInDownload(p.artIncludedInDownload);
     setAssets(productAssets ?? { coverImages: [], includedAssets: [] });
@@ -156,7 +156,7 @@ export function MerchantProductDetailPage() {
     // size / dimensions) -- only this endpoint joins the upload object, same
     // as the storefront product page.
     const memberMetas = await Promise.all(
-      (p.items as ItemRef[]).map((ref) => getCatalogItem(ref.uri)),
+      (p.items as Ref[]).map((ref) => getCatalogItem(ref.uri)),
     );
     setItemsByUri(
       Object.fromEntries(
@@ -192,7 +192,7 @@ export function MerchantProductDetailPage() {
       setLicenseCid(null);
     }
 
-    const memberUris = new Set((p.items as ItemRef[]).map((r) => r.uri));
+    const memberUris = new Set((p.items as Ref[]).map((r) => r.uri));
     const byItem: Record<string, Listing> = {};
     for (const r of rows) {
       if (isTerminalStatus(r.listing.status)) continue;
@@ -345,7 +345,7 @@ export function MerchantProductDetailPage() {
           ],
         });
         const { items: created } = await publishItemsSession(sessionId);
-        const newRefs: ItemRef[] = created.map((it) => ({
+        const newRefs: Ref[] = created.map((it) => ({
           uri: it.uri,
           cid: it.cid,
         }));
@@ -485,7 +485,7 @@ export function MerchantProductDetailPage() {
     if (!product) return false;
     const sameItems =
       items.length === product.items.length &&
-      items.every((r, i) => r.uri === (product.items as ItemRef[])[i]?.uri);
+      items.every((r, i) => r.uri === (product.items as Ref[])[i]?.uri);
     return (
       title.trim() !== product.title ||
       (description.trim() || "") !== (product.description ?? "") ||
@@ -547,7 +547,7 @@ export function MerchantProductDetailPage() {
       setTitle(product.title);
       setDescription(product.description ?? "");
       setTags(product.tags ?? []);
-      setItems(product.items as ItemRef[]);
+      setItems(product.items as Ref[]);
     }
     setEditing(false);
   }
@@ -640,7 +640,7 @@ export function MerchantProductDetailPage() {
     : [];
 
   const renderItemRow = (
-    ref: ItemRef,
+    ref: Ref,
     marker: number | "bullet" | null,
     index: number,
   ) => {

@@ -815,7 +815,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
 
   /**
    * Publish path for catalog.item/catalog.product. Creates one catalog.item per uploaded
-   * item file, then one catalog.product referencing them via itemRef[],
+   * item file, then one catalog.product referencing them via defs#ref[],
    * then captures both into the ERP mirror tables directly (server-side PDS
    * writes here bypass the /repo/createRecord proxy's automatic capture
    * hook, so this calls captureCatalogItem/captureCatalogProduct itself --

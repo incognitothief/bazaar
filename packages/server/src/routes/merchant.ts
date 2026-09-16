@@ -420,7 +420,7 @@ export function createMerchantRouter(db: Db, oauthClient: OAuthClient) {
    * merchant item views). An item has no cover art of its own -- it lives
    * on the parent catalog.product (catalogProductAssets) -- so this resolves
    * each item's owning product by scanning products' items[] for a matching
-   * itemRef.uri, then reuses that product's already-resolved cover images.
+   * the product's item refs, then reuses its already-resolved cover images.
    */
   r.get("/catalog/items", async (c) => {
     const denied = merchantGuard(c);

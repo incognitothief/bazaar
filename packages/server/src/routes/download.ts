@@ -28,15 +28,15 @@ const COL_RECEIPT = `${lexiconNs()}.purchase.receipt`;
 const COL_PRODUCT = `${lexiconNs()}.catalog.product`;
 const COL_ITEM = `${lexiconNs()}.catalog.item`;
 
-type ItemRef = {
+type Ref = {
   uri: string;
   cid?: string;
 };
 
 type PurchaseReceipt = {
-  purchasedGood: ItemRef;
-  listing: ItemRef;
-  licenseGrant?: ItemRef;
+  purchasedGood: Ref;
+  listing: Ref;
+  licenseGrant?: Ref;
   payment?: { processor: string; ref: string };
   purchasedAt: string;
   storefrontSig: string;
@@ -47,16 +47,16 @@ type PurchaseReceipt = {
    * at checkout. Required: a receipt without one does not verify, which
    * fall back to live product/collection membership.
    */
-  grantedItems?: ItemRef[];
+  grantedItems?: Ref[];
 };
 
-function frozenGrant(rec: PurchaseReceipt): ItemRef[] | null {
+function frozenGrant(rec: PurchaseReceipt): Ref[] | null {
   return Array.isArray(rec.grantedItems) && rec.grantedItems.length > 0
     ? rec.grantedItems
     : null;
 }
 
-/** itemRef no longer carries a stored type field (removed as redundant with the URI itself); the AT-URI's own collection segment is the only source of truth. */
+/** defs#ref carries no stored type field (redundant with the URI itself); the AT-URI's own collection segment is the only source of truth. */
 
 /** True when at least one storefront verification key is configured (env or key history). */
 function storefrontVerifyKeysAvailable(): boolean {
