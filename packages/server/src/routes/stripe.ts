@@ -161,7 +161,7 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
     if (typeof parentListingUri === "string" && parentListingUri.length > 0) {
       const parentOk = await parentListingAllowsSale(parentListingUri);
       if (!parentOk) {
-        return c.json({ error: "Parent collection listing is not active" }, 400);
+        return c.json({ error: "Parent product listing is not active" }, 400);
       }
     }
     let item: Record<string, unknown> | null = null;

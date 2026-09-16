@@ -45,7 +45,7 @@ type PurchaseReceipt = {
   /**
    * Frozen entitlement: the catalog.item refs this purchase covers, captured
    * at checkout. Required: a receipt without one does not verify, which
-   * fall back to live product/collection membership.
+   * fall back to live product membership.
    */
   grantedItems?: Ref[];
 };

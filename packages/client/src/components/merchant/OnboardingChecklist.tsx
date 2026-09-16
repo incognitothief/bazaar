@@ -69,7 +69,7 @@ export function OnboardingChecklist({
     {
       id: "first_item",
       label: "Upload your first item",
-      description: "Add a track or collection to your storefront.",
+      description: "Add a product to your storefront.",
       complete: hasItem,
       blocking: false,
       action: { label: "Upload", href: "/merchant/inventory/new" },

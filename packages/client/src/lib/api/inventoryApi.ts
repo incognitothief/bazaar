@@ -74,7 +74,7 @@ async function invFetch(path: string, init?: RequestInit): Promise<Response> {
  * product (the server mints a fresh rkey instead).
  */
 export async function createInventorySession(
-  inventoryKind = "digital",
+  inventoryKind = "product",
   existingProductUri?: string,
 ): Promise<{
   sessionId: string;

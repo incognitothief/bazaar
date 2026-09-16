@@ -137,7 +137,7 @@ function listingHasV5License(listing: Record<string, unknown>): boolean {
   );
 }
 
-/** Child singles require an active parent collection listing when parentListing is set. */
+/** A member item sold individually requires an active parent product listing when parentListing is set. */
 export async function parentListingAllowsSale(
   parentListingUri: string,
 ): Promise<boolean> {

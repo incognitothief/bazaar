@@ -35,12 +35,17 @@ export const meta = sqliteTable("meta", {
     .$defaultFn(() => new Date()),
 });
 
-/** Stripe PaymentIntent → PDS receipt fulfillment state machine. */
 /** Resumable inventory uploads + deferred PDS publish. */
 export const inventoryUploadSession = sqliteTable("inventory_upload_session", {
   id: text("id").primaryKey(),
   merchantDid: text("merchant_did").notNull(),
-  /** Only "product" is accepted at session creation; the column predates that. */
+  /**
+   * Only "product" is accepted at session creation -- the route rejects anything else, and
+   * always writes this column explicitly, so the "digital" default is never applied to a new
+   * row. Left as-is deliberately: SQLite cannot ALTER a column default, so changing it means
+   * recreating a table that inventory_upload_object holds a foreign key into. Not worth that
+   * for a value nothing reads.
+   */
   inventoryKind: text("inventory_kind").notNull().default("digital"),
   status: text("status").notNull().default("active"),
   draftJson: text("draft_json"),
@@ -300,6 +305,7 @@ export const catalogProductAssets = sqliteTable(
   }),
 );
 
+/** Stripe PaymentIntent → PDS receipt fulfillment state machine. */
 export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   paymentIntentId: text("payment_intent_id").primaryKey(),
   checkoutSessionId: text("checkout_session_id"),

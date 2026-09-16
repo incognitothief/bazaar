@@ -42,7 +42,7 @@
           "parentListing": {
             "type": "string",
             "format": "at-uri",
-            "description": "When this listing sells a member digital item as an individual single, the AT-URI of the parent catalog.listing for the collection. Absent for standalone singles and for the collection listing itself. Used for storefront grouping and cascade pause when the collection listing is paused."
+            "description": "When this listing sells a member catalog.item individually, the AT-URI of the parent catalog.listing for the product it belongs to. Absent for standalone items and for the product listing itself. Used for storefront grouping and cascade pause when the product listing is paused."
           },
           "supersededBy": {
             "type": "string",

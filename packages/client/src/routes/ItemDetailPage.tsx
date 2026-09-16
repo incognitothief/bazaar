@@ -135,7 +135,7 @@ export function ItemDetailPage() {
   }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  /** `?from=<rkey>` set on member links from a product/collection page -- the
+  /** `?from=<rkey>` set on member links from a product page -- the
    * back button then returns there instead of doing a plain history pop. */
   const fromRkey = searchParams.get("from")?.trim() || null;
   const merchantDidEnv = import.meta.env.VITE_MERCHANT_DID?.trim() ?? "";
@@ -810,7 +810,7 @@ export function ItemDetailPage() {
           type="button"
           onClick={() => {
             // Prefer a real history pop: when the visitor clicked through from
-            // a product/collection page it's the entry right behind them, so
+            // a product page it's the entry right behind them, so
             // popping avoids stacking a duplicate (product <-> item ping-pong).
             // Fall back to a forward navigation only for a cold deep link that
             // still carries ?from.
