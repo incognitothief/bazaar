@@ -38,14 +38,6 @@
             "$ref": "diamonds.whereditgo.bazaar.defs#ref",
             "description": "License terms in effect at time of purchase. cid resolved from the listing's own licenseGrant.cid. Required: every listing must carry license terms before it can be sold, so every receipt has one. cid is folded into storefrontSig (see storefrontSig's description) -- this is what freezes the license terms atomically with the purchase itself; there is no separate consent record."
           },
-          "shippingAddress": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#address",
-            "description": "For physical items. Lives in buyer's own PDS \u2014 they control this data."
-          },
-          "fulfillmentUri": {
-            "type": "string",
-            "format": "at-uri"
-          },
           "grantedItems": {
             "type": "array",
             "items": {

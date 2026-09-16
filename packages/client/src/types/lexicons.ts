@@ -14,22 +14,12 @@ export type BazaarItemType =
 export type ItemRef = {
   uri: string;
   cid?: string;
-  variantSku?: string;
 };
 
-/** A plain AT-URI + CID pointer, used where ItemRef's variantSku doesn't apply. */
+/** A plain AT-URI + CID pointer. Interchangeable with ItemRef now that variants are gone; kept because the lexicons still declare both. */
 export type Ref = {
   uri: string;
   cid?: string;
-};
-
-export type Address = {
-  line1: string;
-  line2?: string;
-  city: string;
-  region?: string;
-  postalCode?: string;
-  countryCode: string;
 };
 
 export type TerritoryCoverage = {
@@ -103,8 +93,6 @@ export type PurchaseReceipt = {
   payment: Payment;
   /** License terms in effect at time of purchase. cid is folded into storefrontSig -- freezes the license atomically with the purchase, no separate consent record. */
   licenseGrant: Ref;
-  shippingAddress?: Address;
-  fulfillmentUri?: string;
   /**
    * Frozen download entitlement: the catalog.item refs this purchase covers,
    * captured at checkout. Later edits to a product's items[] do not change it.
@@ -121,47 +109,6 @@ export type PurchaseReceipt = {
   storefrontSig: string;
   purchasedAt: string;
   note?: string;
-};
-
-export type Stock = {
-  $type: "diamonds.whereditgo.bazaar.purchase.stock";
-  itemUri: string;
-  itemCid: string;
-  variantSku: string;
-  quantityAvailable: number;
-  quantityReserved?: number;
-  quantitySold?: number;
-  isUnlimited?: boolean;
-  lowStockThreshold?: number;
-  updatedAt: string;
-};
-
-export type Fulfillment = {
-  $type: "diamonds.whereditgo.bazaar.purchase.fulfillment";
-  receiptUri: string;
-  receiptCid: string;
-  status:
-    | "pending"
-    | "processing"
-    | "shipped"
-    | "inTransit"
-    | "delivered"
-    | "returned"
-    | "cancelled";
-  carrier?: string;
-  trackingNumber?: string;
-  trackingUrl?: string;
-  estimatedDelivery?: string;
-  shippedAt?: string;
-  deliveredAt?: string;
-  events?: Array<{
-    status: string;
-    location?: string;
-    timestamp: string;
-    note?: string;
-  }>;
-  createdAt: string;
-  updatedAt?: string;
 };
 
 export type ActorMerchant = {

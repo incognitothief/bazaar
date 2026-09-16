@@ -22,7 +22,7 @@
     },
     "itemRef": {
       "type": "object",
-      "description": "The AT-URI's own collection segment already identifies what kind of record this points to (at://did/{collection}/rkey) -- no separate type field is stored here to avoid duplicating that. Older records written before this change may still carry an itemType field; it's not read.",
+      "description": "An AT-URI + CID pointer to a catalog record. The AT-URI's own collection segment already identifies what kind of record this points to (at://did/{collection}/rkey), so no separate type field is stored. NOTE: structurally identical to #ref since variants were removed -- the two are kept separate only because existing records reference both; they are candidates to collapse.",
       "required": [
         "uri"
       ],
@@ -34,10 +34,6 @@
         "cid": {
           "type": "string",
           "format": "cid"
-        },
-        "variantSku": {
-          "type": "string",
-          "description": "For physical items: which variant was purchased."
         }
       }
     },
@@ -62,7 +58,7 @@
     },
     "ref": {
       "type": "object",
-      "description": "A plain AT-URI + CID pointer to another record, used where no item-specific fields (like itemRef's variantSku) apply -- e.g. purchase.receipt's listing, licenseGrant, and grantedItems entries.",
+      "description": "A plain AT-URI + CID pointer to another record -- e.g. purchase.receipt's listing, licenseGrant, and grantedItems entries. NOTE: structurally identical to #itemRef; see that definition.",
       "required": [
         "uri"
       ],
@@ -74,41 +70,6 @@
         "cid": {
           "type": "string",
           "format": "cid"
-        }
-      }
-    },
-    "address": {
-      "type": "object",
-      "required": [
-        "line1",
-        "city",
-        "countryCode"
-      ],
-      "properties": {
-        "line1": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "line2": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "city": {
-          "type": "string",
-          "maxLength": 128
-        },
-        "region": {
-          "type": "string",
-          "maxLength": 128
-        },
-        "postalCode": {
-          "type": "string",
-          "maxLength": 32
-        },
-        "countryCode": {
-          "type": "string",
-          "maxLength": 2,
-          "description": "ISO 3166-1 alpha-2"
         }
       }
     }

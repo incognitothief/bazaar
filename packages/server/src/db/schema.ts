@@ -36,11 +36,11 @@ export const meta = sqliteTable("meta", {
 });
 
 /** Stripe PaymentIntent → PDS receipt fulfillment state machine. */
-/** Resumable inventory uploads + deferred PDS publish (digital first; discriminator for future physical). */
+/** Resumable inventory uploads + deferred PDS publish. */
 export const inventoryUploadSession = sqliteTable("inventory_upload_session", {
   id: text("id").primaryKey(),
   merchantDid: text("merchant_did").notNull(),
-  /** e.g. digital — reserved for physical expansion */
+  /** Only "product" is accepted at session creation; the column predates that. */
   inventoryKind: text("inventory_kind").notNull().default("digital"),
   status: text("status").notNull().default("active"),
   draftJson: text("draft_json"),

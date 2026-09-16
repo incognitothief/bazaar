@@ -487,7 +487,7 @@ export type CatalogProductRow = {
   title: string;
   description: string | null;
   tags: string[] | null;
-  items: Array<{ uri: string; cid?: string; variantSku?: string }>;
+  items: Array<{ uri: string; cid?: string }>;
   /** UI-only classification (e.g. "music", "generic") -- never on the PDS record. */
   productType: string | null;
   /** Whether cover art is bundled into the buyer's download package -- also UI-only. */
@@ -822,8 +822,7 @@ export function findStaleListingsForItem(
 }
 
 /**
- * Resolve storefront catalog item AT-URI from record key (TID) in the artist repo.
- * Tries digital → collection → physical (same order as storefront catalog).
+ * Resolve a storefront catalog AT-URI from a record key (TID) in the merchant's repo.
  */
 export async function resolveCatalogItemUriFromRkey(
   repoDid: string,
@@ -939,9 +938,6 @@ export async function putListing(
   });
 }
 
-/** Updates a digital item; immutable fields are always taken from the current record. */
-/** Updates a collection; immutable fields are always taken from the current record. */
-/** Updates a physical item; immutable fields are always taken from the current record. */
 /** Only title/category/description are editable -- fileCid/fileChecksum/format/merchantDid are preserved as-authored. */
 export async function putCatalogItem(
   agent: ATPRepoClient,

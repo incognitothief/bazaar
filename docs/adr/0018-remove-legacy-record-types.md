@@ -121,6 +121,18 @@ buyer-scope exclusion test now names collections that actually exist.
   both were quietly legacy-only and the dashboard was already showing nothing
   once legacy inventory was cleared.
 
+**Follow-on (2026-09-15)**
+- The physical-goods schema surface went with the record types, once it was clear nothing
+  wired it: `purchase.stock` and `purchase.fulfillment` (both published but with no create
+  path, no read path and no OAuth scope), `purchase.receipt.shippingAddress` and
+  `fulfillmentUri`, `defs#address`, and `defs#itemRef.variantSku`. Lexicons 10 → 8.
+  `purchase.stock` had become incoherent rather than merely unused: `variantSku` no longer had
+  a definition behind it, and `catalog.item` has no quantity concept. `fulfillCheckoutSession`
+  was still writing `variantSku` onto `purchasedGood`, a field the lexicon no longer declares.
+- Removing `variantSku` leaves `defs#itemRef` and `defs#ref` structurally identical. Both are
+  kept for now because existing records reference each; their descriptions say so. Collapsing
+  them is a separate schema decision.
+
 **Deferred**
 - Receipt shape and signature encoding (axes 2 and 3).
 - Per-product `og:image`, which would need a public open-artwork endpoint for

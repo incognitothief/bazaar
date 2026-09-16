@@ -543,11 +543,6 @@ export async function fulfillCheckoutSession(opts: {
   if (typeof itemCid === "string" && itemCid.length > 0) {
     purchasedGood.cid = itemCid;
   }
-  const variantSku = ref.variantSku as string | undefined;
-  if (typeof variantSku === "string" && variantSku.length > 0) {
-    purchasedGood.variantSku = variantSku;
-  }
-
   // Frozen download entitlement -- captured now, folded into storefrontSig, and
   // written onto the receipt so later product edits can't move it.
   const grantedItems = resolveGrantedItems(itemUri, item, itemCid);

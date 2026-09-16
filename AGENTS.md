@@ -2,7 +2,7 @@
 
 ## What this is
 
-Bazaar — a self-hostable storefront for digital/physical goods. Purchase records are written to
+Bazaar — a self-hostable storefront for digital goods. Purchase records are written to
 the buyer's own PDS (ATProto Personal Data Server). Lexicon namespace
 `diamonds.whereditgo.bazaar` (override via `LEXICON_NAMESPACE` / `VITE_LEXICON_NAMESPACE`).
 
