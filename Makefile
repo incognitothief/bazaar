@@ -18,9 +18,7 @@ endif
 # Optional Docker build-args (same names as Dockerfile / deploy workflow).
 # Export from your shell or a local .env before `make docker-build`.
 VITE_ATPROTO_SERVICE ?=
-VITE_STOREFRONT_DID ?=
 VITE_APP_URL ?=
-VITE_LEXICON_NAMESPACE ?=
 VITE_MERCHANT_DID ?=
 VITE_API_ORIGIN ?=
 # Optional cloudflared quick-tunnel origin. When set, `make dev` exports it into
@@ -124,9 +122,7 @@ tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<pri
 docker-build: ## Build the production Docker image locally
 	docker build \
 		--build-arg VITE_ATPROTO_SERVICE="$(VITE_ATPROTO_SERVICE)" \
-		--build-arg VITE_STOREFRONT_DID="$(VITE_STOREFRONT_DID)" \
 		--build-arg VITE_APP_URL="$(VITE_APP_URL)" \
-		--build-arg VITE_LEXICON_NAMESPACE="$(VITE_LEXICON_NAMESPACE)" \
 		--build-arg VITE_MERCHANT_DID="$(VITE_MERCHANT_DID)" \
 		--build-arg VITE_API_ORIGIN="$(VITE_API_ORIGIN)" \
 		-t "$(DOCKER_IMAGE)" \
@@ -149,9 +145,7 @@ fly-deploy: ## Deploy to Fly production (fly.toml; requires FLY_API_TOKEN and VI
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
 	flyctl deploy --remote-only \
 		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
-		--build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
-		--build-arg VITE_LEXICON_NAMESPACE="$${VITE_LEXICON_NAMESPACE:-}" \
 		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
 		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"
 
@@ -160,8 +154,6 @@ fly-deploy-stg: ## Deploy to Fly staging (fly.stg.toml; requires FLY_API_TOKEN a
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
 	flyctl deploy --remote-only --config fly.stg.toml \
 		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
-		--build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
-		--build-arg VITE_LEXICON_NAMESPACE="$${VITE_LEXICON_NAMESPACE:-}" \
 		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
 		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"

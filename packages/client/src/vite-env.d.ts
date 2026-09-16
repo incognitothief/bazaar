@@ -2,9 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_ATPROTO_SERVICE: string;
-  readonly VITE_STOREFRONT_DID: string;
   readonly VITE_APP_URL: string;
-  readonly VITE_LEXICON_NAMESPACE: string;
   readonly VITE_MERCHANT_DID: string;
   readonly VITE_API_ORIGIN: string;
   /** When "true" in dev, sign-in skips OAuth and uses localStorage mock (see useAtpSession.tsx). */
