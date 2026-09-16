@@ -115,10 +115,9 @@ function loadR2():
 async function maybeGenerateWebpDerivative(
   r2: { cfg: { bucket: string }; client: ReturnType<typeof getR2S3Client> },
   obj: { role: string; r2Key: string },
-  sessionInventoryKind: string,
   buf: Buffer,
 ): Promise<string | null> {
-  if (sessionInventoryKind !== "product" || obj.role !== "artwork") return null;
+  if (obj.role !== "artwork") return null;
   const derivative = await generateWebpDerivative(buf);
   if (!derivative) return null;
   const webpKey = `${obj.r2Key}.webp`;
@@ -187,14 +186,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
 
     const rawBody = await c.req.json().catch(() => ({}));
-    const body = rawBody as { inventoryKind?: string; existingProductUri?: string };
-    // "product" is the only kind that can still be published: the legacy
-    // /publish route and the record types it wrote are gone. Reject anything
-    // else rather than opening a session that can upload but never publish.
-    const inventoryKind = body.inventoryKind ?? "product";
-    if (inventoryKind !== "product") {
-      return c.json({ error: "unsupported_inventory_kind" }, 400);
-    }
+    const body = rawBody as { existingProductUri?: string };
 
     // "product" sessions reserve a product rkey up front so every object
     // uploaded in this session (items + assets) can be R2-keyed under it
@@ -228,7 +220,6 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     await db.insert(inventoryUploadSession).values({
       id,
       merchantDid: sess.did,
-      inventoryKind,
       status: "active",
       productRkey,
     });
@@ -321,7 +312,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     }>();
     if (!body.objects?.length) return c.json({ error: "objects_required" }, 400);
 
-    if (session.inventoryKind === "product" && !session.productRkey) {
+    if (!session.productRkey) {
       return c.json({ error: "session_missing_product_rkey" }, 500);
     }
 
@@ -458,7 +449,6 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
     const webpR2Key = await maybeGenerateWebpDerivative(
       { cfg, client },
       { role: obj.role, r2Key: obj.r2Key },
-      session.inventoryKind,
       buf,
     );
 
@@ -718,10 +708,7 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
           500,
         );
       }
-      const collectMax =
-        session.inventoryKind === "product" && obj.role === "artwork"
-          ? WEBP_COLLECT_MAX_BYTES
-          : null;
+      const collectMax = obj.role === "artwork" ? WEBP_COLLECT_MAX_BYTES : null;
       const { digest, byteSize, collected } = await digestR2Body(
         bodyStream as unknown as AsyncIterable<Uint8Array>,
         collectMax,
@@ -743,7 +730,6 @@ export function createInventoryRouter(db: Db, oauthClient: OAuthClient) {
         ? await maybeGenerateWebpDerivative(
             { cfg, client },
             { role: obj.role, r2Key: obj.r2Key },
-            session.inventoryKind,
             collected,
           )
         : null;

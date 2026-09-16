@@ -68,22 +68,21 @@ async function invFetch(path: string, init?: RequestInit): Promise<Response> {
 }
 
 /**
- * `existingProductUri`: for "product"-kind sessions adding items/assets to
- * an *already-published* product -- the server keys every R2 object
- * uploaded in this session under that product's own rkey. Omit for a new
- * product (the server mints a fresh rkey instead).
+ * `existingProductUri`: when adding items/assets to an *already-published*
+ * product -- the server keys every R2 object uploaded in this session under
+ * that product's own rkey. Omit for a new product (the server mints a fresh
+ * rkey instead).
  */
 export async function createInventorySession(
-  inventoryKind = "product",
   existingProductUri?: string,
 ): Promise<{
   sessionId: string;
-  /** The product's URI, known up front for "product"-kind sessions (minted server-side for a new product, echoed back for an existing one) -- lets the UI poll zip-progress before the publish response comes back. Null for non-product sessions. */
+  /** The product's URI, known up front (minted server-side for a new product, echoed back for an existing one) -- lets the UI poll zip-progress before the publish response comes back. */
   productUri: string | null;
 }> {
   const res = await invFetch("/sessions", {
     method: "POST",
-    body: JSON.stringify({ inventoryKind, existingProductUri }),
+    body: JSON.stringify({ existingProductUri }),
   });
   if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{ sessionId: string; productUri: string | null }>;
@@ -225,7 +224,7 @@ export type PublishProductSnapshot = {
   items: Array<{ uri: string; cid: string }>;
 };
 
-/** Publishes a "product" inventoryKind session as catalog.item/catalog.product records. */
+/** Publishes a session as catalog.item/catalog.product records. */
 export async function publishProductSession(
   sessionId: string,
 ): Promise<PublishProductSnapshot> {

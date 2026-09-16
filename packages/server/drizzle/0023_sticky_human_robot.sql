@@ -1,0 +1,1 @@
+ALTER TABLE `inventory_upload_session` DROP COLUMN `inventory_kind`;

@@ -198,7 +198,7 @@ export function AddProductPage() {
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (sessionId) return sessionId;
-    const { sessionId: id, productUri: uri } = await createInventorySession("product");
+    const { sessionId: id, productUri: uri } = await createInventorySession();
     setSessionId(id);
     setProductUri(uri);
     return id;

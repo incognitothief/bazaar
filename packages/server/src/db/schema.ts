@@ -39,21 +39,13 @@ export const meta = sqliteTable("meta", {
 export const inventoryUploadSession = sqliteTable("inventory_upload_session", {
   id: text("id").primaryKey(),
   merchantDid: text("merchant_did").notNull(),
-  /**
-   * Only "product" is accepted at session creation -- the route rejects anything else, and
-   * always writes this column explicitly, so the "digital" default is never applied to a new
-   * row. Left as-is deliberately: SQLite cannot ALTER a column default, so changing it means
-   * recreating a table that inventory_upload_object holds a foreign key into. Not worth that
-   * for a value nothing reads.
-   */
-  inventoryKind: text("inventory_kind").notNull().default("digital"),
   status: text("status").notNull().default("active"),
   draftJson: text("draft_json"),
   publishedAt: integer("published_at", { mode: "timestamp" }),
   publishError: text("publish_error"),
   pdsSnapshotJson: text("pds_snapshot_json"),
   /**
-   * inventoryKind "product" sessions only. Either a fresh TID minted at
+   * Either a fresh TID minted at
    * session creation (new product -- becomes that catalog.product record's
    * actual rkey at publish, passed explicitly rather than left to the PDS
    * to assign) or the rkey of an already-existing product (adding items /

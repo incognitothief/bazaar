@@ -307,7 +307,7 @@ export function MerchantProductDetailPage() {
     async (file: File) => {
       setAddingItem(true);
       try {
-        const { sessionId } = await createInventorySession("product", uri);
+        const { sessionId } = await createInventorySession(uri);
         const { objects } = await registerInventoryObjects(sessionId, [
           {
             slotId: "new-item",
@@ -378,7 +378,7 @@ export function MerchantProductDetailPage() {
     async (file: File) => {
       setUploadingCoverArt(true);
       try {
-        const { sessionId } = await createInventorySession("product", uri);
+        const { sessionId } = await createInventorySession(uri);
         const { objects } = await registerInventoryObjects(sessionId, [
           {
             slotId: "cover-art",
@@ -414,7 +414,7 @@ export function MerchantProductDetailPage() {
         (prev) => new Set([...prev, ...entries.map((e) => e.id)]),
       );
       try {
-        const { sessionId } = await createInventorySession("product", uri);
+        const { sessionId } = await createInventorySession(uri);
         const { objects } = await registerInventoryObjects(
           sessionId,
           entries.map((entry) => ({
