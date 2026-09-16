@@ -103,6 +103,9 @@ npm i
 make storefront-key DOMAIN=store.example.com
 ```
 
+`DOMAIN` is the address your store is reachable at. Pasting the URL straight from your browser
+works — `https://store.example.com/` and `store.example.com` are read the same way.
+
 It prints the values to set as Fly secrets:
 
 | Variable | Notes |

@@ -110,7 +110,7 @@ db-migrate: ## Apply Drizzle migrations
 ci: install-ci lexicons-validate build test ## Run the same checks as .github/workflows/test.yml
 
 .PHONY: storefront-key
-storefront-key: ## Generate (or rotate) the storefront signing key: make storefront-key DOMAIN=store.example.com
+storefront-key: ## Generate (or rotate) the storefront signing key: make storefront-key DOMAIN=store.example.com (a full URL is fine)
 	npx tsx scripts/gen-storefront-key.ts $(DOMAIN)
 
 .PHONY: tunnel

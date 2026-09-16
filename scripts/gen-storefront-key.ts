@@ -1,7 +1,7 @@
 /**
  * Generate a storefront signing key and print the STOREFRONT_* block to set.
  *
- *   npx tsx scripts/gen-storefront-key.ts <your-store-hostname>
+ *   npx tsx scripts/gen-storefront-key.ts <your-store-address>
  *
  * The storefront identity is always did:web. AT Protocol resolves did:web by fetching
  * https://<domain>/.well-known/did.json, which this app serves from the env vars below, so the
@@ -66,35 +66,52 @@ function fail(message: string): never {
 }
 
 /**
- * The argument is a bare hostname; the did:web: prefix is ours to add. On a re-run the DID is
+ * Pull a hostname out of whatever the operator pasted.
+ *
+ * People copy out of a browser bar, so accept the shapes that come with it -- scheme, trailing
+ * slash, a path, a did:web: prefix, stray whitespace or quotes -- and keep the host. Ports are
+ * refused rather than dropped: did:web encodes them (`did:web:host%3A3000`), and silently
+ * removing one yields a DID that resolves somewhere the store is not.
+ */
+function hostnameFrom(raw: string): string {
+  let v = raw.trim().replace(/^["']|["']$/g, "");
+  v = v.replace(/^did:web:/i, "");
+  v = v.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+  v = v.replace(/^[^/@]*@/, ""); // user:pass@
+  v = v.split(/[/?#]/)[0]; // path, query, fragment
+  v = v.replace(/\.+$/, "").toLowerCase();
+
+  if (/:\d+$/.test(v) || v.includes("%3a")) {
+    fail(
+      `gen-storefront-key: "${raw.trim()}" includes a port.\n` +
+        "A storefront DID must name the host your store is served from on 443, with no port.",
+    );
+  }
+  return v;
+}
+
+/**
+ * The argument is a hostname; the did:web: prefix is ours to add. On a re-run the DID is
  * already in the environment, so no argument is needed.
  */
 function resolveDid(): string {
   const arg = process.argv[2]?.trim();
   if (arg) {
-    if (arg.startsWith("did:")) {
-      // Only a did:web carries a usable hostname; anything else gets the placeholder.
-      const host = arg.startsWith("did:web:")
-        ? arg.slice("did:web:".length) || "store.example.com"
-        : "store.example.com";
+    const host = hostnameFrom(arg);
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(host)) {
       fail(
-        "gen-storefront-key: pass the hostname, not a DID.\n" +
-          `  npx tsx scripts/gen-storefront-key.ts ${host}`,
+        `gen-storefront-key: could not read a domain from "${arg}".\n` +
+          "Pass the address your store is reachable at, e.g. store.example.com\n" +
+          "(pasting https://store.example.com/ is fine).",
       );
     }
-    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(arg)) {
-      fail(
-        `gen-storefront-key: "${arg}" is not a hostname. Pass the domain your store is\n` +
-          "reachable at, e.g. store.example.com -- no scheme, port or path.",
-      );
-    }
-    return `did:web:${arg}`;
+    return `did:web:${host}`;
   }
   const env = process.env.STOREFRONT_DID?.trim();
   if (env?.startsWith("did:web:")) return env;
   if (env) fail(`gen-storefront-key: STOREFRONT_DID="${env}" is not did:web.`);
   return fail(
-    "gen-storefront-key: pass the hostname your store is reachable at.\n" +
+    "gen-storefront-key: pass the address your store is reachable at.\n" +
       "  npx tsx scripts/gen-storefront-key.ts store.example.com\n" +
       "That becomes did:web:store.example.com, resolved at\n" +
       "https://store.example.com/.well-known/did.json.",
