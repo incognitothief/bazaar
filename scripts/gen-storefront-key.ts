@@ -34,16 +34,14 @@ import { fileURLToPath } from "node:url";
 import { formatMultikey } from "@atproto/crypto";
 
 const KEYS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "keys");
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** App name from fly.toml, so the printed command is paste-ready rather than a template. */
+/**
+ * fly.toml carries a placeholder, not an app name -- the real one is passed at deploy time --
+ * so take it from FLY_APP if the operator has it set, and otherwise leave a slot to fill in.
+ * Printing the placeholder would hand them a command aimed at nothing.
+ */
 function flyAppName(): string | null {
-  try {
-    const toml = readFileSync(join(REPO_ROOT, "fly.toml"), "utf8");
-    return toml.match(/^\s*app\s*=\s*["']([^"']+)["']/m)?.[1] ?? null;
-  } catch {
-    return null;
-  }
+  return process.env.FLY_APP?.trim() || null;
 }
 
 type KeyStatus = "active" | "retired" | "revoked";

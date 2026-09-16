@@ -148,18 +148,20 @@ infra-up: ## Pulumi up (packages/infra; set PULUMI_STACK=prod|stg)
 	cd "$(INFRA_DIR)" && npm run up -- --stack "$(PULUMI_STACK)"
 
 .PHONY: fly-deploy
-fly-deploy: ## Deploy to Fly production (fly.toml; requires FLY_API_TOKEN and VITE_* env)
+fly-deploy: ## Deploy to Fly production (requires FLY_APP, FLY_API_TOKEN and VITE_* env)
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
-	flyctl deploy --remote-only \
+	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.toml holds a placeholder, not your app name)"; exit 1; }
+	flyctl deploy --remote-only --app "$${FLY_APP}" \
 		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
 		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
 		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"
 
 .PHONY: fly-deploy-stg
-fly-deploy-stg: ## Deploy to Fly staging (fly.stg.toml; requires FLY_API_TOKEN and VITE_* env)
+fly-deploy-stg: ## Deploy to Fly staging (requires FLY_APP, FLY_API_TOKEN and VITE_* env)
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
-	flyctl deploy --remote-only --config fly.stg.toml \
+	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.stg.toml holds a placeholder, not your app name)"; exit 1; }
+	flyctl deploy --remote-only --config fly.stg.toml --app "$${FLY_APP}" \
 		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
 		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \

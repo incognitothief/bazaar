@@ -58,7 +58,10 @@ GitHub repository secrets (Settings → Secrets and variables → Actions):
 - PULUMI_BACKEND_URL — s3://… R2 backend URL (query params for endpoint/region)
 - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 S3 API keys (R2 → Manage R2 API Tokens), NOT the Cloudflare API token.
   Must allow read+write on the SAME bucket as PULUMI_BACKEND_URL (incl. ListBucket). Scoped-only-to-primary-bucket tokens → 403 on .pulumi/meta.yaml.
-- FLY_API_TOKEN — deploy token for the Fly org that owns `app` in fly.toml (`fly tokens create deploy`, or https://fly.io/dashboard/personal/tokens ). Wrong/missing token → `unauthorized`.
+- FLY_APP_NAME — your Fly app name, and FLY_APP_NAME_STG for staging. `fly.toml` and
+  `fly.stg.toml` carry placeholders so the repo does not name anyone's deployment; the real
+  name is passed with `--app` at deploy time. Locally, set `FLY_APP` instead.
+- FLY_API_TOKEN — deploy token for the Fly org that owns the app (`fly tokens create deploy`, or https://fly.io/dashboard/personal/tokens ). Wrong/missing token → `unauthorized`.
 
 The action will run on push and deploy the application
 
@@ -68,7 +71,7 @@ The GitHub secrets above are CI/deploy-only — the running app never reads them
 (`packages/server/.env.example`) must be set separately on each Fly app:
 
 ```
-fly secrets set KEY=value -a <app>   # bazaar-g5nqca (prod) / bazaar-jwkvxw (staging)
+fly secrets set KEY=value -a <your-app>
 ```
 
 At minimum:
