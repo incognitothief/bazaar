@@ -15,7 +15,7 @@ import { publicSpkiPemToMultibase } from "./publicKeyMultibase";
  * Source of truth is the environment, nothing else:
  *   STOREFRONT_PRIVATE_KEY      current signing key (secret PEM)
  *   STOREFRONT_KID              current key fragment, e.g. storefront-key-2026-08-29[-N]
- *   STOREFRONT_PUBLIC_MULTIBASE current public key `z…` (optional; derived from the PEM)
+ *   STOREFRONT_PUBLIC_MULTIBASE current public key `z…` (required; checked against the PEM)
  *   STOREFRONT_KEY_HISTORY      base64(JSON array) of every NON-current key (see KeyHistoryEntry)
  *
  * DID document shape:
@@ -119,9 +119,20 @@ function currentKeyFromEnv(): StorefrontKey | null {
   const pub = createPublicKey(priv);
   const publicKeyPem = pub.export({ type: "spki", format: "pem" }) as string;
 
+  // Required, and used only as a tripwire. The document always publishes the derived value;
+  // this is the operator's independent assertion of which key should be live. Without it,
+  // deploying the wrong PEM under the right kid publishes a DID document containing the wrong
+  // public key and silently breaks verification of every receipt the real key signed --
+  // healthy-looking, no error, detected only when someone can't verify a receipt.
   const derivedMultibase = publicSpkiPemToMultibase(publicKeyPem);
   const envMultibase = process.env.STOREFRONT_PUBLIC_MULTIBASE?.trim();
-  if (envMultibase && envMultibase !== derivedMultibase) {
+  if (!envMultibase) {
+    throw new Error(
+      "STOREFRONT_PUBLIC_MULTIBASE is required when STOREFRONT_PRIVATE_KEY is set. " +
+        `Expected: ${derivedMultibase}`,
+    );
+  }
+  if (envMultibase !== derivedMultibase) {
     throw new Error(
       "STOREFRONT_PUBLIC_MULTIBASE does not match STOREFRONT_PRIVATE_KEY",
     );

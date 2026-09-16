@@ -1,7 +1,7 @@
 /**
  * Generate a storefront signing key and print the STOREFRONT_* block to set.
  *
- *   npx tsx scripts/gen-storefront-key.ts <your-store-domain | did:web:...>
+ *   npx tsx scripts/gen-storefront-key.ts <your-store-hostname>
  *
  * The storefront identity is always did:web. AT Protocol resolves did:web by fetching
  * https://<domain>/.well-known/did.json, which this app serves from the env vars below, so the
@@ -65,16 +65,28 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-/** did:web only -- from the argument, else STOREFRONT_DID. */
+/**
+ * The argument is a bare hostname; the did:web: prefix is ours to add. On a re-run the DID is
+ * already in the environment, so no argument is needed.
+ */
 function resolveDid(): string {
   const arg = process.argv[2]?.trim();
   if (arg) {
-    if (arg.startsWith("did:web:")) return arg;
     if (arg.startsWith("did:")) {
-      fail(`gen-storefront-key: "${arg}" is not a did:web DID. A storefront identity is always did:web.`);
+      // Only a did:web carries a usable hostname; anything else gets the placeholder.
+      const host = arg.startsWith("did:web:")
+        ? arg.slice("did:web:".length) || "store.example.com"
+        : "store.example.com";
+      fail(
+        "gen-storefront-key: pass the hostname, not a DID.\n" +
+          `  npx tsx scripts/gen-storefront-key.ts ${host}`,
+      );
     }
-    if (arg.includes("/") || arg.includes(":")) {
-      fail(`gen-storefront-key: "${arg}" is not a bare domain. Pass e.g. store.example.com`);
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(arg)) {
+      fail(
+        `gen-storefront-key: "${arg}" is not a hostname. Pass the domain your store is\n` +
+          "reachable at, e.g. store.example.com -- no scheme, port or path.",
+      );
     }
     return `did:web:${arg}`;
   }
@@ -82,23 +94,28 @@ function resolveDid(): string {
   if (env?.startsWith("did:web:")) return env;
   if (env) fail(`gen-storefront-key: STOREFRONT_DID="${env}" is not did:web.`);
   return fail(
-    "gen-storefront-key: pass your store's domain.\n" +
+    "gen-storefront-key: pass the hostname your store is reachable at.\n" +
       "  npx tsx scripts/gen-storefront-key.ts store.example.com\n" +
-      "It becomes did:web:store.example.com, resolved at https://store.example.com/.well-known/did.json.",
+      "That becomes did:web:store.example.com, resolved at\n" +
+      "https://store.example.com/.well-known/did.json.",
   );
 }
 
 function parseHistory(raw: string | undefined): HistoryEntry[] {
   const t = raw?.trim();
   if (!t || t.includes("PLACEHOLDER")) return [];
-  const json = t.startsWith("[") ? t : Buffer.from(t, "base64").toString("utf8");
+  const json = t.startsWith("[")
+    ? t
+    : Buffer.from(t, "base64").toString("utf8");
   const arr = JSON.parse(json);
-  if (!Array.isArray(arr)) throw new Error("STOREFRONT_KEY_HISTORY is not a JSON array");
+  if (!Array.isArray(arr))
+    throw new Error("STOREFRONT_KEY_HISTORY is not a JSON array");
   return arr as HistoryEntry[];
 }
 
 const did = resolveDid();
-const fragmentOf = (v: string) => (v.includes("#") ? v.slice(v.indexOf("#") + 1) : v);
+const fragmentOf = (v: string) =>
+  v.includes("#") ? v.slice(v.indexOf("#") + 1) : v;
 
 // A current kid in the environment makes this a rotation rather than a first key.
 const currentKid = process.env.STOREFRONT_KID?.trim();
@@ -107,8 +124,9 @@ const currentMultibaseEnv = process.env.STOREFRONT_PUBLIC_MULTIBASE?.trim();
 
 let outgoing: HistoryEntry | null = null;
 if (currentKid) {
-  // Prefer deriving from the current private key: STOREFRONT_PUBLIC_MULTIBASE is optional in
-  // normal operation (the server derives it), so it is often simply not set.
+  // Prefer deriving from the current private key. STOREFRONT_PUBLIC_MULTIBASE should be set
+  // too, but the PEM is the authority -- if the two ever disagree the server refuses to start,
+  // so rotating off the key actually in use is the safer behaviour.
   let currentMultibase = currentMultibaseEnv;
   if (currentPrivate && !currentPrivate.includes("PLACEHOLDER")) {
     try {
@@ -137,7 +155,9 @@ const history = parseHistory(process.env.STOREFRONT_KEY_HISTORY);
 const today = new Date().toISOString().slice(0, 10);
 let kid = `storefront-key-${today}`;
 const taken = new Set(
-  [currentKid, ...history.map((h) => h.id)].filter(Boolean).map((v) => fragmentOf(v as string)),
+  [currentKid, ...history.map((h) => h.id)]
+    .filter(Boolean)
+    .map((v) => fragmentOf(v as string)),
 );
 if (taken.has(kid)) {
   let n = 2;
@@ -145,13 +165,23 @@ if (taken.has(kid)) {
   kid = `storefront-key-${today}-${n}`;
 }
 
-const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-const privatePem = privateKey.export({ type: "pkcs8", format: "pem" }) as string;
+const { privateKey, publicKey } = generateKeyPairSync("ec", {
+  namedCurve: "prime256v1",
+});
+const privatePem = privateKey.export({
+  type: "pkcs8",
+  format: "pem",
+}) as string;
 const publicPem = publicKey.export({ type: "spki", format: "pem" }) as string;
 const multibase = formatMultikey(
   "ES256",
   new Uint8Array(
-    (createPublicKey(publicPem).export({ type: "spki", format: "der" }) as Buffer).subarray(-65),
+    (
+      createPublicKey(publicPem).export({
+        type: "spki",
+        format: "der",
+      }) as Buffer
+    ).subarray(-65),
   ),
 );
 const onelinePrivate = privatePem.trim().replace(/\n/g, "\\n");
@@ -159,7 +189,9 @@ const onelinePrivate = privatePem.trim().replace(/\n/g, "\\n");
 let newHistoryB64: string | null = null;
 if (outgoing) {
   outgoing.supersededBy = `${did}#${kid}`;
-  newHistoryB64 = Buffer.from(JSON.stringify([...history, outgoing])).toString("base64");
+  newHistoryB64 = Buffer.from(JSON.stringify([...history, outgoing])).toString(
+    "base64",
+  );
 }
 
 const divider = "─".repeat(72);
@@ -176,12 +208,11 @@ ${divider}
 
 ${divider}
 
-The private key is printed once and written nowhere. Store it with your other secrets; it is
-the only thing that proves a receipt came from this store, and receipts already signed with it
-cannot be re-signed.
+Save your STOREFRONT_PRIVATE_KEY in a secure location and do not share it with anyone. This will be used to sign receipts from your storefront. 
 
-STOREFRONT_PUBLIC_MULTIBASE is optional — the server derives it from the private key and uses
-this only as a mismatch check.
+STOREFRONT_PUBLIC_MULTIBASE must be set with the private key. The server derives its own and
+refuses to start if yours disagrees -- that is what catches deploying the wrong PEM under the
+right KID, which otherwise looks healthy and silently breaks every past receipt.
 ${
   outgoing
     ? `\nOutgoing key ${fragmentOf(outgoing.id)} moves into keyHistory as retired: still trusted for

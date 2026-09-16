@@ -110,7 +110,7 @@ It prints the values to set as Fly secrets:
 | `STOREFRONT_DID` | `did:web:<your-domain>` |
 | `STOREFRONT_KID` | key fragment; must match the `verificationMethod` id |
 | `STOREFRONT_PRIVATE_KEY` | PEM, already `\n`-escaped onto one line |
-| `STOREFRONT_PUBLIC_MULTIBASE` | optional — the server derives it and uses this as a mismatch check |
+| `STOREFRONT_PUBLIC_MULTIBASE` | required — a tripwire: the server derives its own and refuses to start if yours disagrees |
 
 The private key is printed once and written nowhere. Store it with your other secrets: it is
 the only thing proving a receipt came from your store, and receipts already signed with it

@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,6 +52,16 @@ function setEnv(e: Partial<Record<(typeof ENV_KEYS)[number], string>>) {
   for (const k of ENV_KEYS) delete process.env[k];
   process.env.STOREFRONT_DID = DID;
   for (const [k, v] of Object.entries(e)) process.env[k] = v;
+  // STOREFRONT_PUBLIC_MULTIBASE is required alongside a private key. Derive it so each test
+  // states only what it is actually about; the mismatch cases pass it explicitly.
+  if (e.STOREFRONT_PRIVATE_KEY && !e.STOREFRONT_PUBLIC_MULTIBASE) {
+    process.env.STOREFRONT_PUBLIC_MULTIBASE = publicSpkiPemToMultibase(
+      createPublicKey(createPrivateKey(e.STOREFRONT_PRIVATE_KEY)).export({
+        type: "spki",
+        format: "pem",
+      }) as string,
+    );
+  }
   resetStorefrontKeysCache();
 }
 
@@ -170,6 +180,20 @@ describe("getStorefrontKeys", () => {
       STOREFRONT_PUBLIC_MULTIBASE: other.multibase,
     });
     expect(() => getStorefrontKeys()).toThrow(/does not match/);
+  });
+
+  /**
+   * The tripwire only works if it is armed. Omitting it must fail loudly rather than fall
+   * back to the derived value -- the case it exists to catch (wrong PEM under the right kid)
+   * is otherwise silent and self-consistent.
+   */
+  test("PUBLIC_MULTIBASE omitted → throws, and names the expected value", () => {
+    const cur = p256();
+    setEnv({ STOREFRONT_PRIVATE_KEY: cur.privateKeyPem, STOREFRONT_KID: "x" });
+    delete process.env.STOREFRONT_PUBLIC_MULTIBASE;
+    resetStorefrontKeysCache();
+    expect(() => getStorefrontKeys()).toThrow(/STOREFRONT_PUBLIC_MULTIBASE is required/);
+    expect(() => getStorefrontKeys()).toThrow(new RegExp(cur.multibase));
   });
 });
 
