@@ -1,4 +1,4 @@
-/** Types aligned with diamonds.whereditgo.bazaar.* lexicons (v5). */
+/** Hand-maintained mirrors of the diamonds.whereditgo.bazaar.* lexicons in packages/shared. */
 
 import { repoDidFromAtUri } from "@/lib/atUri";
 
@@ -6,10 +6,6 @@ export type Money = { amount: number; currency: string };
 
 /** Which payment system settled a receipt, plus its opaque reference in that system. */
 export type Payment = { processor: string; ref: string };
-
-export type BazaarItemType =
-  | "diamonds.whereditgo.bazaar.catalog.item"
-  | "diamonds.whereditgo.bazaar.catalog.product";
 
 /**
  * An AT-URI + CID pointer to another record — mirrors `defs#ref`.
@@ -21,11 +17,6 @@ export type BazaarItemType =
 export type Ref = {
   uri: string;
   cid?: string;
-};
-
-export type TerritoryCoverage = {
-  scope: "worldwide" | "excluding" | "only";
-  territories?: string[];
 };
 
 /** diamonds.whereditgo.bazaar.catalog.item — a single sellable file or dispensable item. */
@@ -99,7 +90,6 @@ export type PurchaseReceipt = {
   merchantDid: string;
   storefrontSig: string;
   purchasedAt: string;
-  note?: string;
 };
 
 export type ActorMerchant = {
@@ -110,22 +100,6 @@ export type ActorMerchant = {
   avatarCid?: string;
   bannerCid?: string;
   createdAt: string;
-};
-
-/**
- * Merchant-side mirror of one non-current storefront key (a keyHistory entry of the
- * storefrontDid DID document). rkey = the bare kid fragment. See ADR 0013 / ADR 0014 / ADR 0015.
- */
-export type ActorStorefrontKeys = {
-  $type: "diamonds.whereditgo.bazaar.actor.storefrontKeys";
-  storefrontDid: string;
-  id: string;
-  type: "Multikey";
-  controller?: string;
-  publicKeyMultibase: string;
-  supersededBy: string;
-  revoked?: boolean;
-  syncedAt?: string;
 };
 
 export type CatalogItem = BazaarItem | Product;

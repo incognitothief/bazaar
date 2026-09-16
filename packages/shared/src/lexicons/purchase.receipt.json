@@ -67,10 +67,6 @@
           "purchasedAt": {
             "type": "string",
             "format": "datetime"
-          },
-          "note": {
-            "type": "string",
-            "maxLength": 512
           }
         }
       }
