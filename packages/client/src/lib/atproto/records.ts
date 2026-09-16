@@ -72,11 +72,6 @@ export async function createListing(
   return { uri: res.data.uri, cid: res.data.cid };
 }
 
-/** archived/superseded are permanent retirements -- a listing in either state never becomes sellable again, only a fresh listing (pointed at the same item) can replace it. */
-export function isTerminalListingStatus(status: Listing["status"]): boolean {
-  return status === "archived" || status === "superseded";
-}
-
 export async function deleteListing(
   agent: ATPRepoClient,
   uri: string,

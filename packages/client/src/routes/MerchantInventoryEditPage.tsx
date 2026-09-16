@@ -22,7 +22,6 @@ import {
   getCatalogItem,
   getRecordValue,
   getRecordValueWithCid,
-  isTerminalListingStatus,
   listCatalogProductRows,
   listListingRows,
   putCatalogItem,
@@ -230,8 +229,7 @@ function CatalogItemEditForm({
 
     const own = listings.find(
       (l) =>
-        l.listing.item.uri === uri &&
-        !isTerminalListingStatus(l.listing.status),
+        l.listing.item.uri === uri,
     );
     setListing(own?.listing ?? null);
     setListingUri(own?.uri ?? null);
@@ -240,8 +238,7 @@ function CatalogItemEditForm({
       ? listings.find(
           (l) =>
             l.listing.item.uri === parentProduct.uri &&
-            !l.listing.parentListing &&
-            !isTerminalListingStatus(l.listing.status),
+            !l.listing.parentListing,
         )
       : undefined;
 

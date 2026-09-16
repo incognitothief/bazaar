@@ -29,14 +29,12 @@ export type MerchantCatalogState = {
 /**
  * The listing that best represents an item's current state -- one per item
  * URI. A standalone listing (no parentListing) outranks a sold-under-product
- * child listing; a live/paused listing outranks an archived/superseded one;
- * ties break on newest. Child listings are included so an item that only
- * sells inside a product still shows a status (and can't be re-listed on top).
+ * child listing; ties break on newest. Child listings are included so an item
+ * that only sells inside a product still shows a status (and can't be
+ * re-listed on top).
  */
 function listingRank(r: ListingRow): number {
-  const terminal =
-    r.listing.status === "archived" || r.listing.status === "superseded";
-  return (terminal ? 0 : 4) + (r.listing.parentListing ? 0 : 2);
+  return r.listing.parentListing ? 0 : 1;
 }
 
 function indexPrimaryListings(rows: ListingRow[]): Record<string, ListingRow> {

@@ -57,7 +57,8 @@ export type Listing = {
   $type: "diamonds.whereditgo.bazaar.catalog.listing";
   item: Ref;
   price: Money;
-  status: "active" | "paused" | "soldOut" | "archived" | "superseded";
+  /** Retiring a listing deletes the record, so there is no terminal state. */
+  status: "active" | "paused";
   licenseGrant: Ref;
   /** Parent product listing AT-URI when this listing sells a member item individually. */
   parentListing?: string;

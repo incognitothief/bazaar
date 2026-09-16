@@ -118,9 +118,7 @@ export function MerchantItemCard({
                 List
               </Button>
             ) : null}
-            {listing &&
-            listing.status !== "archived" &&
-            listing.status !== "superseded" ? (
+            {listing ? (
               <button
                 type="button"
                 className={cn(

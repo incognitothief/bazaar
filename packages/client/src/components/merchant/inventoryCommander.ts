@@ -1,6 +1,5 @@
 import type { MerchantItemRow } from "@/hooks/useMerchantCatalog";
 import type { ListingRow } from "@/lib/atproto/records";
-import { isTerminalListingStatus } from "@/lib/atproto/records";
 
 /** Matrix axis A: which entities to show by listing state. */
 export type InventoryLiveFilter = "live" | "all";
@@ -67,13 +66,16 @@ export function isLive(listingRow: ListingRow | undefined): boolean {
   return listingRow?.listing.status === "active";
 }
 
-/** Has a listing that could still become sellable again (active or paused, not archived/superseded). */
+/**
+ * Has a listing at all. Every listing is sellable or re-activatable now --
+ * retiring one deletes the record rather than marking it terminal -- so this
+ * is just a presence check, kept as a named predicate because call sites read
+ * better for it.
+ */
 export function hasNonTerminalListing(
   listingRow: ListingRow | undefined,
 ): boolean {
-  return (
-    !!listingRow && !isTerminalListingStatus(listingRow.listing.status)
-  );
+  return !!listingRow;
 }
 
 /** item AT-URI -> the AT-URI of the catalog.product that contains it. An item is created via exactly one product, so this is unambiguous. */

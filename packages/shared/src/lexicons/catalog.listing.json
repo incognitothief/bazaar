@@ -25,11 +25,9 @@
             "type": "string",
             "knownValues": [
               "active",
-              "paused",
-              "soldOut",
-              "archived",
-              "superseded"
-            ]
+              "paused"
+            ],
+            "description": "Whether the listing is currently offered. Only these two states are produced: retiring a listing deletes the record rather than marking it."
           },
           "licenseGrant": {
             "$ref": "diamonds.whereditgo.bazaar.defs#ref",

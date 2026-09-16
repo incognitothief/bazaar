@@ -66,10 +66,6 @@ import type { Ref, LicenseTerms, Listing } from "@/types/lexicons";
 
 const titleFromFileName = (name: string) => name.replace(/\.[^./\\]+$/, "");
 
-function isTerminalStatus(s: Listing["status"]): boolean {
-  return s === "archived" || s === "superseded";
-}
-
 export function MerchantProductDetailPage() {
   const [searchParams] = useSearchParams();
   const uriParam = searchParams.get("uri")?.trim() ?? "";
@@ -169,21 +165,15 @@ export function MerchantProductDetailPage() {
     const rows = await listListingRows(p.merchantDid).catch(() => []);
     const primary = rows
       .filter((r) => r.listing.item.uri === uri && !r.listing.parentListing)
-      .sort((a, b) => {
-        const at = isTerminalStatus(a.listing.status) ? 1 : 0;
-        const bt = isTerminalStatus(b.listing.status) ? 1 : 0;
-        if (at !== bt) return at - bt;
-        return (
-          Date.parse(b.listing.createdAt) - Date.parse(a.listing.createdAt)
-        );
-      })[0];
-    const primaryActive =
-      primary && !isTerminalStatus(primary.listing.status) ? primary : null;
-    setListing(primaryActive?.listing ?? null);
-    setListingUri(primaryActive?.uri ?? null);
-    if (primaryActive?.listing.licenseGrant?.uri) {
+      .sort(
+        (a, b) =>
+          Date.parse(b.listing.createdAt) - Date.parse(a.listing.createdAt),
+      )[0];
+    setListing(primary?.listing ?? null);
+    setListingUri(primary?.uri ?? null);
+    if (primary?.listing.licenseGrant?.uri) {
       const lt = await getRecordValueWithCid<LicenseTerms>(
-        primaryActive.listing.licenseGrant.uri,
+        primary.listing.licenseGrant.uri,
       ).catch(() => null);
       setLicense(lt?.value ?? null);
       setLicenseCid(lt?.cid ?? null);
@@ -195,7 +185,6 @@ export function MerchantProductDetailPage() {
     const memberUris = new Set((p.items as Ref[]).map((r) => r.uri));
     const byItem: Record<string, Listing> = {};
     for (const r of rows) {
-      if (isTerminalStatus(r.listing.status)) continue;
       if (r.listing.item.uri === uri) continue;
       if (!memberUris.has(r.listing.item.uri)) continue;
       byItem[r.listing.item.uri] = r.listing;
@@ -622,7 +611,7 @@ export function MerchantProductDetailPage() {
             onClick: () => setDeleteTarget(uri),
             // A live listing blocks deletion server-side regardless; surfacing
             // it here saves the merchant a round trip into the dialog.
-            disabled: !!listing && !isTerminalStatus(listing.status),
+            disabled: !!listing,
             disabledHint: "Unlist this product before deleting it",
           },
         ]

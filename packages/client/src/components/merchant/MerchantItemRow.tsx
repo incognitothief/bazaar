@@ -168,7 +168,7 @@ export function MerchantItemRow({
           </Button>
         ) : null}
 
-        {listing && listing.status !== "archived" && listing.status !== "superseded" ? (
+        {listing ? (
           <button
             type="button"
             className={cn(buttonVariants({ variant: "ghost", size: "icon-xs" }))}

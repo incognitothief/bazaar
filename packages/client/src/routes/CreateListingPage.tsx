@@ -23,7 +23,6 @@ import {
   createListing,
   getCatalogProduct,
   hasCompletedSale,
-  isTerminalListingStatus,
   listCatalogItemRows,
   listCatalogProductRows,
   listLicensesWithStatus,
@@ -161,8 +160,7 @@ export function CreateListingPage() {
         for (const m of members) {
           const childRow = rows.find(
             (r) =>
-              r.listing.item.uri === m.uri &&
-              !isTerminalListingStatus(r.listing.status),
+              r.listing.item.uri === m.uri,
           );
           if (childRow) {
             attach[m.uri] = !childRow.listing.parentListing;
@@ -185,14 +183,12 @@ export function CreateListingPage() {
         ? rows.find(
             (r) =>
               r.listing.item.uri === parentUri &&
-              !r.listing.parentListing &&
-              !isTerminalListingStatus(r.listing.status),
+              !r.listing.parentListing,
           )
         : undefined;
       const own = rows.find(
         (r) =>
-          r.listing.item.uri === targetUri &&
-          !isTerminalListingStatus(r.listing.status),
+          r.listing.item.uri === targetUri,
       );
 
       if (own) {
@@ -228,8 +224,7 @@ export function CreateListingPage() {
     return listingRows.find(
       (r) =>
         r.listing.item.uri === parentProductUri &&
-        !r.listing.parentListing &&
-        !isTerminalListingStatus(r.listing.status),
+        !r.listing.parentListing,
     );
   }, [listingRows, parentProductUri]);
 
@@ -239,8 +234,7 @@ export function CreateListingPage() {
     if (!entity) return undefined;
     return listingRows.find(
       (r) =>
-        r.listing.item.uri === entity.uri &&
-        !isTerminalListingStatus(r.listing.status),
+        r.listing.item.uri === entity.uri,
     );
   }, [listingRows, entity]);
 
@@ -287,8 +281,7 @@ export function CreateListingPage() {
     (itemUri: string) =>
       listingRows.find(
         (r) =>
-          r.listing.item.uri === itemUri &&
-          !isTerminalListingStatus(r.listing.status),
+          r.listing.item.uri === itemUri,
       ),
     [listingRows],
   );
@@ -321,8 +314,7 @@ export function CreateListingPage() {
     (itemUri: string) =>
       listingRows.some(
         (r) =>
-          r.listing.item.uri === itemUri &&
-          !isTerminalListingStatus(r.listing.status),
+          r.listing.item.uri === itemUri,
       ),
     [listingRows],
   );

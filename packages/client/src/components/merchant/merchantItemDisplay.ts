@@ -55,11 +55,7 @@ export function listingStatusBadgeVariant(
   switch (status) {
     case "active":
       return "default";
-    case "soldOut":
-      return "destructive";
     case "paused":
-    case "archived":
-    case "superseded":
       return "secondary";
   }
 }
