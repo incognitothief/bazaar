@@ -1,8 +1,5 @@
+import { col } from "@bazaar/shared";
 import { getAgentForDid } from "./atproto/resolvePds";
-
-function lexiconNs(): string {
-  return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
-}
 
 /**
  * Resolve a storefront catalog AT-URI from a TID rkey by probing each
@@ -17,10 +14,9 @@ export async function resolveCatalogItemUriFromRkey(
   rkey: string,
 ): Promise<string | null> {
   if (!repoDid.startsWith("did:") || !rkey) return null;
-  const ns = lexiconNs();
   const collections = [
-    `${ns}.catalog.product`,
-    `${ns}.catalog.item`,
+    col("catalog.product"),
+    col("catalog.item"),
   ] as const;
   const agent = await getAgentForDid(repoDid);
   for (const collection of collections) {

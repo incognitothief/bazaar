@@ -1,10 +1,7 @@
+import { col } from "@bazaar/shared";
 import { AtUri } from "@atproto/syntax";
 import { getAgentForDid } from "./atproto/resolvePds";
 import { resolveCatalogItemUriFromRkey } from "./resolveCatalogItemUri";
-
-function lexiconNs(): string {
-  return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
-}
 
 export function getPublicWebOrigin(): string {
   const u =
@@ -70,7 +67,7 @@ async function getStorefrontOg(merchantDid: string): Promise<{
     const agent = await getAgentForDid(merchantDid);
     const res = await agent.com.atproto.repo.listRecords({
       repo: merchantDid,
-      collection: `${lexiconNs()}.actor.merchant`,
+      collection: col("actor.merchant"),
       limit: 1,
     });
     const row = res.data.records[0];

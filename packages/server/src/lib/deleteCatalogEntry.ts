@@ -1,4 +1,5 @@
 import type { Agent } from "@atproto/api";
+import { col } from "@bazaar/shared";
 import { AtUri } from "@atproto/syntax";
 import { DeleteObjectCommand, HeadObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { eq } from "drizzle-orm";
@@ -11,10 +12,6 @@ import {
   paymentFulfillment,
 } from "../db/schema";
 import { isS3NotFound } from "./r2/diagnostics";
-
-function lexiconNs(): string {
-  return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
-}
 
 /**
  * Permanent deletion of one storefront catalog entry: its PDS record(s), its
@@ -117,7 +114,7 @@ async function findBlockingListings(
   ownerDid: string,
   uris: Set<string>,
 ): Promise<DeletionBlocker[]> {
-  const collection = `${lexiconNs()}.catalog.listing`;
+  const collection = col("catalog.listing");
   const blockers: DeletionBlocker[] = [];
   let cursor: string | undefined;
 
@@ -174,8 +171,7 @@ export async function buildDeletionManifest(
     return { error: "not_owner", status: 404 };
   }
 
-  const ns = lexiconNs();
-  const isProduct = at.collection === `${ns}.catalog.product`;
+  const isProduct = at.collection === col("catalog.product");
 
   const pdsRecords: PdsRecordRef[] = [];
   const r2Objects: R2ObjectRef[] = [];

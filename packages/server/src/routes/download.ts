@@ -1,3 +1,4 @@
+import { col } from "@bazaar/shared";
 import { AtUri } from "@atproto/syntax";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -20,13 +21,9 @@ import {
   presignCachedProductPackage,
 } from "../lib/productZip";
 
-function lexiconNs(): string {
-  return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
-}
-
-const COL_RECEIPT = `${lexiconNs()}.purchase.receipt`;
-const COL_PRODUCT = `${lexiconNs()}.catalog.product`;
-const COL_ITEM = `${lexiconNs()}.catalog.item`;
+const COL_RECEIPT = col("purchase.receipt");
+const COL_PRODUCT = col("catalog.product");
+const COL_ITEM = col("catalog.item");
 
 type Ref = {
   uri: string;

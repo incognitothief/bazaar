@@ -4,10 +4,10 @@
 
 Bazaar — a self-hostable storefront for digital goods. Purchase records are written to
 the buyer's own PDS (ATProto Personal Data Server). Lexicon namespace
-`diamonds.whereditgo.bazaar`. Fixed: the client hardcodes these NSIDs, and the lexicon
-documents are served from this repo, so a deployment does not get its own namespace.
-(`LEXICON_NAMESPACE` still overrides the server's half — see the note in
-`packages/server/.env.example` before setting it.)
+`diamonds.whereditgo.bazaar` — fixed, not configurable (`BAZAAR_NS` in `@bazaar/shared`).
+The record types are defined and served by this repo, so a deployment with its own namespace
+would have to host its own lexicon documents, and its records would no longer be the same type
+as any other instance's.
 
 ## Layout
 

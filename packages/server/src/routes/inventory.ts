@@ -10,6 +10,7 @@ import {
   PutObjectCommand,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
+import { col } from "@bazaar/shared";
 import { AtUri } from "@atproto/syntax";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { TID } from "@atproto/common-web";
@@ -87,14 +88,6 @@ async function digestR2Body(
     byteSize,
     collected: collecting && chunks.length > 0 ? Buffer.concat(chunks) : null,
   };
-}
-
-function lexiconNs(): string {
-  return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
-}
-
-function col(suffix: string): string {
-  return `${lexiconNs()}.${suffix}`;
 }
 
 function loadR2():

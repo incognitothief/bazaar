@@ -8,6 +8,7 @@ import {
 } from "./oauth-scope";
 
 describe("oauth-scope", () => {
+  /** Saved only so the "canonical namespace" test can set it without leaking. */
   const savedNs = process.env.LEXICON_NAMESPACE;
   const savedExtra = process.env.BAZAAR_OAUTH_SCOPE_EXTRA;
 
@@ -43,12 +44,13 @@ describe("oauth-scope", () => {
     }
   });
 
-  test("respects LEXICON_NAMESPACE", () => {
+  /** The namespace is not configurable -- see BAZAAR_NS in @bazaar/shared. */
+  test("every scope is under the canonical namespace", () => {
     process.env.LEXICON_NAMESPACE = "com.example.bazaar";
-    const scopes = bazaarRepoOAuthScopes();
-    expect(scopes.some((x) => x.includes("com.example.bazaar.purchase.receipt"))).toBe(
-      true,
-    );
+    for (const scope of bazaarRepoOAuthScopes()) {
+      expect(scope.startsWith("repo:diamonds.whereditgo.bazaar.")).toBe(true);
+    }
+    expect(buildOAuthScopeString()).not.toContain("com.example.bazaar");
   });
 
   test("loopback client_id embeds repo scopes in query string", () => {
