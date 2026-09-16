@@ -34,6 +34,17 @@ import { fileURLToPath } from "node:url";
 import { formatMultikey } from "@atproto/crypto";
 
 const KEYS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "keys");
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** App name from fly.toml, so the printed command is paste-ready rather than a template. */
+function flyAppName(): string | null {
+  try {
+    const toml = readFileSync(join(REPO_ROOT, "fly.toml"), "utf8");
+    return toml.match(/^\s*app\s*=\s*["']([^"']+)["']/m)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
 
 type KeyStatus = "active" | "retired" | "revoked";
 
@@ -188,6 +199,29 @@ function historyBlock(files: { key: KeyFile }[]): string | null {
   return Buffer.from(JSON.stringify(entries)).toString("base64");
 }
 
+/**
+ * A single command, because these five are one identity -- deploying a new key without its
+ * matching STOREFRONT_KEY_HISTORY drops the old key from the DID document and every receipt it
+ * signed stops verifying. Values are single-quoted: the private key carries literal \n
+ * sequences that the server reflows, and quoting keeps the shell off them.
+ */
+function flySecretsCommand(active: KeyFile, history: string | null): string {
+  const app = flyAppName();
+  const values = [
+    `STOREFRONT_DID='${active.did}'`,
+    `STOREFRONT_KID='${active.kid}'`,
+    `STOREFRONT_PRIVATE_KEY='${
+      active.privateKeyPem ? active.privateKeyPem.trim().replace(/\n/g, "\\n") : "…"
+    }'`,
+    `STOREFRONT_PUBLIC_MULTIBASE='${active.publicKeyMultibase}'`,
+    ...(history ? [`STOREFRONT_KEY_HISTORY='${history}'`] : []),
+  ];
+  const body = values
+    .map((v, i) => `    ${v}${i === values.length - 1 ? "" : " \\"}`)
+    .join("\n");
+  return `  fly secrets set -a ${app ?? "<your-app>"} \\\n${body}`;
+}
+
 function printEnv(active: KeyFile, files: { key: KeyFile }[]): void {
   const history = historyBlock(files);
   const retired = files.filter((f) => f.key.status === "retired").length;
@@ -207,6 +241,12 @@ ${divider}
   STOREFRONT_PUBLIC_MULTIBASE=${active.publicKeyMultibase}${
     history ? `\n  STOREFRONT_KEY_HISTORY=${history}` : ""
   }
+
+${divider}
+
+Or paste this, which sets them together as one identity:
+
+${flySecretsCommand(active, history)}
 
 ${divider}
 
