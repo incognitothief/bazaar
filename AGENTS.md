@@ -3,11 +3,7 @@
 ## What this is
 
 Bazaar — a self-hostable storefront for digital goods. Purchase records are written to
-the buyer's own PDS (ATProto Personal Data Server). Lexicon namespace
-`diamonds.whereditgo.bazaar` — fixed, not configurable (`BAZAAR_NS` in `@bazaar/shared`).
-The record types are defined and served by this repo, so a deployment with its own namespace
-would have to host its own lexicon documents, and its records would no longer be the same type
-as any other instance's.
+the buyer's own PDS (ATProto Personal Data Server).
 
 ## Layout
 
@@ -16,12 +12,12 @@ packages/
   client/   React + Vite + TypeScript SPA
   server/   Bun + Hono API, SQLite (Drizzle) + Litestream → R2, Stripe fulfillment
   shared/   Lexicons (JSON), license templates, shared TS types
-  infra/    Pulumi — Cloudflare R2 buckets only, not app deployment
+  infra/    Pulumi — provisions Cloudflare R2 buckets
 docs/adr/   Canonical decision log
 Makefile    Canonical command surface (`make help`)
 ```
 
-Deployment is Fly.io (`fly.toml` / `fly.stg.toml`, `.github/workflows/deploy.yml`), not Pulumi.
+Deployment is Fly.io (`fly.toml` / `fly.stg.toml`, `.github/workflows/deploy.yml`).
 
 ## Rules
 
@@ -50,6 +46,5 @@ Deployment is Fly.io (`fly.toml` / `fly.stg.toml`, `.github/workflows/deploy.yml
 | `make fly-deploy` / `make fly-deploy-stg` | Fly deploy                                                                                   |
 | `make docker-build` / `make docker-run`   | Local production image                                                                       |
 
-No dedicated typecheck target. `packages/shared`'s build runs `tsc`; client (`vite build`) and
-server (`bun build`) do not type-check as part of their build. Run `npx tsc --noEmit -p .` inside
-a package directly if needed.
+Type-checking is manual: run `npx tsc --noEmit -p .` inside a package. Only
+`packages/shared` type-checks during its own build; `vite build` and `bun build` do not.

@@ -17,7 +17,7 @@ pulumi select prod
 
 ## Setting up Cloudflare account
 
-These are manual steps that need to be performed in the cloudfront dashboard
+These are manual steps that need to be performed in the Cloudflare dashboard
 
 - Make a cloudflare account
 - Create an API token for Workers R2 Storage:Edit
