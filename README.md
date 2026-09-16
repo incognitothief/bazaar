@@ -74,7 +74,7 @@ fly secrets set KEY=value -a <app>   # bazaar-g5nqca (prod) / bazaar-jwkvxw (sta
 At minimum:
 
 - `MERCHANT_DID` — store owner DID, required for `/api/merchant/*`
-- **Storefront signing identity — all four, from `./scripts/gen-did.sh` (see below)**:
+- **Storefront signing identity — from `make storefront-key` (see below)**:
   `STOREFRONT_DID`, `STOREFRONT_PRIVATE_KEY`, `STOREFRONT_KID`,
   `STOREFRONT_PUBLIC_MULTIBASE`. These build the DID document served at
   `/.well-known/did.json`, which is how anyone verifies a receipt your store issued. If they
@@ -90,35 +90,41 @@ At minimum:
 
 See `packages/server/.env.example` for the full list of server env vars.
 
-## Create a DID for the bazaar instance
+## Create the storefront identity
 
-Your storefront needs an identifier. It is a `did:web:` DID, which means it resolves to
-`https://<your-domain>/.well-known/did.json` — served by this app from the env vars below.
-So the domain in the DID must be the domain your store is reachable at.
+Your storefront is identified by a `did:web:` DID. AT Protocol resolves it by fetching
+`https://<your-domain>/.well-known/did.json`, which this app serves from the env vars below —
+so the domain in the DID must be the domain the store is reachable at.
 
 _run_
 
 ```bash
 npm i
-chmod 700 scripts/gen-did.sh
-./scripts/gen-did.sh
+make storefront-key DOMAIN=store.example.com
 ```
 
-The script writes `scripts/service-{private,public}.pem` and prints the values to set:
+It prints the values to set as Fly secrets:
 
-| Printed as | Set as | Notes |
-| --- | --- | --- |
-| `STOREFRONT_DID` | Fly secret | `did:web:<your-domain>` |
-| contents of `service-private.pem` | `STOREFRONT_PRIVATE_KEY` | PEM, `\n`-escaped onto one line |
-| `STOREFRONT_KID` | Fly secret | must match the `verificationMethod` fragment |
-| `STOREFRONT_PUBLIC_MULTIBASE` | Fly secret | derived from the private key if omitted |
+| Variable | Notes |
+| --- | --- |
+| `STOREFRONT_DID` | `did:web:<your-domain>` |
+| `STOREFRONT_KID` | key fragment; must match the `verificationMethod` id |
+| `STOREFRONT_PRIVATE_KEY` | PEM, already `\n`-escaped onto one line |
+| `STOREFRONT_PUBLIC_MULTIBASE` | optional — the server derives it and uses this as a mismatch check |
 
-Keep `service-private.pem` somewhere secure and out of the repo. It is the only thing that
-proves receipts came from your store; losing it means every receipt you have already issued
-becomes unverifiable, and there is no way to re-sign them.
+The private key is printed once and written nowhere. Store it with your other secrets: it is
+the only thing proving a receipt came from your store, and receipts already signed with it
+cannot be re-signed.
 
-Confirm it worked by fetching `https://<your-domain>/.well-known/did.json` — it should contain
-a `verificationMethod` entry whose fragment matches your `STOREFRONT_KID`.
+Confirm it worked by fetching `https://<your-domain>/.well-known/did.json` — it should list a
+`verificationMethod` whose fragment matches your `STOREFRONT_KID`.
+
+### Rotating the key
+
+Run the same command again with the current key in your environment. The outgoing key is
+appended to `STOREFRONT_KEY_HISTORY` as retired — still trusted for receipts it already
+signed — and you get a new `STOREFRONT_KID` / `STOREFRONT_PRIVATE_KEY` to deploy. To
+hard-revoke a key instead, add `"revoked": true` to its `keyHistory` entry.
 
 ## Setting up OAuth
 

@@ -109,10 +109,9 @@ db-migrate: ## Apply Drizzle migrations
 .PHONY: ci
 ci: install-ci lexicons-validate build test ## Run the same checks as .github/workflows/test.yml
 
-.PHONY: gen-did
-gen-did: ## Generate service keys and DID snippets (scripts/gen-did.sh)
-	chmod 700 scripts/gen-did.sh
-	./scripts/gen-did.sh
+.PHONY: storefront-key
+storefront-key: ## Generate (or rotate) the storefront signing key: make storefront-key DOMAIN=store.example.com
+	npx tsx scripts/gen-storefront-key.ts $(DOMAIN)
 
 .PHONY: tunnel
 tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<printed url>

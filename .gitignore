@@ -14,5 +14,3 @@ dist
 Pulumi.*.yaml
 !Pulumi.yaml
 *.pem
-# rotate-did.sh keeps timestamped backups of the outgoing keypair
-*.pem.*.bak
