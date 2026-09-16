@@ -93,41 +93,58 @@ See `packages/server/.env.example` for the full list of server env vars.
 ## Create the storefront identity
 
 Your storefront is identified by a `did:web:` DID. AT Protocol resolves it by fetching
-`https://<your-domain>/.well-known/did.json`, which this app serves from the env vars below —
-so the domain in the DID must be the domain the store is reachable at.
-
-_run_
+`https://<your-domain>/.well-known/did.json`, which this app serves — so the domain in the DID
+must be the domain the store is reachable at.
 
 ```bash
 npm i
 make storefront-key DOMAIN=store.example.com
 ```
 
-`DOMAIN` is the address your store is reachable at. Pasting the URL straight from your browser
-works — `https://store.example.com/` and `store.example.com` are read the same way.
+`DOMAIN` is the address your store is reachable at; pasting the URL straight from your browser
+works. This writes a key file under `keys/` and prints the secrets to set:
 
-It prints the values to set as Fly secrets:
+```
+fly secrets set -a <app> \
+  STOREFRONT_DID=… STOREFRONT_KID=… STOREFRONT_PRIVATE_KEY=… STOREFRONT_PUBLIC_MULTIBASE=…
+```
 
-| Variable | Notes |
-| --- | --- |
-| `STOREFRONT_DID` | `did:web:<your-domain>` |
-| `STOREFRONT_KID` | key fragment; must match the `verificationMethod` id |
-| `STOREFRONT_PRIVATE_KEY` | PEM, already `\n`-escaped onto one line |
-| `STOREFRONT_PUBLIC_MULTIBASE` | required — a tripwire: the server derives its own and refuses to start if yours disagrees |
-
-The private key is printed once and written nowhere. Store it with your other secrets: it is
-the only thing proving a receipt came from your store, and receipts already signed with it
-cannot be re-signed.
+**Set them in one command.** Applying them separately leaves a window where the deployment has
+part of an identity, and receipts signed in it will not verify.
 
 Confirm it worked by fetching `https://<your-domain>/.well-known/did.json` — it should list a
 `verificationMethod` whose fragment matches your `STOREFRONT_KID`.
 
+### Your key files
+
+`keys/` holds one file per key. **Keep them.** They are what lets a later rotation rebuild
+`STOREFRONT_KEY_HISTORY`; without them you cannot prove past receipts came from your store.
+
+They contain private keys in plain text. They are gitignored and excluded from Docker builds,
+but keep them out of shared folders and backups, and delete any you are sure you no longer need.
+
+Re-running `make storefront-key` with key files present re-prints the secrets without
+generating anything — use it when setting up a new deployment from the same identity.
+
 ### Rotating the key
 
-Run the same command again with the current key in your environment. The outgoing key is
-appended to `STOREFRONT_KEY_HISTORY` as retired — still trusted for receipts it already
-signed — and you get a new `STOREFRONT_KID` / `STOREFRONT_PRIVATE_KEY` to deploy. To
-hard-revoke a key instead, add `"revoked": true` to its `keyHistory` entry.
+```bash
+make storefront-key-rotate
+```
+
+A new key becomes active; the old one is marked **retired** — still listed in the DID document
+and still trusted for receipts it already signed. You get an updated block including
+`STOREFRONT_KEY_HISTORY`; set all of it together.
+
+### Revoking a key
+
+```bash
+make storefront-key-revoke KID=storefront-key-2026-09-16
+```
+
+Use this when a key **leaked**, not when rotating on schedule. A revoked key is dropped from the
+DID document, and receipts naming it are rejected outright — including ones that were signed
+legitimately before the leak. Rotate first; the active key cannot be revoked.
 
 ## Setting up OAuth
 

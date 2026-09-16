@@ -110,8 +110,16 @@ db-migrate: ## Apply Drizzle migrations
 ci: install-ci lexicons-validate build test ## Run the same checks as .github/workflows/test.yml
 
 .PHONY: storefront-key
-storefront-key: ## Generate (or rotate) the storefront signing key: make storefront-key DOMAIN=store.example.com (a full URL is fine)
+storefront-key: ## Print the storefront secrets to set; first run needs DOMAIN=store.example.com
 	npx tsx scripts/gen-storefront-key.ts $(DOMAIN)
+
+.PHONY: storefront-key-rotate
+storefront-key-rotate: ## Replace the signing key; the old one is retired, still trusted for past receipts
+	npx tsx scripts/gen-storefront-key.ts --rotate
+
+.PHONY: storefront-key-revoke
+storefront-key-revoke: ## Disavow a retired key: make storefront-key-revoke KID=storefront-key-2026-09-16
+	npx tsx scripts/gen-storefront-key.ts --revoke $(KID)
 
 .PHONY: tunnel
 tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<printed url>

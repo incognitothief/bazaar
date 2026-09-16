@@ -1,37 +1,57 @@
 /**
- * Generate a storefront signing key and print the STOREFRONT_* block to set.
+ * Manage the storefront signing key.
  *
- *   npx tsx scripts/gen-storefront-key.ts <your-store-address>
+ *   npx tsx scripts/gen-storefront-key.ts <your-store-address>   first key
+ *   npx tsx scripts/gen-storefront-key.ts                        re-print the env block
+ *   npx tsx scripts/gen-storefront-key.ts --rotate               new key, old one retired
+ *   npx tsx scripts/gen-storefront-key.ts --revoke <kid>         disavow a key
  *
- * The storefront identity is always did:web. AT Protocol resolves did:web by fetching
- * https://<domain>/.well-known/did.json, which this app serves from the env vars below, so the
- * domain in the DID must be the domain the store is reachable at. (did:plc is the other
- * resolution method AT Protocol supports; it is for accounts on a PDS, not for a self-hosted
- * storefront identity, so nothing here produces one.)
+ * State lives in key files under keys/, one per key, not in environment variables. Every run
+ * prints the full block of secrets to set; the files are what let a later run rebuild it.
  *
- * Run it again to rotate. If a current key is in the environment, the outgoing key is appended
- * to STOREFRONT_KEY_HISTORY as retired -- still trusted for receipts it already signed. To
- * hard-revoke instead, add "revoked": true to its entry by hand.
+ * The storefront identity is always did:web. AT Protocol resolves it by fetching
+ * https://<domain>/.well-known/did.json, which this app serves from those secrets, so the
+ * domain must be the one the store is reachable at. (did:plc is AT Protocol's other resolution
+ * method; it is for accounts on a PDS, not for a self-hosted storefront identity.)
  *
- * Nothing is written to disk. The private key is printed once, in the one-line form the env
- * var takes; store it wherever your secrets live.
+ * Retired vs revoked, which is the distinction the key files exist to record:
+ *   active   the key being signed with. Exactly one, and the only entry in assertionMethod.
+ *   retired  rotated away from, still trusted for receipts it already signed. Stays in
+ *            verificationMethod.
+ *   revoked  disavowed. Dropped from verificationMethod, and receipts naming it are rejected
+ *            outright -- use it when a key leaked, not when you rotated on schedule.
  */
 import { createPublicKey, generateKeyPairSync } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { formatMultikey } from "@atproto/crypto";
 
-type HistoryEntry = {
-  id: string;
-  type: "Multikey";
+const KEYS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "keys");
+
+type KeyStatus = "active" | "retired" | "revoked";
+
+type KeyFile = {
+  did: string;
+  kid: string;
+  created: string;
+  status: KeyStatus;
   publicKeyMultibase: string;
-  supersededBy: string;
-  revoked?: boolean;
+  /** Present while you still hold it. Only the active key ever needs one. */
+  privateKeyPem?: string;
+  /** Full DID URL of the key that replaced this one; null while active. */
+  supersededBy: string | null;
 };
 
+function fail(message: string): never {
+  console.error(message);
+  process.exit(1);
+}
+
 /**
- * A PEM out of .env or a Fly secret is often mangled: literal \n, CRLF, wrapping quotes, or the
- * whole key on one line. Reflow it into something createPublicKey accepts; a well-formed PEM
- * passes through unchanged. Mirrors normalizeStorefrontPrivateKey in
- * packages/server/src/lib/atproto/sign.ts -- keep the two in step.
+ * A PEM out of a file or a secret store is often mangled: literal \n, CRLF, wrapping quotes, or
+ * the whole key on one line. Reflow it into something createPublicKey accepts. Mirrors
+ * normalizeStorefrontPrivateKey in packages/server/src/lib/atproto/sign.ts -- keep them in step.
  */
 function normalizePem(raw: string): string {
   const t = raw
@@ -52,7 +72,7 @@ function normalizePem(raw: string): string {
 }
 
 /** Trailing 65 bytes of an SPKI DER export are the uncompressed point: 0x04 || X(32) || Y(32). */
-function multibaseOf(pem: string): string {
+function multibaseOfPem(pem: string): string {
   const der = createPublicKey(normalizePem(pem)).export({
     type: "spki",
     format: "der",
@@ -60,27 +80,19 @@ function multibaseOf(pem: string): string {
   return formatMultikey("ES256", new Uint8Array(der.subarray(-65)));
 }
 
-function fail(message: string): never {
-  console.error(message);
-  process.exit(1);
-}
-
 /**
- * Pull a hostname out of whatever the operator pasted.
- *
- * People copy out of a browser bar, so accept the shapes that come with it -- scheme, trailing
- * slash, a path, a did:web: prefix, stray whitespace or quotes -- and keep the host. Ports are
- * refused rather than dropped: did:web encodes them (`did:web:host%3A3000`), and silently
- * removing one yields a DID that resolves somewhere the store is not.
+ * Pull a hostname out of whatever the operator pasted. People copy out of a browser bar, so
+ * accept scheme, trailing slash, path, a did:web: prefix, quotes and stray whitespace. Ports are
+ * refused rather than dropped: did:web encodes them (did:web:host%3A3000), and removing one
+ * silently yields a DID that resolves somewhere the store is not.
  */
 function hostnameFrom(raw: string): string {
   let v = raw.trim().replace(/^["']|["']$/g, "");
   v = v.replace(/^did:web:/i, "");
   v = v.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
-  v = v.replace(/^[^/@]*@/, ""); // user:pass@
-  v = v.split(/[/?#]/)[0]; // path, query, fragment
+  v = v.replace(/^[^/@]*@/, "");
+  v = v.split(/[/?#]/)[0];
   v = v.replace(/\.+$/, "").toLowerCase();
-
   if (/:\d+$/.test(v) || v.includes("%3a")) {
     fail(
       `gen-storefront-key: "${raw.trim()}" includes a port.\n` +
@@ -90,156 +102,215 @@ function hostnameFrom(raw: string): string {
   return v;
 }
 
-/**
- * The argument is a hostname; the did:web: prefix is ours to add. On a re-run the DID is
- * already in the environment, so no argument is needed.
- */
-function resolveDid(): string {
-  const arg = process.argv[2]?.trim();
-  if (arg) {
-    const host = hostnameFrom(arg);
-    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(host)) {
-      fail(
-        `gen-storefront-key: could not read a domain from "${arg}".\n` +
-          "Pass the address your store is reachable at, e.g. store.example.com\n" +
-          "(pasting https://store.example.com/ is fine).",
-      );
-    }
-    return `did:web:${host}`;
-  }
-  const env = process.env.STOREFRONT_DID?.trim();
-  if (env?.startsWith("did:web:")) return env;
-  if (env) fail(`gen-storefront-key: STOREFRONT_DID="${env}" is not did:web.`);
-  return fail(
-    "gen-storefront-key: pass the address your store is reachable at.\n" +
-      "  npx tsx scripts/gen-storefront-key.ts store.example.com\n" +
-      "That becomes did:web:store.example.com, resolved at\n" +
-      "https://store.example.com/.well-known/did.json.",
-  );
-}
-
-function parseHistory(raw: string | undefined): HistoryEntry[] {
-  const t = raw?.trim();
-  if (!t || t.includes("PLACEHOLDER")) return [];
-  const json = t.startsWith("[")
-    ? t
-    : Buffer.from(t, "base64").toString("utf8");
-  const arr = JSON.parse(json);
-  if (!Array.isArray(arr))
-    throw new Error("STOREFRONT_KEY_HISTORY is not a JSON array");
-  return arr as HistoryEntry[];
-}
-
-const did = resolveDid();
-const fragmentOf = (v: string) =>
-  v.includes("#") ? v.slice(v.indexOf("#") + 1) : v;
-
-// A current kid in the environment makes this a rotation rather than a first key.
-const currentKid = process.env.STOREFRONT_KID?.trim();
-const currentPrivate = process.env.STOREFRONT_PRIVATE_KEY?.trim();
-const currentMultibaseEnv = process.env.STOREFRONT_PUBLIC_MULTIBASE?.trim();
-
-let outgoing: HistoryEntry | null = null;
-if (currentKid) {
-  // Prefer deriving from the current private key. STOREFRONT_PUBLIC_MULTIBASE should be set
-  // too, but the PEM is the authority -- if the two ever disagree the server refuses to start,
-  // so rotating off the key actually in use is the safer behaviour.
-  let currentMultibase = currentMultibaseEnv;
-  if (currentPrivate && !currentPrivate.includes("PLACEHOLDER")) {
+function readKeyFiles(): { path: string; key: KeyFile }[] {
+  if (!existsSync(KEYS_DIR)) return [];
+  const out: { path: string; key: KeyFile }[] = [];
+  for (const name of readdirSync(KEYS_DIR).sort()) {
+    if (!name.endsWith(".json")) continue;
+    const path = join(KEYS_DIR, name);
+    let key: KeyFile;
     try {
-      currentMultibase = multibaseOf(currentPrivate);
-    } catch {
-      /* fall back to the env value below */
+      key = JSON.parse(readFileSync(path, "utf8")) as KeyFile;
+    } catch (e) {
+      fail(`gen-storefront-key: ${name} is not valid JSON (${(e as Error).message}).`);
     }
+    for (const field of ["did", "kid", "created", "status", "publicKeyMultibase"] as const) {
+      if (typeof key[field] !== "string" || !key[field]) {
+        fail(`gen-storefront-key: ${name} is missing "${field}".`);
+      }
+    }
+    if (!["active", "retired", "revoked"].includes(key.status)) {
+      fail(`gen-storefront-key: ${name} has status "${key.status}" (expected active/retired/revoked).`);
+    }
+    out.push({ path, key });
   }
-  if (!currentMultibase) {
+  out.sort((a, b) => a.key.created.localeCompare(b.key.created));
+  return out;
+}
+
+function fileNameFor(created: string): string {
+  return `storefront-${created.replace(/[:.]/g, "-")}.json`;
+}
+
+function write(path: string, key: KeyFile): void {
+  mkdirSync(KEYS_DIR, { recursive: true });
+  writeFileSync(path, `${JSON.stringify(key, null, 2)}\n`, { mode: 0o600 });
+}
+
+/** STOREFRONT_KEY_HISTORY: every non-active key, oldest first, chained by supersededBy. */
+function historyBlock(files: { key: KeyFile }[]): string | null {
+  const entries = files
+    .filter((f) => f.key.status !== "active")
+    .map((f) => ({
+      id: `${f.key.did}#${f.key.kid}`,
+      type: "Multikey" as const,
+      publicKeyMultibase: f.key.publicKeyMultibase,
+      supersededBy: f.key.supersededBy ?? "",
+      ...(f.key.status === "revoked" ? { revoked: true } : {}),
+    }));
+  if (!entries.length) return null;
+  const missing = entries.filter((e) => !e.supersededBy);
+  if (missing.length) {
     fail(
-      `gen-storefront-key: STOREFRONT_KID is set (${currentKid}) but the outgoing key's public\n` +
-        "multibase could not be determined. Set STOREFRONT_PRIVATE_KEY to the current key, or\n" +
-        "STOREFRONT_PUBLIC_MULTIBASE to its public multibase, then re-run.",
+      `gen-storefront-key: ${missing.map((m) => m.id).join(", ")} is not active but has no\n` +
+        "supersededBy. Every non-active key must record which key replaced it.",
     );
   }
-  outgoing = {
-    id: currentKid.includes("#") ? currentKid : `${did}#${currentKid}`,
-    type: "Multikey",
-    publicKeyMultibase: currentMultibase,
-    supersededBy: "",
+  return Buffer.from(JSON.stringify(entries)).toString("base64");
+}
+
+function printEnv(active: KeyFile, files: { key: KeyFile }[]): void {
+  const history = historyBlock(files);
+  const retired = files.filter((f) => f.key.status === "retired").length;
+  const revoked = files.filter((f) => f.key.status === "revoked").length;
+  const divider = "─".repeat(72);
+  console.log(`
+Set these on your deployment
+${divider}
+
+  STOREFRONT_DID=${active.did}
+  STOREFRONT_KID=${active.kid}
+  STOREFRONT_PRIVATE_KEY=${
+    active.privateKeyPem
+      ? active.privateKeyPem.trim().replace(/\n/g, "\\n")
+      : "(not in the key file — see below)"
+  }
+  STOREFRONT_PUBLIC_MULTIBASE=${active.publicKeyMultibase}${
+    history ? `\n  STOREFRONT_KEY_HISTORY=${history}` : ""
+  }
+
+${divider}
+
+Set them together, in one command. Deploying a new key without its matching
+STOREFRONT_KEY_HISTORY drops the old key out of the DID document, and every receipt it signed
+stops verifying until you fix it.
+
+Keys: 1 active, ${retired} retired, ${revoked} revoked.
+
+Your key files are in keys/. Keep them — a later rotation rebuilds STOREFRONT_KEY_HISTORY from
+them, so losing them means losing the ability to prove past receipts were yours. They are
+gitignored, but they hold private keys in plain text: keep them out of shared folders and
+backups, and delete any you are certain you no longer need.
+
+After deploying, check https://${active.did.slice("did:web:".length)}/.well-known/did.json lists a
+verificationMethod whose fragment is ${active.kid}.
+`);
+}
+
+function newKey(did: string, taken: Set<string>): KeyFile {
+  const created = new Date().toISOString();
+  const day = created.slice(0, 10);
+  let kid = `storefront-key-${day}`;
+  if (taken.has(kid)) {
+    let n = 2;
+    while (taken.has(`storefront-key-${day}-${n}`)) n++;
+    kid = `storefront-key-${day}-${n}`;
+  }
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" }) as string;
+  return {
+    did,
+    kid,
+    created,
+    status: "active",
+    publicKeyMultibase: multibaseOfPem(publicKey.export({ type: "spki", format: "pem" }) as string),
+    privateKeyPem,
+    supersededBy: null,
   };
 }
 
-const history = parseHistory(process.env.STOREFRONT_KEY_HISTORY);
+// ─── main ────────────────────────────────────────────────────────────────────
 
-const today = new Date().toISOString().slice(0, 10);
-let kid = `storefront-key-${today}`;
-const taken = new Set(
-  [currentKid, ...history.map((h) => h.id)]
-    .filter(Boolean)
-    .map((v) => fragmentOf(v as string)),
-);
-if (taken.has(kid)) {
-  let n = 2;
-  while (taken.has(`storefront-key-${today}-${n}`)) n++;
-  kid = `storefront-key-${today}-${n}`;
+const args = process.argv.slice(2);
+const rotate = args.includes("--rotate");
+const revokeAt = args.indexOf("--revoke");
+const revokeKid = revokeAt === -1 ? null : args[revokeAt + 1];
+// revokeAt is -1 when --revoke is absent; guard it, or index 0 gets eaten as its value.
+const revokeValueAt = revokeAt === -1 ? -1 : revokeAt + 1;
+const positional = args.filter((a, i) => !a.startsWith("--") && i !== revokeValueAt);
+
+if (revokeAt !== -1 && !revokeKid) {
+  fail("gen-storefront-key: --revoke needs a kid, e.g. --revoke storefront-key-2026-09-16");
 }
 
-const { privateKey, publicKey } = generateKeyPairSync("ec", {
-  namedCurve: "prime256v1",
-});
-const privatePem = privateKey.export({
-  type: "pkcs8",
-  format: "pem",
-}) as string;
-const publicPem = publicKey.export({ type: "spki", format: "pem" }) as string;
-const multibase = formatMultikey(
-  "ES256",
-  new Uint8Array(
-    (
-      createPublicKey(publicPem).export({
-        type: "spki",
-        format: "der",
-      }) as Buffer
-    ).subarray(-65),
-  ),
-);
-const onelinePrivate = privatePem.trim().replace(/\n/g, "\\n");
+const files = readKeyFiles();
+const actives = files.filter((f) => f.key.status === "active");
 
-let newHistoryB64: string | null = null;
-if (outgoing) {
-  outgoing.supersededBy = `${did}#${kid}`;
-  newHistoryB64 = Buffer.from(JSON.stringify([...history, outgoing])).toString(
-    "base64",
+if (actives.length > 1) {
+  fail(
+    "gen-storefront-key: more than one key file is marked active:\n" +
+      actives.map((f) => `  ${f.key.kid}`).join("\n") +
+      "\nExactly one key signs at a time. Set the others to retired or revoked.",
   );
 }
 
-const divider = "─".repeat(72);
-console.log(`
-${outgoing ? "Storefront key rotation" : "Storefront signing key"} — set these
-${divider}
-
-  STOREFRONT_DID=${did}
-  STOREFRONT_KID=${kid}
-  STOREFRONT_PRIVATE_KEY=${onelinePrivate}
-  STOREFRONT_PUBLIC_MULTIBASE=${multibase}${
-    newHistoryB64 ? `\n  STOREFRONT_KEY_HISTORY=${newHistoryB64}` : ""
+if (revokeKid) {
+  const target = files.find((f) => f.key.kid === revokeKid);
+  if (!target) fail(`gen-storefront-key: no key file with kid "${revokeKid}" in keys/.`);
+  if (target.key.status === "active") {
+    fail(
+      `gen-storefront-key: ${revokeKid} is the active key. Rotate first (--rotate), then revoke it.`,
+    );
   }
-
-${divider}
-
-Save your STOREFRONT_PRIVATE_KEY in a secure location and do not share it with anyone. This will be used to sign receipts from your storefront. 
-
-STOREFRONT_PUBLIC_MULTIBASE must be set with the private key. The server derives its own and
-refuses to start if yours disagrees -- that is what catches deploying the wrong PEM under the
-right KID, which otherwise looks healthy and silently breaks every past receipt.
-${
-  outgoing
-    ? `\nOutgoing key ${fragmentOf(outgoing.id)} moves into keyHistory as retired: still trusted for
-receipts it already signed. To hard-revoke it instead, add "revoked": true to its entry.
-
-Decoded STOREFRONT_KEY_HISTORY:
-${JSON.stringify(JSON.parse(Buffer.from(newHistoryB64!, "base64").toString("utf8")), null, 2)}
-`
-    : ""
+  target.key.status = "revoked";
+  write(target.path, target.key);
+  console.log(`\nRevoked ${revokeKid}. Receipts naming it will now be rejected outright.`);
+  const active = actives[0];
+  if (!active) fail("gen-storefront-key: no active key to print an env block for.");
+  printEnv(active.key, files);
+  process.exit(0);
 }
-After deploying, check https://${did.slice("did:web:".length)}/.well-known/did.json lists a
-verificationMethod whose fragment is ${kid}.
-`);
+
+if (actives.length === 0) {
+  // First key. Needs a domain; there is nothing on disk to take one from.
+  const arg = positional[0];
+  if (!arg) {
+    fail(
+      "gen-storefront-key: no key files in keys/, so this is a first key — pass the address\n" +
+        "your store is reachable at.\n" +
+        "  npx tsx scripts/gen-storefront-key.ts store.example.com",
+    );
+  }
+  const host = hostnameFrom(arg);
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(host)) {
+    fail(
+      `gen-storefront-key: could not read a domain from "${arg}".\n` +
+        "Pass the address your store is reachable at, e.g. store.example.com\n" +
+        "(pasting https://store.example.com/ is fine).",
+    );
+  }
+  const key = newKey(`did:web:${host}`, new Set());
+  write(join(KEYS_DIR, fileNameFor(key.created)), key);
+  console.log(`\nWrote keys/${fileNameFor(key.created)}`);
+  printEnv(key, [{ key }]);
+  process.exit(0);
+}
+
+const active = actives[0];
+
+if (!rotate) {
+  // Default is to re-print, never to rotate: generating a key is what you do deliberately.
+  if (positional.length) {
+    console.error(
+      `gen-storefront-key: ignoring "${positional[0]}" — keys/ already has an active key, so the\n` +
+        `DID comes from it (${active.key.did}). Use --rotate to replace the key.\n`,
+    );
+  }
+  printEnv(active.key, files);
+  process.exit(0);
+}
+
+const taken = new Set(files.map((f) => f.key.kid));
+const next = newKey(active.key.did, taken);
+
+active.key.status = "retired";
+active.key.supersededBy = `${active.key.did}#${next.kid}`;
+write(active.path, active.key);
+write(join(KEYS_DIR, fileNameFor(next.created)), next);
+
+console.log(
+  `\nRotated ${active.key.kid} → ${next.kid}` +
+    `\n  retired keys/${active.path.split("/").pop()}` +
+    `\n  wrote   keys/${fileNameFor(next.created)}`,
+);
+printEnv(next, [...files, { key: next }]);
