@@ -1,6 +1,7 @@
 {
   "name": "@bazaar/server",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "npx --yes bun@1.4.0 run --watch src/index.ts",

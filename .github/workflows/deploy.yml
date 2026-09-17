@@ -52,7 +52,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # Pinned to a SHA. @master moved with every upstream push, and this job holds
+      # FLY_API_TOKEN — whatever master pointed at would have run with the deploy
+      # credential. ed8efb3 is master as of 2026-04-08, i.e. the revision already
+      # running before this pin, so behaviour is unchanged. To upgrade, resolve the
+      # new ref to its SHA and update both occurrences in this file.
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master @ 2026-04-08
 
       - name: Fly deploy
         env:
@@ -94,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master @ 2026-04-08 (see production job)
 
       - name: Fly deploy (staging)
         env:

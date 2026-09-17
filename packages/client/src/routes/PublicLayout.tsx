@@ -2,8 +2,7 @@ import { useEffect } from "react";
 import { Link, Outlet, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PublicHeaderAccount } from "@/components/public/PublicHeaderAccount";
-
-const SOURCE_CODE_HREF = "https://github.com/incognitothief/bazaar";
+import { sourceCodeUrl } from "@/lib/sourceCodeUrl";
 
 export function PublicLayout() {
   const [search] = useSearchParams();
@@ -54,7 +53,7 @@ export function PublicLayout() {
           </Link>
           <span aria-hidden>·</span>
           <a
-            href={SOURCE_CODE_HREF}
+            href={sourceCodeUrl()}
             target="_blank"
             rel="noopener noreferrer"
             className="underline underline-offset-2 hover:text-foreground"

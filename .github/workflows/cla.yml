@@ -1,0 +1,69 @@
+# Contributor License Agreement check.
+#
+# Comments on a first-time contributor's PR asking them to sign CLA.md, records the
+# signature, and sets a status check. Signing is a one-off per contributor.
+#
+# SAFETY NOTE — this workflow uses `pull_request_target`, unlike every other workflow in
+# this repo, which deliberately uses `pull_request`. `pull_request_target` runs in the base
+# repo's context with a writable token, which is what lets the bot comment on and set a
+# status for pull requests opened from forks.
+#
+# That trigger is only dangerous when a workflow CHECKS OUT and EXECUTES the PR's code,
+# because untrusted code then runs with the repo's token and secrets. This workflow has no
+# checkout step and runs no code from the pull request — it reads PR metadata and writes a
+# signature file. Do not add `actions/checkout` here. If this workflow ever needs the PR's
+# contents, split it: keep this job metadata-only and do the code-reading work in a separate
+# `pull_request` workflow.
+#
+# Signatures are stored as JSON on the `cla-signatures` branch, which is created on first
+# use. The branch ruleset protects `main` only, so this workflow can write there.
+
+name: CLA
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write # writes signatures to the cla-signatures branch
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  cla:
+    name: CLA signed
+    # Run on PR events, or on the specific comment used to sign. Ignores all other comments.
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CLA signature
+        # Pinned to a SHA, not a tag: this job runs with contents: write under
+        # pull_request_target, so a moved tag would execute unreviewed code at the
+        # highest privilege in this repo. ca4a40a is v2.6.1 (2024-09-26). To upgrade,
+        # resolve the new tag to its SHA and replace both the ref and this comment.
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: https://github.com/incognitothief/bazaar/blob/main/CLA.md
+          path-to-signatures: signatures/version1/cla.json
+          branch: cla-signatures
+          # The maintainer does not sign their own CLA; bots cannot.
+          allowlist: incognitothief,dependabot[bot],renovate[bot]
+          custom-notsigned-prcomment: >-
+            Thanks for the pull request. Before it can be merged, please sign the
+            [Contributor License Agreement](https://github.com/incognitothief/bazaar/blob/main/CLA.md).
+            You keep the copyright in your work — the agreement grants Bazaar the right to
+            distribute it under AGPL-3.0 and, where appropriate, commercial terms.
+            To sign, post a comment on this PR with exactly:
+          custom-pr-sign-comment: I have read the CLA Document and I hereby sign the CLA
+          custom-allsigned-prcomment: All contributors have signed the CLA. Thank you.
