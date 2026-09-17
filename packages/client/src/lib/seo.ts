@@ -1,7 +1,10 @@
 
+/**
+ * Origin for absolute URLs in client-rendered meta. The server injects the
+ * authoritative canonical / og:url for crawlers (lib/spaHtmlMeta.ts, driven by
+ * PUBLIC_WEB_ORIGIN); this only backs the Helmet tags a JS-executing client sees.
+ */
 export function publicSiteOrigin(): string {
-  const u = import.meta.env.VITE_APP_URL?.trim();
-  if (u) return u.replace(/\/$/, "");
   if (typeof window !== "undefined") return window.location.origin;
   return "";
 }

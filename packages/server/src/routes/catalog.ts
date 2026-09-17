@@ -1,10 +1,17 @@
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
 import { catalogItems, catalogProducts, inventoryUploadObject } from "../db/schema";
 import { getAgentForDid } from "../lib/atproto/resolvePds";
-import { resolveCoverImages } from "../lib/productAssets";
+import {
+  resolveCoverArtObject,
+  resolveCoverImages,
+  resolveCoverProductUri,
+} from "../lib/productAssets";
+import { r2ConfigFromEnv } from "../lib/r2/env";
+import { getR2S3Client } from "../lib/r2/s3Client";
 
 /** Extensionless format tokens that count as audio for a product's track count. */
 const AUDIO_FORMATS = new Set([
@@ -124,6 +131,74 @@ export function createCatalogRouter(db: Db) {
         coverImages,
       },
     });
+  });
+
+  /**
+   * Public cover art for an /item/:rkey page, proxied from R2 through this
+   * origin. This is what `og:image` points at (lib/spaHtmlMeta.ts).
+   *
+   * Unauthenticated by design: link unfurlers have no session. It exposes only
+   * cover art -- a `catalogProductAssets` row whose role is "coverArt" -- and
+   * never reaches an inventory object by key, so it cannot serve the goods the
+   * store is selling.
+   *
+   * Proxying rather than redirecting to a presigned URL is deliberate: some
+   * unfurlers cache the redirect *target*, which would expire in an hour and
+   * reintroduce the broken-image problem this endpoint exists to fix.
+   */
+  r.get("/cover/:rkey", async (c) => {
+    const rkey = c.req.param("rkey");
+    const merchantDid = process.env.MERCHANT_DID?.trim() ?? "";
+    if (!rkey || !merchantDid.startsWith("did:")) {
+      return c.json({ error: "not_found" }, 404);
+    }
+
+    // Local ERP lookup, shared with the og:image builder so the two agree.
+    // The PDS probe spaHtmlMeta uses for titles would add a network round trip
+    // to every image fetch.
+    const coverProductUri = resolveCoverProductUri(db, merchantDid, rkey);
+    if (!coverProductUri) return c.json({ error: "not_found" }, 404);
+
+    const asset = resolveCoverArtObject(db, coverProductUri);
+    if (!asset) return c.json({ error: "not_found" }, 404);
+
+    const r2 = r2ConfigFromEnv();
+    if (!r2.ok) return c.json({ error: "not_found" }, 404);
+
+    const inm = c.req.header("if-none-match");
+    try {
+      const obj = await getR2S3Client(r2).send(
+        new GetObjectCommand({
+          Bucket: r2.bucket,
+          Key: asset.key,
+          ...(inm ? { IfNoneMatch: inm } : {}),
+        }),
+      );
+      if (!obj.Body) return c.json({ error: "not_found" }, 404);
+      const headers: Record<string, string> = {
+        "Content-Type": obj.ContentType ?? asset.contentType ?? "image/webp",
+        // Cover art can be replaced for a given rkey, so this is revalidated
+        // rather than immutable; the ETag makes that revalidation cheap.
+        "Cache-Control": "public, max-age=3600",
+      };
+      if (obj.ETag) headers.ETag = obj.ETag;
+      if (obj.ContentLength != null) {
+        headers["Content-Length"] = String(obj.ContentLength);
+      }
+      return new Response(obj.Body.transformToWebStream(), { headers });
+    } catch (err) {
+      // R2 answers a matching IfNoneMatch with 304, which the SDK raises.
+      const status = (err as { $metadata?: { httpStatusCode?: number } })
+        ?.$metadata?.httpStatusCode;
+      if (status === 304) {
+        return new Response(null, {
+          status: 304,
+          headers: inm ? { ETag: inm, "Cache-Control": "public, max-age=3600" } : {},
+        });
+      }
+      console.error("cover art fetch failed", asset.key, err);
+      return c.json({ error: "not_found" }, 404);
+    }
   });
 
   r.get("/products", async (c) => {

@@ -91,7 +91,7 @@ export function HomePage() {
         />
         <meta property="og:url" content={canonicalAbs} />
         <meta property="og:image" content={ogImage} />
-        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:card" content="summary" />
         <meta name="twitter:title" content={pageTitle} />
         <meta
           name="twitter:description"

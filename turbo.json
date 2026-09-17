@@ -11,9 +11,7 @@
       "passThroughEnv": [
         "APP_URL",
         "ATPROTO_OAUTH_REDIRECT_URI",
-        "PUBLIC_WEB_APP_URL",
-        "VITE_APP_URL",
-        "VITE_API_ORIGIN"
+        "PUBLIC_WEB_APP_URL"
       ]
     },
     "db:generate": {

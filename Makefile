@@ -13,11 +13,9 @@ else
   NIX_RUN :=
 endif
 
-# Optional Docker build-args (same names as Dockerfile / deploy workflow).
+# Optional Docker build-arg (same name as Dockerfile / deploy workflow).
 # Export from your shell or a local .env before `make docker-build`.
-VITE_APP_URL ?=
 VITE_MERCHANT_DID ?=
-VITE_API_ORIGIN ?=
 # Optional cloudflared quick-tunnel origin. When set, `make dev` exports it into
 # the client/server URL vars so you don't rewrite packages/*/.env on each new hostname.
 #   make tunnel
@@ -26,8 +24,9 @@ CLOUDFLARED_URL ?=
 
 # `make dev TUNNEL_URL=https://<sub>.trycloudflare.com` points the OAuth / SPA origins at a
 # public HTTPS tunnel for real-OAuth testing (see the "testing auth locally" runbook), instead
-# of hand-editing packages/{server,client}/.env. It overrides APP_URL, VITE_APP_URL and
-# VITE_API_ORIGIN for that run only. Leave unset for plain loopback dev.
+# of hand-editing packages/server/.env. It overrides the server's APP_URL, redirect URI and
+# PUBLIC_WEB_APP_URL for that run only. The client needs no tunnel config: it calls the API
+# on relative paths through the Vite proxy. Leave unset for plain loopback dev.
 TUNNEL_URL ?=
 override TUNNEL_URL := $(patsubst %/,%,$(TUNNEL_URL))
 
@@ -70,8 +69,6 @@ else
 	APP_URL="$(TUNNEL_URL)" \
 		ATPROTO_OAUTH_REDIRECT_URI="$(TUNNEL_URL)/api/atproto/callback" \
 		PUBLIC_WEB_APP_URL="$(TUNNEL_URL)" \
-		VITE_APP_URL="$(TUNNEL_URL)" \
-		VITE_API_ORIGIN="$(TUNNEL_URL)" \
 		npm run dev
 endif
 
@@ -125,9 +122,7 @@ tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<pri
 .PHONY: docker-build
 docker-build: ## Build the production Docker image locally
 	docker build \
-		--build-arg VITE_APP_URL="$(VITE_APP_URL)" \
 		--build-arg VITE_MERCHANT_DID="$(VITE_MERCHANT_DID)" \
-		--build-arg VITE_API_ORIGIN="$(VITE_API_ORIGIN)" \
 		-t "$(DOCKER_IMAGE)" \
 		.
 
@@ -136,19 +131,15 @@ docker-run: ## Run the local Docker image on port 3000 (volume: bazaar-data)
 	docker run --rm -p 3000:3000 -v bazaar-data:/data "$(DOCKER_IMAGE)"
 
 .PHONY: fly-deploy
-fly-deploy: ## Deploy to Fly production (requires FLY_APP, FLY_API_TOKEN and VITE_* env)
+fly-deploy: ## Deploy to Fly production (requires FLY_APP, FLY_API_TOKEN, VITE_MERCHANT_DID)
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
 	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.toml holds a placeholder, not your app name)"; exit 1; }
 	flyctl deploy --remote-only --app "$${FLY_APP}" \
-		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
-		--build-arg VITE_MERCHANT_DID="$${VITE_MERCHANT_DID:-}" \
-		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"
+		--build-arg VITE_MERCHANT_DID="$${VITE_MERCHANT_DID:-}"
 
 .PHONY: fly-deploy-stg
-fly-deploy-stg: ## Deploy to Fly staging (requires FLY_APP, FLY_API_TOKEN and VITE_* env)
+fly-deploy-stg: ## Deploy to Fly staging (requires FLY_APP, FLY_API_TOKEN, VITE_MERCHANT_DID)
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
 	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.stg.toml holds a placeholder, not your app name)"; exit 1; }
 	flyctl deploy --remote-only --config fly.stg.toml --app "$${FLY_APP}" \
-		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
-		--build-arg VITE_MERCHANT_DID="$${VITE_MERCHANT_DID:-}" \
-		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"
+		--build-arg VITE_MERCHANT_DID="$${VITE_MERCHANT_DID:-}"

@@ -37,8 +37,8 @@ GitHub repository secrets (Settings → Secrets and variables → Actions):
   `fly.stg.toml` carry placeholders so the repo does not name anyone's deployment; the real
   name is passed with `--app` at deploy time. Locally, set `FLY_APP` instead.
 - FLY_API_TOKEN — deploy token for the Fly org that owns the app (`fly tokens create deploy`, or https://fly.io/dashboard/personal/tokens ). Wrong/missing token → `unauthorized`.
-- VITE_APP_URL, VITE_MERCHANT_DID, VITE_API_ORIGIN — build-args baked
-  into the client bundle at image build time.
+- VITE_MERCHANT_DID — build-arg baked into the client bundle at image build time.
+  Must equal the MERCHANT_DID runtime secret below.
 
 The R2 credentials are **not** GitHub secrets — CI never touches R2. They are Fly runtime
 secrets; see the next section.

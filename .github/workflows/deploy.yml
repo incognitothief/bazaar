@@ -26,7 +26,7 @@
 # Secrets (environment or repository):
 #   FLY_API_TOKEN — deploy token for the Fly org that owns the app in fly.toml / fly.stg.toml (`fly tokens create deploy`).
 #   FLY_APP_NAME / FLY_APP_NAME_STG — the real app names (the fly*.toml files hold placeholders).
-#   VITE_* — passed as Docker build-args (see Fly deploy step).
+#   VITE_MERCHANT_DID — passed as a Docker build-arg (see Fly deploy step).
 #
 # On each Fly app, set the runtime secrets the server needs — including MERCHANT_DID (same value as
 # VITE_MERCHANT_DID in the client build) and the R2 set (R2_BUCKET_NAME, CF_ACCOUNT_ID,
@@ -65,17 +65,13 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
-          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
-          VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
           required=(
             FLY_API_TOKEN
             FLY_APP_NAME
-            VITE_APP_URL
             VITE_MERCHANT_DID
-            VITE_API_ORIGIN
           )
           missing=()
           for name in "${required[@]}"; do
@@ -107,15 +103,11 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
-          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
-          VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
           flyctl deploy --remote-only --no-cache --app "${FLY_APP_NAME}" \
-            --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
-            --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
-            --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"
+            --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}"
 
   deploy-staging:
     name: Deploy staging
@@ -140,17 +132,13 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME_STG: ${{ secrets.FLY_APP_NAME_STG }}
-          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
-          VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
           required=(
             FLY_API_TOKEN
             FLY_APP_NAME_STG
-            VITE_APP_URL
             VITE_MERCHANT_DID
-            VITE_API_ORIGIN
           )
           missing=()
           for name in "${required[@]}"; do
@@ -177,16 +165,12 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME_STG }}
-          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
-          VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
 
           flyctl deploy --remote-only --no-cache --config fly.stg.toml --app "${FLY_APP_NAME}" \
-            --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
-            --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
-            --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"
+            --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}"
 
   # Carried over from deploy-preflight.yml. No `environment:` here deliberately — this job
   # must not create a deployment or wait on an approval; it only explains a skip.

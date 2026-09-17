@@ -2,6 +2,8 @@ import { col } from "@bazaar/shared";
 import { AtUri } from "@atproto/syntax";
 import { getAgentForDid } from "./atproto/resolvePds";
 import { resolveCatalogItemUriFromRkey } from "./resolveCatalogItemUri";
+import { resolveCoverArtObject, resolveCoverProductUri } from "./productAssets";
+import type { Db } from "../db";
 
 export function getPublicWebOrigin(): string {
   const u =
@@ -112,6 +114,8 @@ function buildMetaBlock(opts: {
   canonicalUrl: string;
   ogType: "website" | "article";
   ogImage: string;
+  /** Cover art is square; a large card centre-crops it. Default to the square card. */
+  twitterCard?: "summary" | "summary_large_image";
 }): string {
   const tw = process.env.PUBLIC_TWITTER_SITE?.trim();
   const desc = trunc(opts.description, 300);
@@ -126,7 +130,7 @@ function buildMetaBlock(opts: {
     `<meta property="og:description" content="${escAttr(trunc(desc, 200))}" />`,
     `<meta property="og:url" content="${escAttr(opts.canonicalUrl)}" />`,
     `<meta property="og:image" content="${escAttr(opts.ogImage)}" />`,
-    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:card" content="${opts.twitterCard ?? "summary"}" />`,
     `<meta name="twitter:title" content="${escAttr(title)}" />`,
     `<meta name="twitter:description" content="${escAttr(trunc(desc, 200))}" />`,
     `<meta name="twitter:image" content="${escAttr(opts.ogImage)}" />`,
@@ -141,7 +145,10 @@ function buildMetaBlock(opts: {
 /**
  * Build HTML fragment to inject into index.html for OG / Twitter / canonical.
  */
-export async function buildSpaHeadFragment(pathname: string): Promise<string> {
+export async function buildSpaHeadFragment(
+  pathname: string,
+  db: Db,
+): Promise<string> {
   const origin = getPublicWebOrigin();
   const merchantDid = process.env.MERCHANT_DID?.trim() ?? "";
   const defImg = defaultOgImageUrl();
@@ -223,10 +230,16 @@ export async function buildSpaHeadFragment(pathname: string): Promise<string> {
     const canonicalPath = `/item/${encodeURIComponent(rkey)}/${encodeURIComponent(slugSeg)}`;
     const canonicalUrl = `${origin}${canonicalPath}`;
 
-    // Per-item OG art was only ever wired for the legacy artwork blob path;
-    // catalog.product cover art lives in R2 (catalogProductAssets) and has no
-    // public open-artwork endpoint yet, so these fall back to the site image.
-    const ogImage = defImg;
+    // Cover art is served through our own origin so the URL is stable and
+    // unauthenticated (catalog.ts's GET /cover/:rkey). A presigned R2 URL
+    // would expire in an hour and break every embed already in the wild.
+    const coverProductUri = resolveCoverProductUri(db, merchantDid, rkey);
+    const hasCoverArt = coverProductUri
+      ? resolveCoverArtObject(db, coverProductUri) != null
+      : false;
+    const ogImage = hasCoverArt
+      ? `${origin}/api/catalog/cover/${encodeURIComponent(rkey)}`
+      : defImg;
 
     return buildMetaBlock({
       title: `${titleText} · ${siteName()}`,
@@ -247,8 +260,12 @@ export async function buildSpaHeadFragment(pathname: string): Promise<string> {
   });
 }
 
-export async function injectSpaHead(html: string, pathname: string): Promise<string> {
-  const fragment = await buildSpaHeadFragment(pathname);
+export async function injectSpaHead(
+  html: string,
+  pathname: string,
+  db: Db,
+): Promise<string> {
+  const fragment = await buildSpaHeadFragment(pathname, db);
   const marker = "<!-- __BAZAAR_HEAD__ -->";
   if (html.includes(marker)) {
     return html.replace(marker, fragment);

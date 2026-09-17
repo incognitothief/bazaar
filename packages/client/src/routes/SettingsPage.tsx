@@ -13,6 +13,7 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { fetchActorAvatarByActor } from "@/lib/actorTypeahead";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
+import { publicSiteOrigin } from "@/lib/seo";
 import {
   createActorMerchant,
   listListingRows,
@@ -382,7 +383,7 @@ export function SettingsPage() {
           />
         </div>
         <p className="text-sm text-muted-foreground">
-          Storefront URL: {import.meta.env.VITE_APP_URL}
+          Storefront URL: {publicSiteOrigin()}
         </p>
         <button
           type="button"

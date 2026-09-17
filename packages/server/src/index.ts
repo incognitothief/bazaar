@@ -109,7 +109,7 @@ async function htmlWithMeta(
   const file = Bun.file(indexPath);
   if (!(await file.exists())) return null;
   let html = await file.text();
-  html = await injectSpaHead(html, pathname);
+  html = await injectSpaHead(html, pathname, db);
   return c.html(html);
 }
 

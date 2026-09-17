@@ -124,9 +124,9 @@ export function AtpSessionProvider({ children }: { children: ReactNode }) {
       ? "merchant"
       : "buyer";
     qs.set("role", role);
-    // Same-origin (Vite /api proxy in DEV). Do not fetch VITE_API_ORIGIN
-    // absolutely — a stale or dead trycloudflare host throws here and used
-    // to surface as "Could not reach your PDS".
+    // Always same-origin (Vite /api proxy in dev, Bun static in prod). An absolute
+    // cross-origin base here used to throw on a stale trycloudflare host and surface
+    // as "Could not reach your PDS".
     const url = browserApiUrl(`/api/atproto/signin?${qs.toString()}`);
 
     // The success path here is a redirect to the user's PDS — a real top-level
