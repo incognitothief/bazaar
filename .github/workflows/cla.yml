@@ -65,8 +65,11 @@ jobs:
           path-to-document: https://github.com/incognitothief/bazaar/blob/main/CLA.md
           path-to-signatures: signatures/version1/cla.json
           branch: cla-signatures
-          # The maintainer does not sign their own CLA; bots cannot.
-          allowlist: incognitothief,dependabot[bot],renovate[bot]
+          # The maintainer does not sign their own CLA; bots cannot. Both maintainer
+          # accounts are listed: PRs are opened by incognitothief, but commits are
+          # authored by purplestack (the git author email resolves to that account),
+          # and this action checks committers rather than the PR author.
+          allowlist: incognitothief,purplestack,dependabot[bot],renovate[bot]
           custom-notsigned-prcomment: >-
             Thanks for the pull request. Before it can be merged, please sign the
             [Contributor License Agreement](https://github.com/incognitothief/bazaar/blob/main/CLA.md).
