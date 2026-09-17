@@ -1,3 +1,20 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "gnikxela0328",
+      "id": 49323832,
+      "comment_id": 5721690726,
+      "created_at": "2026-09-17T21:48:27Z",
+      "repoId": 1199026197,
+      "pullRequestNo": 58
+    },
+    {
+      "name": "gnikxela0328",
+      "id": 49323832,
+      "comment_id": 5721737732,
+      "created_at": "2026-09-17T21:53:18Z",
+      "repoId": 1199026197,
+      "pullRequestNo": 58
+    }
+  ]
 }
