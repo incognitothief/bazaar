@@ -15,7 +15,6 @@ endif
 
 # Optional Docker build-args (same names as Dockerfile / deploy workflow).
 # Export from your shell or a local .env before `make docker-build`.
-VITE_ATPROTO_SERVICE ?=
 VITE_APP_URL ?=
 VITE_MERCHANT_DID ?=
 VITE_API_ORIGIN ?=
@@ -126,7 +125,6 @@ tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<pri
 .PHONY: docker-build
 docker-build: ## Build the production Docker image locally
 	docker build \
-		--build-arg VITE_ATPROTO_SERVICE="$(VITE_ATPROTO_SERVICE)" \
 		--build-arg VITE_APP_URL="$(VITE_APP_URL)" \
 		--build-arg VITE_MERCHANT_DID="$(VITE_MERCHANT_DID)" \
 		--build-arg VITE_API_ORIGIN="$(VITE_API_ORIGIN)" \
@@ -142,7 +140,6 @@ fly-deploy: ## Deploy to Fly production (requires FLY_APP, FLY_API_TOKEN and VIT
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
 	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.toml holds a placeholder, not your app name)"; exit 1; }
 	flyctl deploy --remote-only --app "$${FLY_APP}" \
-		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
 		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
 		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"
@@ -152,7 +149,6 @@ fly-deploy-stg: ## Deploy to Fly staging (requires FLY_APP, FLY_API_TOKEN and VI
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
 	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.stg.toml holds a placeholder, not your app name)"; exit 1; }
 	flyctl deploy --remote-only --config fly.stg.toml --app "$${FLY_APP}" \
-		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
 		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
 		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"

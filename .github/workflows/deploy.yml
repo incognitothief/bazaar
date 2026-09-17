@@ -58,7 +58,6 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
-          VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
@@ -74,7 +73,6 @@ jobs:
           fi
 
           flyctl deploy --remote-only --no-cache --app "${FLY_APP_NAME}" \
-            --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
             --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
             --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"
@@ -102,7 +100,6 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME_STG }}
-          VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
@@ -118,7 +115,6 @@ jobs:
           fi
 
           flyctl deploy --remote-only --no-cache --config fly.stg.toml --app "${FLY_APP_NAME}" \
-            --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
             --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
             --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"

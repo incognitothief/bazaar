@@ -7,10 +7,6 @@ const TTL_MS = 60 * 60 * 1000; // 1 hour — PDS migrations (and handle changes)
 const cache = new Map<string, { pds: string; handle: string; expiresAt: number }>();
 const handleCache = new Map<string, { did: string; expiresAt: number }>();
 
-function fallbackService(): string {
-  return process.env.ATPROTO_SERVICE ?? "https://bsky.social";
-}
-
 /**
  * Resolves the DID document once and caches both fields it yields — PDS
  * endpoint and (DID-doc-claimed, unverified) handle — since one resolution
@@ -38,7 +34,7 @@ async function resolveIdentity(
  *
  * `com.atproto.repo.getRecord` / `listRecords` are PDS-hosted endpoints: they
  * only return data for repos physically hosted on the queried server. A
- * single fixed "service" URL (e.g. the default ATPROTO_SERVICE) only works
+ * single fixed "service" URL only works
  * for repos that happen to live on that one host — every other DID 404s.
  * This does the real DID→PDS lookup atproto expects (resolving the DID
  * document), with an in-memory cache since PDS migrations are rare.
@@ -113,10 +109,18 @@ export async function resolveDidForHandle(handle: string): Promise<string | null
 
 /**
  * Unauthenticated Agent bound to the PDS that actually hosts `did`'s repo.
- * Falls back to ATPROTO_SERVICE (or https://bsky.social) if resolution fails,
- * so behavior never regresses below the previous fixed-host baseline.
+ *
+ * **Throws when resolution fails rather than falling back to a fixed host.**
+ * The former `ATPROTO_SERVICE` fallback queried a server that almost certainly
+ * did not hold the repo, so an unresolvable DID came back as an ordinary empty
+ * result instead of an error. Every caller here already treats a failed read as
+ * absence, so this only moves the failure one line earlier and drops a round
+ * trip to the wrong host.
  */
 export async function getAgentForDid(did: string): Promise<Agent> {
   const pds = await resolvePdsForDid(did);
-  return new Agent({ service: pds ?? fallbackService() });
+  if (!pds) {
+    throw new Error(`Could not resolve a PDS for ${did}`);
+  }
+  return new Agent({ service: pds });
 }

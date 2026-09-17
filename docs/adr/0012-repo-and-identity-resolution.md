@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted, partially superseded by [ADR 0021](0021-remove-fixed-host-fallback.md) (the `getAgentForDid` fallback clause in §1, the "Fallback host" constraint row, and the deferred `createProxyAgent` item — resolution failure now throws; the resolution machinery itself is unchanged).
 
 ## Date
 
@@ -140,12 +140,13 @@ equivalent to a real one when reasoning about what's actually protected.
 **Deferred**
 
 - ~~Migrating the six `createPublicAgent()` call sites above.~~ Done 2026-09-17.
-- One instance of this bug class remains: `createProxyAgent(did)` (`lib/atproto/session.ts`)
+- ~~One instance of this bug class remains: `createProxyAgent(did)` (`lib/atproto/session.ts`)
   serves its `getRecord`/`listRecords` reads from `createPublicAgent()`, i.e. the fixed host, while
-  its writes proxy through the server which resolves correctly. A merchant whose own PDS is not
-  `VITE_ATPROTO_SERVICE` therefore writes successfully and reads back empty. The fix is to resolve
-  on the per-call `input.repo` rather than on the session DID, since the `ATPRepoClient` interface
-  already declares those methods as returning promises.
+  its writes proxy through the server which resolves correctly.~~ **Closed 2026-09-17 by
+  [ADR 0021](0021-remove-fixed-host-fallback.md)**, which also found that this did not merely read
+  empty — it drove `SettingsPage` to mint a duplicate `actor.merchant` record on every save.
+  ADR 0021 removes the fallback entirely: resolution failure now throws, `createPublicAgent` is
+  deleted, and `ATPROTO_SERVICE` / `VITE_ATPROTO_SERVICE` no longer exist.
 - Item purchased / license name columns on the merchant payment activity page — mechanically
   possible now (receipt on buyer's PDS → item/license on the merchant's own repo) but real
   per-row I/O; not implemented.

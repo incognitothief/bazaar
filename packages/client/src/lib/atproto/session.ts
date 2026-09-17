@@ -1,9 +1,5 @@
-import { Agent } from "@atproto/api";
 import { browserApiUrl } from "@/lib/browserApi";
-
-export function createPublicAgent(): Agent {
-  return new Agent({ service: import.meta.env.VITE_ATPROTO_SERVICE });
-}
+import { agentForRepo } from "@/lib/atproto/pdsResolve";
 
 /**
  * Minimal interface for ATProto repo operations.
@@ -59,11 +55,14 @@ export interface ATPRepoClient {
 /**
  * Creates a proxy agent that routes authenticated write operations through the
  * server (which holds the DPoP keypair) and serves read operations directly
- * from the public ATProto endpoint.
+ * from the PDS that hosts the repo being read.
+ *
+ * Reads resolve per call on `input.repo` rather than on `did`: these methods
+ * accept any repo, not only the session's own, and `getRecord`/`listRecords`
+ * are PDS-hosted — they answer only for repos physically on the queried host
+ * (ADR 0012). Resolutions are cached for an hour in `pdsResolve.ts`.
  */
 export function createProxyAgent(did: string): ATPRepoClient {
-  const publicAgent = createPublicAgent();
-
   async function proxyPost<T>(path: string, body: unknown): Promise<T> {
     const res = await fetch(browserApiUrl(`/api/atproto${path}`), {
       method: "POST",
@@ -108,11 +107,15 @@ export function createProxyAgent(did: string): ATPRepoClient {
               rkey: input.rkey,
             });
           },
-          // Reads are public — no auth needed, go directly to ATProto
-          getRecord: (input) =>
-            publicAgent.com.atproto.repo.getRecord(input) as Promise<unknown>,
-          listRecords: (input) =>
-            publicAgent.com.atproto.repo.listRecords(input) as Promise<unknown>,
+          // Reads are public — no auth needed, go straight to the repo's own PDS
+          getRecord: async (input) =>
+            (await agentForRepo(input.repo)).com.atproto.repo.getRecord(
+              input,
+            ) as Promise<unknown>,
+          listRecords: async (input) =>
+            (await agentForRepo(input.repo)).com.atproto.repo.listRecords(
+              input,
+            ) as Promise<unknown>,
         },
       },
     },

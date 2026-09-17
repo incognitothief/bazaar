@@ -54,8 +54,7 @@ export async function resolveHandleForDid(did: string): Promise<string | null> {
  * Resolves a handle to its DID via the server's generic resolver — protocol-level
  * DNS/well-known lookup with bidirectional verification (see resolveDidForHandle
  * in packages/server/src/lib/atproto/resolvePds.ts), never a fixed AppView's
- * `resolveHandle` convenience endpoint. Use this instead of
- * `createPublicAgent().com.atproto.identity.resolveHandle(...)`.
+ * `resolveHandle` convenience endpoint.
  *
  * Also opportunistically warms the DID-keyed identity cache from the same
  * response, since the server already resolved pds+handle for that did too.
@@ -101,15 +100,23 @@ export async function resolveDidForHandle(handle: string): Promise<string | null
 /**
  * Unauthenticated Agent bound to the PDS that actually hosts `did`'s repo.
  *
- * `com.atproto.repo.getRecord` / `listRecords` only work against the specific
- * host that has the repo — there is no single endpoint that serves every
- * repo. `createPublicAgent()` points at one fixed default
- * (`VITE_ATPROTO_SERVICE`), which only happens to work for repos hosted
- * there. This resolves the real PDS per-DID via the server (cached), falling
- * back to that same default if resolution fails so behavior never regresses
- * below the previous fixed-host baseline.
+ * `com.atproto.repo.getRecord` / `listRecords` / `com.atproto.sync.getBlob`
+ * are PDS-hosted: they answer only for repos physically on the queried host.
+ * There is no endpoint that serves every repo, so the host has to be resolved
+ * per DID (cached for an hour above).
+ *
+ * **Throws when resolution fails rather than falling back to a fixed host.**
+ * The fixed-host fallback this replaces looked conservative and was not: it
+ * turned "we could not resolve this DID" into a lookup against a server that
+ * almost certainly does not have the repo, which comes back as an ordinary
+ * empty result. Callers then render "no such record" for data that exists.
+ * A thrown error is the honest outcome — callers that already treat failure
+ * as absence still do, without the misleading round-trip.
  */
 export async function agentForRepo(did: string): Promise<Agent> {
   const pds = await resolvePdsForDid(did);
-  return new Agent({ service: pds ?? import.meta.env.VITE_ATPROTO_SERVICE });
+  if (!pds) {
+    throw new Error(`Could not resolve a PDS for ${did}`);
+  }
+  return new Agent({ service: pds });
 }

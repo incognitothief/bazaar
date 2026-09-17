@@ -26,6 +26,7 @@ were originally backfilled from) is deprecated — new decisions get an ADR here
 | [0018](0018-remove-legacy-record-types.md) | Remove the legacy catalog record types | 2026-09-15 |
 | [0019](0019-single-receipt-signature-path.md) | One receipt signature path — fixed payload, no DER fallback | 2026-09-15 |
 | [0020](0020-remove-pulumi.md) | Remove Pulumi — provision R2 by hand | 2026-09-16 |
+| [0021](0021-remove-fixed-host-fallback.md) | Remove the fixed-host fallback — resolution failure is an error | 2026-09-17 |
 
 Alignment folders not given a dedicated ADR (covered by cross-refs above or out of scope):
 
