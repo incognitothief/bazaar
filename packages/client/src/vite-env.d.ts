@@ -18,6 +18,14 @@ interface ImportMetaEnv {
   readonly VITE_PUBLIC_OG_DEFAULT_IMAGE?: string;
   /** Twitter @handle for `twitter:site` (no @ required). */
   readonly VITE_PUBLIC_TWITTER_SITE?: string;
+  /**
+   * Repository the footer's "Source Code" link points at. Defaults to upstream Bazaar.
+   * Set this to your own repository if you modify Bazaar and run it as a network
+   * service — AGPL-3.0 section 13 requires offering users the source of *that* version.
+   */
+  readonly VITE_SOURCE_URL?: string;
+  /** Commit the build came from, so the source link resolves to the exact revision. */
+  readonly VITE_SOURCE_COMMIT?: string;
 }
 
 interface ImportMeta {
