@@ -12,7 +12,6 @@ packages/
   client/   React + Vite + TypeScript SPA
   server/   Bun + Hono API, SQLite (Drizzle) + Litestream → R2, Stripe fulfillment
   shared/   Lexicons (JSON), license templates, shared TS types
-  infra/    Pulumi — provisions Cloudflare R2 buckets
 docs/adr/   Canonical decision log
 Makefile    Canonical command surface (`make help`)
 ```
@@ -42,7 +41,6 @@ Deployment is Fly.io (`fly.toml` / `fly.stg.toml`, `.github/workflows/deploy.yml
 | `make lexicons-validate`                  | Validate lexicons                                                                            |
 | `make db-generate` / `make db-migrate`    | Drizzle migrations                                                                           |
 | `make ci`                                 | `install-ci` + `lexicons-validate` + `build` + `test` — matches `.github/workflows/test.yml` |
-| `make infra-preview` / `make infra-up`    | Pulumi, R2 buckets only (`PULUMI_STACK=prod\|stg`)                                           |
 | `make fly-deploy` / `make fly-deploy-stg` | Fly deploy                                                                                   |
 | `make docker-build` / `make docker-run`   | Local production image                                                                       |
 

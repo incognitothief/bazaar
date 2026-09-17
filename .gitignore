@@ -10,9 +10,6 @@ dist
 *.db
 *.db-*
 .DS_Store
-.pulumi
-Pulumi.*.yaml
-!Pulumi.yaml
 *.pem
 # storefront signing keys — private key material, never committed
 keys/

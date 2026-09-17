@@ -20,6 +20,12 @@ were originally backfilled from) is deprecated — new decisions get an ADR here
 | [0012](0012-repo-and-identity-resolution.md) | Repo and identity resolution (DID→PDS, handle↔DID) | 2026-08-17 |
 | [0013](0013-key-rotation-and-did-document-v2.md) | Key rotation and DID document v2 (`keyHistory`, env-sourced) | 2026-08-30 |
 | [0014](0014-merchant-side-key-mirror.md) | Merchant-side storefront key mirror (`actor.merchantKeys`) | 2026-08-30 |
+| [0015](0015-storefront-merchant-terminology-split.md) | storefront/merchant terminology split | 2026-09-07 |
+| [0016](0016-retire-purchase-consent.md) | Retire `purchase.consent` — freeze license terms on the receipt | 2026-09-11 |
+| [0017](0017-permanent-catalog-deletion.md) | Permanent catalog deletion | 2026-09-14 |
+| [0018](0018-remove-legacy-record-types.md) | Remove the legacy catalog record types | 2026-09-15 |
+| [0019](0019-single-receipt-signature-path.md) | One receipt signature path — fixed payload, no DER fallback | 2026-09-15 |
+| [0020](0020-remove-pulumi.md) | Remove Pulumi — provision R2 by hand | 2026-09-16 |
 
 Alignment folders not given a dedicated ADR (covered by cross-refs above or out of scope):
 

@@ -4,8 +4,6 @@ SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
 DOCKER_IMAGE ?= bazaar:local
-PULUMI_STACK ?= prod
-INFRA_DIR := packages/infra
 
 # When nix + flake.nix are present, npm installs run inside the pinned dev shell.
 NIX_AVAILABLE := $(shell command -v nix >/dev/null 2>&1 && test -f flake.nix && echo yes)
@@ -39,7 +37,7 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: shell
-shell: ## Enter Nix dev shell (node 22, bun, pulumi, flyctl, docker, …)
+shell: ## Enter Nix dev shell (node 22, bun, flyctl, docker, …)
 	@command -v nix >/dev/null 2>&1 || { echo "nix is not installed; see https://nixos.org/download.html"; exit 1; }
 	nix develop
 
@@ -138,14 +136,6 @@ docker-build: ## Build the production Docker image locally
 .PHONY: docker-run
 docker-run: ## Run the local Docker image on port 3000 (volume: bazaar-data)
 	docker run --rm -p 3000:3000 -v bazaar-data:/data "$(DOCKER_IMAGE)"
-
-.PHONY: infra-preview
-infra-preview: ## Pulumi preview (packages/infra; set PULUMI_STACK=prod|stg)
-	cd "$(INFRA_DIR)" && npm run preview -- --stack "$(PULUMI_STACK)"
-
-.PHONY: infra-up
-infra-up: ## Pulumi up (packages/infra; set PULUMI_STACK=prod|stg)
-	cd "$(INFRA_DIR)" && npm run up -- --stack "$(PULUMI_STACK)"
 
 .PHONY: fly-deploy
 fly-deploy: ## Deploy to Fly production (requires FLY_APP, FLY_API_TOKEN and VITE_* env)

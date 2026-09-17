@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted, partially superseded by [ADR 0020](0020-remove-pulumi.md) (§1, §2, §4, §5 — Pulumi removed; staging is still a separate Fly app + R2 bucket).
 
 ## Date
 

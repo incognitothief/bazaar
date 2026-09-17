@@ -1,4 +1,4 @@
-/** R2 / S3-compatible config (Cloudflare). Align bucket with packages/infra Pulumi `primary` output. */
+/** R2 / S3-compatible config (Cloudflare). `R2_BUCKET_NAME` must name a bucket that already exists. */
 export function r2ConfigFromEnv():
   | {
       ok: true;
