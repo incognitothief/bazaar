@@ -2,7 +2,7 @@
 set -e
 mkdir -p "$(dirname "$DATABASE_PATH")"
 
-if [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_SECRET_ACCESS_KEY:-}" ] && [ -n "${R2_ENDPOINT:-}" ]; then
+if [ -n "${R2_BUCKET_NAME:-}" ] && [ -n "${CF_ACCOUNT_ID:-}" ] && [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_SECRET_ACCESS_KEY:-}" ]; then
   # A blank volume (first boot, a lost volume, a renamed mount) has to be refilled from R2 BEFORE
   # the server starts: index.ts creates the DB file and runs migrate() against it, so once Bun is
   # up there is nothing left to restore into. Without this the app comes up healthy but empty,
@@ -23,5 +23,10 @@ if [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_SECRE
 
   exec litestream replicate -config /app/litestream.yml -exec "bun /app/dist/index.js"
 fi
+
+# Running unreplicated is a legitimate local-dev setup and a data-loss risk in production, and
+# the two are indistinguishable from inside the container -- so say so rather than start quietly.
+echo "litestream: R2 not configured (needs R2_BUCKET_NAME, CF_ACCOUNT_ID, R2_ACCESS_KEY_ID," \
+     "R2_SECRET_ACCESS_KEY) -- starting with NO database backups"
 
 exec bun /app/dist/index.js
