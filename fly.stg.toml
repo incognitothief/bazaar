@@ -20,7 +20,8 @@ primary_region = "iad"
   cpu_kind = "shared"
   memory = "512mb"
 
-# Create once, with the name below (staging only; do not reuse the prod volume):
+# Create once, with the name below. Same name as production's volume, which is fine: volumes
+# belong to an app, so this one is only ever reachable from the staging app.
 #   fly volumes create bazaar_data --region iad --size 1 -a <your-staging-app>
 [[mounts]]
   source = "bazaar_data"

@@ -23,7 +23,9 @@ primary_region = "ams"
   cpu_kind = "shared"
   memory = "2048mb"
 
-# Create once, with the name below: fly volumes create bazaar_data_prd --region ams --size 1 -a <your-app>
+# Create once, with the name below: fly volumes create bazaar_data --region ams --size 1 -a <your-app>
+# Volumes are scoped to an app, so this is a different volume from the staging one that shares
+# its name -- there is no way for the two to collide.
 [[mounts]]
-  source = "bazaar_data_prd"
+  source = "bazaar_data"
   destination = "/data"
