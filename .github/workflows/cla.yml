@@ -15,8 +15,13 @@
 # contents, split it: keep this job metadata-only and do the code-reading work in a separate
 # `pull_request` workflow.
 #
-# Signatures are stored as JSON on the `cla-signatures` branch, which is created on first
-# use. The branch ruleset protects `main` only, so this workflow can write there.
+# Signatures are stored as JSON on the `cla-signatures` branch. That branch MUST ALREADY
+# EXIST — the action does not create it, and fails with "Branch cla-signatures not found"
+# if it is missing, while still editing its PR comment to claim everyone has signed. It
+# must also stay unprotected: the branch ruleset targets the default branch only, so do not
+# add a rule matching this one. Create it with:
+#   gh api repos/incognitothief/bazaar/git/refs \
+#     -f ref=refs/heads/cla-signatures -f sha=$(git rev-parse origin/main)
 
 name: CLA
 
@@ -39,10 +44,13 @@ concurrency:
 jobs:
   cla:
     name: CLA signed
-    # Run on PR events, or on the specific comment used to sign. Ignores all other comments.
+    # Run on PR events, on the exact comment used to sign, or on `recheck` — the action sets
+    # suggest-recheck, so it tells contributors to comment that after a failure, and the job
+    # has to actually run for it to do anything. All other comments are ignored.
     if: >-
       github.event_name == 'pull_request_target' ||
-      github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA'
+      github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA' ||
+      github.event.comment.body == 'recheck'
     runs-on: ubuntu-latest
     steps:
       - name: Check CLA signature
@@ -57,8 +65,11 @@ jobs:
           path-to-document: https://github.com/incognitothief/bazaar/blob/main/CLA.md
           path-to-signatures: signatures/version1/cla.json
           branch: cla-signatures
-          # The maintainer does not sign their own CLA; bots cannot.
-          allowlist: incognitothief,dependabot[bot],renovate[bot]
+          # The maintainer does not sign their own CLA; bots cannot. Both maintainer
+          # accounts are listed: PRs are opened by incognitothief, but commits are
+          # authored by purplestack (the git author email resolves to that account),
+          # and this action checks committers rather than the PR author.
+          allowlist: incognitothief,purplestack,dependabot[bot],renovate[bot]
           custom-notsigned-prcomment: >-
             Thanks for the pull request. Before it can be merged, please sign the
             [Contributor License Agreement](https://github.com/incognitothief/bazaar/blob/main/CLA.md).
