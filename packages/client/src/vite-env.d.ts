@@ -1,9 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_APP_URL: string;
   readonly VITE_MERCHANT_DID: string;
-  readonly VITE_API_ORIGIN: string;
   /** When "true" in dev, sign-in skips OAuth and uses localStorage mock (see useAtpSession.tsx). */
   readonly VITE_DEV_MOCK_ATPROTO_SIGNIN?: string;
   /** Override item AT-URI for the empty-state dummy row on Listings (dev / VITE_SHOW_LISTINGS_DUMMY). */

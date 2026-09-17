@@ -1,3 +1,4 @@
+import { ArtworkPlaceholder } from "@/components/shared/ArtworkPlaceholder";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,7 +53,9 @@ export function ItemCard({
         <div className="aspect-square w-full overflow-hidden bg-muted">
           {coverUrl ? (
             <img src={coverUrl} alt="" className="h-full w-full object-cover" />
-          ) : null}
+          ) : (
+            <ArtworkPlaceholder className="p-8" />
+          )}
         </div>
         <CardContent className="space-y-2 p-4">
           <h3 className="font-semibold leading-tight line-clamp-2">

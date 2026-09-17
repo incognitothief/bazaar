@@ -4,13 +4,9 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 # Frontend build-time configuration (passed from deploy via --build-arg)
-ARG VITE_APP_URL
 ARG VITE_MERCHANT_DID
-ARG VITE_API_ORIGIN
 
-ENV VITE_APP_URL=${VITE_APP_URL} \
-    VITE_MERCHANT_DID=${VITE_MERCHANT_DID} \
-    VITE_API_ORIGIN=${VITE_API_ORIGIN}
+ENV VITE_MERCHANT_DID=${VITE_MERCHANT_DID}
 
 COPY package.json package-lock.json turbo.json ./
 COPY packages/client/package.json packages/client/

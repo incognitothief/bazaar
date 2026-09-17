@@ -1,3 +1,4 @@
+import { ArtworkPlaceholder } from "@/components/shared/ArtworkPlaceholder";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Helmet } from "react-helmet-async";
@@ -516,7 +517,9 @@ export function ItemDetailPage() {
         <Helmet>
           <title>{`Item · ${siteBrandName()}`}</title>
         </Helmet>
-        <div className="aspect-[21/9] w-full rounded-xl bg-muted" />
+        <div className="aspect-square overflow-hidden rounded-xl border border-border bg-muted max-h-[min(70vw,28rem)]">
+          <ArtworkPlaceholder />
+        </div>
         <div className="h-8 bg-muted rounded w-1/2" />
         <div className="h-4 bg-muted rounded w-1/3" />
       </div>
@@ -544,7 +547,9 @@ export function ItemDetailPage() {
         <Helmet>
           <title>{`Item · ${siteBrandName()}`}</title>
         </Helmet>
-        <div className="aspect-[21/9] w-full rounded-xl bg-muted" />
+        <div className="aspect-square overflow-hidden rounded-xl border border-border bg-muted max-h-[min(70vw,28rem)]">
+          <ArtworkPlaceholder />
+        </div>
         <div className="h-8 bg-muted rounded w-1/2" />
         <div className="h-4 bg-muted rounded w-1/3" />
       </div>
@@ -642,9 +647,13 @@ export function ItemDetailPage() {
   const metaDesc =
     firstLineForItemMeta(item.description) ||
     `Available on ${siteBrandName()}.`;
-  // Per-item og:image was a legacy-only artwork blob path; product cover art
-  // lives in R2 with no public open-artwork endpoint, so this is the site default.
-  const ogImage = defaultOgImageAbsolute();
+  // Same stable, unauthenticated URL the server injects (catalog.ts's
+  // GET /cover/:rkey). Helmet replaces the server's tag on hydration, so a
+  // JS-rendering crawler would otherwise see the site default here and the
+  // real art in the raw HTML.
+  const ogImage = coverImages[0]
+    ? `${publicSiteOrigin()}/api/catalog/cover/${encodeURIComponent(pageRkey)}`
+    : defaultOgImageAbsolute();
   const twSite = import.meta.env.VITE_PUBLIC_TWITTER_SITE?.trim();
 
   const coverUrl =
@@ -778,7 +787,7 @@ export function ItemDetailPage() {
         <meta property="og:description" content={truncMeta(metaDesc, 200)} />
         <meta property="og:url" content={canonicalAbs} />
         <meta property="og:image" content={ogImage} />
-        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:card" content="summary" />
         <meta
           name="twitter:title"
           content={`${item.title} · ${siteBrandName()}`}
@@ -840,7 +849,11 @@ export function ItemDetailPage() {
               />
             ) : null}
           </button>
-        ) : null}
+        ) : (
+          <div className="aspect-square overflow-hidden rounded-xl border border-border bg-muted max-h-[min(70vw,28rem)]">
+            <ArtworkPlaceholder />
+          </div>
+        )}
         <div className="space-y-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
