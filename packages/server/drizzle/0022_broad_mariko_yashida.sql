@@ -1,1 +1,0 @@
-DROP TABLE `inventory_prefill_log`;

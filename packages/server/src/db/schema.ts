@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   primaryKey,
@@ -7,25 +9,49 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 /** Single-row KYC / storefront business details (optional env override per field). */
-export const merchantBusinessProfile = sqliteTable("merchant_business_profile", {
-  singleton: integer("singleton").primaryKey({ autoIncrement: false }).default(1),
-  businessName: text("business_name"),
-  businessState: text("business_state"),
-  businessEmail: text("business_email"),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
+export const merchantBusinessProfile = sqliteTable(
+  "merchant_business_profile",
+  {
+    singleton: integer("singleton")
+      .primaryKey({ autoIncrement: false })
+      .default(1),
+    businessName: text("business_name"),
+    businessState: text("business_state"),
+    businessEmail: text("business_email"),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  // Enforced in SQL since 0006; keep it declared here so `drizzle-kit generate`
+  // does not quietly drop it from a regenerated baseline.
+  (t) => ({
+    singletonOnly: check(
+      "merchant_business_profile_singleton",
+      sql`${t.singleton} = 1`,
+    ),
+  }),
+);
 
 /** Single-row Stripe API keys when not set via environment (see stripeCredentials). */
-export const merchantStripeConfig = sqliteTable("merchant_stripe_config", {
-  singleton: integer("singleton").primaryKey({ autoIncrement: false }).default(1),
-  stripeSecretKey: text("stripe_secret_key"),
-  stripeWebhookSecret: text("stripe_webhook_secret"),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
+export const merchantStripeConfig = sqliteTable(
+  "merchant_stripe_config",
+  {
+    singleton: integer("singleton")
+      .primaryKey({ autoIncrement: false })
+      .default(1),
+    stripeSecretKey: text("stripe_secret_key"),
+    stripeWebhookSecret: text("stripe_webhook_secret"),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => ({
+    singletonOnly: check(
+      "merchant_stripe_config_singleton",
+      sql`${t.singleton} = 1`,
+    ),
+  }),
+);
 
 export const meta = sqliteTable("meta", {
   key: text("key").primaryKey(),

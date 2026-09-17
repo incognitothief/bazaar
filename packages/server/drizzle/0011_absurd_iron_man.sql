@@ -1,1 +1,0 @@
-ALTER TABLE `catalog_items` ADD `object_id` text;
