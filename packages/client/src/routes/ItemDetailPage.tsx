@@ -517,7 +517,9 @@ export function ItemDetailPage() {
         <Helmet>
           <title>{`Item · ${siteBrandName()}`}</title>
         </Helmet>
-        <div className="aspect-[21/9] w-full rounded-xl bg-muted" />
+        <div className="aspect-square overflow-hidden rounded-xl border border-border bg-muted max-h-[min(70vw,28rem)]">
+          <ArtworkPlaceholder />
+        </div>
         <div className="h-8 bg-muted rounded w-1/2" />
         <div className="h-4 bg-muted rounded w-1/3" />
       </div>
@@ -545,7 +547,9 @@ export function ItemDetailPage() {
         <Helmet>
           <title>{`Item · ${siteBrandName()}`}</title>
         </Helmet>
-        <div className="aspect-[21/9] w-full rounded-xl bg-muted" />
+        <div className="aspect-square overflow-hidden rounded-xl border border-border bg-muted max-h-[min(70vw,28rem)]">
+          <ArtworkPlaceholder />
+        </div>
         <div className="h-8 bg-muted rounded w-1/2" />
         <div className="h-4 bg-muted rounded w-1/3" />
       </div>
@@ -846,7 +850,9 @@ export function ItemDetailPage() {
             ) : null}
           </button>
         ) : (
-          <ArtworkPlaceholder className="max-h-[min(70vw,28rem)]" />
+          <div className="aspect-square overflow-hidden rounded-xl border border-border bg-muted max-h-[min(70vw,28rem)]">
+            <ArtworkPlaceholder />
+          </div>
         )}
         <div className="space-y-4">
           <div>

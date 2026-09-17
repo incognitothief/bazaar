@@ -419,7 +419,9 @@ export function PurchaseDetailPage() {
             ) : null}
           </button>
         ) : (
-          <ArtworkPlaceholder className="max-h-64" />
+          <div className="aspect-square overflow-hidden rounded-xl border border-border bg-muted max-h-64">
+            <ArtworkPlaceholder />
+          </div>
         )}
         <div className="space-y-3">
           <h1 className="text-2xl font-semibold">{item.title}</h1>
