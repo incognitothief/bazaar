@@ -1,10 +1,7 @@
+import { col } from "@bazaar/shared";
 import { AtUri } from "@atproto/syntax";
 import { getAgentForDid } from "./atproto/resolvePds";
 import { resolveCatalogItemUriFromRkey } from "./resolveCatalogItemUri";
-
-function lexiconNs(): string {
-  return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
-}
 
 export function getPublicWebOrigin(): string {
   const u =
@@ -70,7 +67,7 @@ async function getStorefrontOg(merchantDid: string): Promise<{
     const agent = await getAgentForDid(merchantDid);
     const res = await agent.com.atproto.repo.listRecords({
       repo: merchantDid,
-      collection: `${lexiconNs()}.actor.merchant`,
+      collection: col("actor.merchant"),
       limit: 1,
     });
     const row = res.data.records[0];
@@ -107,14 +104,6 @@ async function getItemOg(
   } catch {
     return null;
   }
-}
-
-function artworkSupportedCollection(collection: string): boolean {
-  const ns = lexiconNs();
-  return (
-    collection === `${ns}.catalog.item.digital` ||
-    collection === `${ns}.catalog.collection`
-  );
 }
 
 function buildMetaBlock(opts: {
@@ -234,9 +223,10 @@ export async function buildSpaHeadFragment(pathname: string): Promise<string> {
     const canonicalPath = `/item/${encodeURIComponent(rkey)}/${encodeURIComponent(slugSeg)}`;
     const canonicalUrl = `${origin}${canonicalPath}`;
 
-    const ogImage = artworkSupportedCollection(at.collection)
-      ? `${origin}/api/inventory-public/artwork-open?itemUri=${encodeURIComponent(itemUri)}`
-      : defImg;
+    // Per-item OG art was only ever wired for the legacy artwork blob path;
+    // catalog.product cover art lives in R2 (catalogProductAssets) and has no
+    // public open-artwork endpoint yet, so these fall back to the site image.
+    const ogImage = defImg;
 
     return buildMetaBlock({
       title: `${titleText} · ${siteName()}`,

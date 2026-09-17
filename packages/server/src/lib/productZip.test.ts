@@ -13,7 +13,7 @@ function productWithItems(uris: string[]) {
 }
 
 describe("entitlementMatchesCurrentItems", () => {
-  it("is true for a legacy receipt (no frozen grant)", () => {
+  it("is true when no frozen grant is supplied (permissive default)", () => {
     expect(
       entitlementMatchesCurrentItems(productWithItems(["at://a/x/1"]), undefined),
     ).toBe(true);

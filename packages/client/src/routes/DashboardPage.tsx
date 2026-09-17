@@ -11,12 +11,11 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { browserApiUrl } from "@/lib/browserApi";
 import {
-  listDigitalItemRows,
   listLicenseTerms,
   listListingRows,
+  listProductRows,
 } from "@/lib/atproto/records";
 import type { PaymentFulfillmentRow } from "@/routes/MerchantTransactionsPage";
-import type { DigitalItem } from "@/types/lexicons";
 
 const quickActions: {
   to: string;
@@ -53,7 +52,7 @@ const quickActions: {
 export function DashboardPage() {
   const { session } = useAtpSession();
   const agent = useMerchantAgent(session);
-  const [items, setItems] = useState<{ uri: string; item: DigitalItem }[]>([]);
+  const [productCount, setProductCount] = useState(0);
   const [listingCount, setListingCount] = useState(0);
   const [totalSales, setTotalSales] = useState(0);
   const [stripeConnected, setStripeConnected] = useState(false);
@@ -100,12 +99,12 @@ export function DashboardPage() {
   useEffect(() => {
     if (!agent || !session) return;
     void (async () => {
-      const [rows, listings, licenses] = await Promise.all([
-        listDigitalItemRows(session.did),
+      const [products, listings, licenses] = await Promise.all([
+        listProductRows(session.did),
         listListingRows(session.did),
         listLicenseTerms(session.did),
       ]);
-      setItems(rows.map((r) => ({ uri: r.uri, item: r.item })));
+      setProductCount(products.length);
       setListingCount(
         listings.filter((l) => l.listing.status === "active").length,
       );
@@ -122,12 +121,12 @@ export function DashboardPage() {
         session={session}
         stripeConnected={stripeConnected}
         defaultLicenseSet={hasLicense}
-        hasItem={items.length > 0}
+        hasItem={productCount > 0}
       />
       <div className="grid gap-4 sm:grid-cols-3 mb-8">
         <div className="rounded-lg border border-border p-4">
-          <p className="text-sm text-muted-foreground">Items</p>
-          <p className="text-2xl font-semibold">{items.length}</p>
+          <p className="text-sm text-muted-foreground">Products</p>
+          <p className="text-2xl font-semibold">{productCount}</p>
         </div>
         <div className="rounded-lg border border-border p-4">
           <p className="text-sm text-muted-foreground">Active listings</p>

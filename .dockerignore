@@ -11,3 +11,5 @@ alignment
 .env.*
 **/.pulumi
 packages/infra
+keys/
+*.pem

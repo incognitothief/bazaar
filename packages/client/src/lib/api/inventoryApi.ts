@@ -68,22 +68,21 @@ async function invFetch(path: string, init?: RequestInit): Promise<Response> {
 }
 
 /**
- * `existingProductUri`: for "product"-kind sessions adding items/assets to
- * an *already-published* product -- the server keys every R2 object
- * uploaded in this session under that product's own rkey. Omit for a new
- * product (the server mints a fresh rkey instead).
+ * `existingProductUri`: when adding items/assets to an *already-published*
+ * product -- the server keys every R2 object uploaded in this session under
+ * that product's own rkey. Omit for a new product (the server mints a fresh
+ * rkey instead).
  */
 export async function createInventorySession(
-  inventoryKind = "digital",
   existingProductUri?: string,
 ): Promise<{
   sessionId: string;
-  /** The product's URI, known up front for "product"-kind sessions (minted server-side for a new product, echoed back for an existing one) -- lets the UI poll zip-progress before the publish response comes back. Null for non-product sessions. */
+  /** The product's URI, known up front (minted server-side for a new product, echoed back for an existing one) -- lets the UI poll zip-progress before the publish response comes back. */
   productUri: string | null;
 }> {
   const res = await invFetch("/sessions", {
     method: "POST",
-    body: JSON.stringify({ inventoryKind, existingProductUri }),
+    body: JSON.stringify({ existingProductUri }),
   });
   if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{ sessionId: string; productUri: string | null }>;
@@ -219,28 +218,13 @@ export async function saveInventoryDraft(sessionId: string, draft: unknown): Pro
   if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
 }
 
-export type PublishInventorySnapshot = {
-  items: Array<{ uri: string; cid: string; rkey: string }>;
-  primaryItemUri: string;
-};
-
-export async function publishInventorySession(
-  sessionId: string,
-): Promise<PublishInventorySnapshot> {
-  const res = await invFetch(`/sessions/${sessionId}/publish`, {
-    method: "POST",
-  });
-  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
-  return res.json() as Promise<PublishInventorySnapshot>;
-}
-
 export type PublishProductSnapshot = {
   productUri: string;
   productCid: string;
   items: Array<{ uri: string; cid: string }>;
 };
 
-/** Publishes a "product" inventoryKind session as catalog.item/catalog.product records. */
+/** Publishes a session as catalog.item/catalog.product records. */
 export async function publishProductSession(
   sessionId: string,
 ): Promise<PublishProductSnapshot> {
@@ -260,30 +244,6 @@ export async function publishItemsSession(
   });
   if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
   return res.json() as Promise<{ items: Array<{ uri: string; cid: string }> }>;
-}
-
-export type InventoryPrefillPayload = {
-  v: number;
-  primaryItemUri: string;
-  collectionUri: string;
-  licenseUri: string;
-  licenseGrantCid: string;
-  priceUsd?: string;
-  individualPurchaseTrackUris?: string[];
-};
-
-export async function fetchLatestInventoryPrefill(): Promise<{
-  prefill: InventoryPrefillPayload | null;
-  id?: string;
-  createdAt?: string | null;
-}> {
-  const res = await invFetch("/prefill/latest");
-  if (!res.ok) throw new Error(await inventoryHttpErrorMessage(res));
-  return res.json() as Promise<{
-    prefill: InventoryPrefillPayload | null;
-    id?: string;
-    createdAt?: string | null;
-  }>;
 }
 
 const MULTIPART_CHUNK = 8 * 1024 * 1024;

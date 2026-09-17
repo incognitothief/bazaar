@@ -18,9 +18,7 @@ endif
 # Optional Docker build-args (same names as Dockerfile / deploy workflow).
 # Export from your shell or a local .env before `make docker-build`.
 VITE_ATPROTO_SERVICE ?=
-VITE_STOREFRONT_DID ?=
 VITE_APP_URL ?=
-VITE_LEXICON_NAMESPACE ?=
 VITE_MERCHANT_DID ?=
 VITE_API_ORIGIN ?=
 # Optional cloudflared quick-tunnel origin. When set, `make dev` exports it into
@@ -111,10 +109,17 @@ db-migrate: ## Apply Drizzle migrations
 .PHONY: ci
 ci: install-ci lexicons-validate build test ## Run the same checks as .github/workflows/test.yml
 
-.PHONY: gen-did
-gen-did: ## Generate service keys and DID snippets (scripts/gen-did.sh)
-	chmod 700 scripts/gen-did.sh
-	./scripts/gen-did.sh
+.PHONY: storefront-key
+storefront-key: ## Print the storefront secrets to set; first run needs DOMAIN=store.example.com
+	npx tsx scripts/gen-storefront-key.ts $(DOMAIN)
+
+.PHONY: storefront-key-rotate
+storefront-key-rotate: ## Replace the signing key; the old one is retired, still trusted for past receipts
+	npx tsx scripts/gen-storefront-key.ts --rotate
+
+.PHONY: storefront-key-revoke
+storefront-key-revoke: ## Disavow a retired key: make storefront-key-revoke KID=storefront-key-2026-09-16
+	npx tsx scripts/gen-storefront-key.ts --revoke $(KID)
 
 .PHONY: tunnel
 tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<printed url>
@@ -124,9 +129,7 @@ tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<pri
 docker-build: ## Build the production Docker image locally
 	docker build \
 		--build-arg VITE_ATPROTO_SERVICE="$(VITE_ATPROTO_SERVICE)" \
-		--build-arg VITE_STOREFRONT_DID="$(VITE_STOREFRONT_DID)" \
 		--build-arg VITE_APP_URL="$(VITE_APP_URL)" \
-		--build-arg VITE_LEXICON_NAMESPACE="$(VITE_LEXICON_NAMESPACE)" \
 		--build-arg VITE_MERCHANT_DID="$(VITE_MERCHANT_DID)" \
 		--build-arg VITE_API_ORIGIN="$(VITE_API_ORIGIN)" \
 		-t "$(DOCKER_IMAGE)" \
@@ -145,23 +148,21 @@ infra-up: ## Pulumi up (packages/infra; set PULUMI_STACK=prod|stg)
 	cd "$(INFRA_DIR)" && npm run up -- --stack "$(PULUMI_STACK)"
 
 .PHONY: fly-deploy
-fly-deploy: ## Deploy to Fly production (fly.toml; requires FLY_API_TOKEN and VITE_* env)
+fly-deploy: ## Deploy to Fly production (requires FLY_APP, FLY_API_TOKEN and VITE_* env)
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
-	flyctl deploy --remote-only \
+	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.toml holds a placeholder, not your app name)"; exit 1; }
+	flyctl deploy --remote-only --app "$${FLY_APP}" \
 		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
-		--build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
-		--build-arg VITE_LEXICON_NAMESPACE="$${VITE_LEXICON_NAMESPACE:-}" \
 		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
 		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"
 
 .PHONY: fly-deploy-stg
-fly-deploy-stg: ## Deploy to Fly staging (fly.stg.toml; requires FLY_API_TOKEN and VITE_* env)
+fly-deploy-stg: ## Deploy to Fly staging (requires FLY_APP, FLY_API_TOKEN and VITE_* env)
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
-	flyctl deploy --remote-only --config fly.stg.toml \
+	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.stg.toml holds a placeholder, not your app name)"; exit 1; }
+	flyctl deploy --remote-only --config fly.stg.toml --app "$${FLY_APP}" \
 		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
-		--build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
-		--build-arg VITE_LEXICON_NAMESPACE="$${VITE_LEXICON_NAMESPACE:-}" \
 		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
 		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"

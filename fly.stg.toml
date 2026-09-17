@@ -1,5 +1,5 @@
-# Staging Fly app — rename `app` before first deploy: fly apps create <name>
-app = "bazaar-jwkvxw"
+# Placeholder. The real app name is passed at deploy time with --app (FLY_APP / FLY_APP_NAME).
+app = "your-staging-app-name"
 primary_region = "iad"
 
 [build]
@@ -20,8 +20,8 @@ primary_region = "iad"
   cpu_kind = "shared"
   memory = "512mb"
 
-# Create once (staging only; do not reuse prod volume):
-#   fly volumes create bazaar_data_stg --region iad --size 1 -a bazaar-stg
+# Create once, with the name below (staging only; do not reuse the prod volume):
+#   fly volumes create bazaar_data --region iad --size 1 -a <your-staging-app>
 [[mounts]]
   source = "bazaar_data"
   destination = "/data"

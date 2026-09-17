@@ -16,7 +16,7 @@
           #   Node 22 + npm 10.9.2 (CI, Dockerfile builder, packageManager)
           #   Bun (server dev/build/test; Dockerfile runtime)
           #   Pulumi + flyctl + cloudflared (infra / deploy / tunnel.sh)
-          #   docker CLI (make docker-build), openssl + tsx (scripts/gen-did.sh)
+          #   docker CLI (make docker-build), tsx (make storefront-key)
           packages = with pkgs; [
             nodejs_22
             bun
@@ -26,7 +26,6 @@
             docker
             git
             gnumake
-            openssl
             nodePackages.tsx
             cacert
           ];

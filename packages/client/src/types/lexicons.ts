@@ -1,4 +1,4 @@
-/** Types aligned with diamonds.whereditgo.bazaar.* lexicons (v5). */
+/** Hand-maintained mirrors of the diamonds.whereditgo.bazaar.* lexicons in packages/shared. */
 
 import { repoDidFromAtUri } from "@/lib/atUri";
 
@@ -7,179 +7,19 @@ export type Money = { amount: number; currency: string };
 /** Which payment system settled a receipt, plus its opaque reference in that system. */
 export type Payment = { processor: string; ref: string };
 
-export type Dimensions = {
-  width?: number;
-  height?: number;
-  depth?: number;
-  unit: "mm" | "cm" | "in";
-};
-
-export type Weight = { value: number; unit: "g" | "kg" | "oz" | "lb" };
-
-export type Variant = {
-  sku: string;
-  attributes?: Record<string, string>;
-  weight?: Weight;
-  dimensions?: Dimensions;
-  additionalPrice?: Money;
-  artworkCid?: string;
-};
-
-export type BazaarItemType =
-  | "diamonds.whereditgo.bazaar.catalog.item"
-  | "diamonds.whereditgo.bazaar.catalog.product"
-  | "diamonds.whereditgo.bazaar.catalog.item.digital"
-  | "diamonds.whereditgo.bazaar.catalog.item.physical"
-  | "diamonds.whereditgo.bazaar.catalog.collection";
-
-export type ItemRef = {
-  uri: string;
-  cid?: string;
-  variantSku?: string;
-};
-
-/** A plain AT-URI + CID pointer, used where ItemRef's variantSku doesn't apply. */
+/**
+ * An AT-URI + CID pointer to another record — mirrors `defs#ref`.
+ *
+ * Used for every record-to-record pointer: a receipt's purchasedGood, listing, licenseGrant
+ * and grantedItems entries, a listing's item, a product's items. The AT-URI's own collection
+ * segment says what it points to, so no type field is carried.
+ */
 export type Ref = {
   uri: string;
   cid?: string;
 };
 
-export type Address = {
-  line1: string;
-  line2?: string;
-  city: string;
-  region?: string;
-  postalCode?: string;
-  countryCode: string;
-};
-
-export type TerritoryCoverage = {
-  scope: "worldwide" | "excluding" | "only";
-  territories?: string[];
-};
-
-export type CollectionItemRole =
-  | "track"
-  | "video"
-  | "document"
-  | "artwork"
-  | "bonus"
-  | "other";
-
-export type CollectionItemEntry = {
-  uri: string;
-  cid?: string;
-  role: CollectionItemRole;
-  trackNumber?: number;
-  discNumber?: number;
-  title?: string;
-};
-
-export type CompositionWriter = {
-  name: string;
-  ipi?: string;
-  did?: string;
-  share?: number;
-  role?: string;
-};
-
-export type CompositionPublisher = {
-  name: string;
-  ipi?: string;
-  did?: string;
-  pro?: string;
-  share?: number;
-};
-
-export type Composition = {
-  $type: "diamonds.whereditgo.bazaar.catalog.composition";
-  title: string;
-  artistDid: string;
-  iswc?: string;
-  bazaarWid?: unknown;
-  writers?: CompositionWriter[];
-  publishers?: CompositionPublisher[];
-  proRegistrations?: Array<{
-    pro: string;
-    registrationId?: string;
-    territory?: string;
-  }>;
-  copyrightYear?: number;
-  copyrightRegistrationId?: string;
-  createdAt: string;
-};
-
-export type PhysicalItem = {
-  $type: "diamonds.whereditgo.bazaar.catalog.item.physical";
-  title: string;
-  artistDid: string;
-  itemClass:
-    | "clothing"
-    | "vinyl"
-    | "cd"
-    | "cassette"
-    | "poster"
-    | "print"
-    | "accessory"
-    | "hardGood"
-    | "other";
-  description?: string;
-  variants: Variant[];
-  artworkCid?: string;
-  countryOfOrigin?: string;
-  harmonizedCode?: string;
-  requiresShipping?: boolean;
-  createdAt: string;
-};
-
-export type DigitalItem = {
-  $type: "diamonds.whereditgo.bazaar.catalog.item.digital";
-  title: string;
-  artistDid: string;
-  itemClass:
-    | "track"
-    | "album"
-    | "samplePack"
-    | "preset"
-    | "stems"
-    | "video"
-    | "document"
-    | "ebook"
-    | "other";
-  description?: string;
-  formats: string[];
-  fileChecksum: string;
-  fileCid: string;
-  fileFormat?: string;
-  durationMs?: number;
-  releaseDate?: string;
-  artworkCid?: string;
-  genre?: string[];
-  isrc?: string;
-  defaultLicenseUri?: string;
-  bazaarRid?: unknown;
-  collectionUri?: string;
-  supersedes?: string;
-  createdAt: string;
-};
-
-export type Collection = {
-  $type: "diamonds.whereditgo.bazaar.catalog.collection";
-  title: string;
-  artistDid: string;
-  collectionType?: "album" | "ep" | "single" | "compilation" | "other";
-  description?: string;
-  releaseDate: string;
-  items: CollectionItemEntry[];
-  defaultLicenseUri?: string;
-  artworkCid?: string;
-  genre?: string[];
-  upc?: string;
-  bazaarPid?: unknown;
-  createdAt: string;
-};
-
-/** diamonds.whereditgo.bazaar.catalog.item — successor to DigitalItem (physical excluded, no fixed itemClass taxonomy). */
+/** diamonds.whereditgo.bazaar.catalog.item — a single sellable file or dispensable item. */
 export type BazaarItem = {
   $type: "diamonds.whereditgo.bazaar.catalog.item";
   title: string;
@@ -200,29 +40,19 @@ export type Product = {
   title: string;
   description?: string;
   tags?: string[];
-  items: ItemRef[];
+  items: Ref[];
   createdAt: string;
 };
 
 export type Listing = {
   $type: "diamonds.whereditgo.bazaar.catalog.listing";
-  item: ItemRef;
+  item: Ref;
   price: Money;
-  compareAtPrice?: Money;
-  status:
-    | "active"
-    | "paused"
-    | "soldOut"
-    | "scheduled"
-    | "archived"
-    | "superseded";
+  /** Retiring a listing deletes the record, so there is no terminal state. */
+  status: "active" | "paused";
   licenseGrant: Ref;
-  /** Parent collection listing AT-URI when this listing is a per-track single under that album. */
+  /** Parent product listing AT-URI when this listing sells a member item individually. */
   parentListing?: string;
-  supersededBy?: string;
-  availableFrom?: string;
-  availableUntil?: string;
-  maxPurchasesPerBuyer?: number;
   createdAt: string;
 };
 
@@ -238,85 +68,28 @@ export type LicenseTerms = {
 export type PurchaseReceipt = {
   $type: "diamonds.whereditgo.bazaar.purchase.receipt";
   /** The catalog.item or catalog.product purchased. */
-  purchasedGood: ItemRef;
+  purchasedGood: Ref;
   /** Listing purchased. cid is pinned at checkout as the immutable price anchor. */
   listing: Ref;
   pricePaid: Money;
   payment: Payment;
   /** License terms in effect at time of purchase. cid is folded into storefrontSig -- freezes the license atomically with the purchase, no separate consent record. */
   licenseGrant: Ref;
-  shippingAddress?: Address;
-  fulfillmentUri?: string;
   /**
    * Frozen download entitlement: the catalog.item refs this purchase covers,
-   * captured at checkout. Absent on legacy receipts. Later edits to a
-   * product's items[] do not change it.
+   * captured at checkout. Later edits to a product's items[] do not change it.
+   *
+   * Required by the lexicon, and part of the signed payload (ADR 0019): a
+   * receipt without it does not verify and grants no downloads. Kept optional
+   * here on purpose -- these records live in buyers' own repos, so a malformed
+   * or pre-2026-09 one can still be read back, and the UI should render it
+   * rather than crash.
    */
   grantedItems?: Ref[];
   storefrontDid: string;
   merchantDid: string;
   storefrontSig: string;
   purchasedAt: string;
-  note?: string;
-};
-
-export type Recording = {
-  $type: "diamonds.whereditgo.bazaar.catalog.recording";
-  itemUri: string;
-  itemCid: string;
-  isrc?: string;
-  iswc?: string;
-  recordingMetaUri?: string;
-  songMetaUri?: string;
-  masterOwnerDid?: string;
-  publishingOwnerDid?: string;
-  publishingOwnerIpi?: string;
-  masterLicenseTermsUri?: string;
-  publishingLicenseTermsUri?: string;
-  bazaarRid?: unknown;
-  bazaarWid?: unknown;
-  createdAt: string;
-};
-
-export type Stock = {
-  $type: "diamonds.whereditgo.bazaar.purchase.stock";
-  itemUri: string;
-  itemCid: string;
-  variantSku: string;
-  quantityAvailable: number;
-  quantityReserved?: number;
-  quantitySold?: number;
-  isUnlimited?: boolean;
-  lowStockThreshold?: number;
-  updatedAt: string;
-};
-
-export type Fulfillment = {
-  $type: "diamonds.whereditgo.bazaar.purchase.fulfillment";
-  receiptUri: string;
-  receiptCid: string;
-  status:
-    | "pending"
-    | "processing"
-    | "shipped"
-    | "inTransit"
-    | "delivered"
-    | "returned"
-    | "cancelled";
-  carrier?: string;
-  trackingNumber?: string;
-  trackingUrl?: string;
-  estimatedDelivery?: string;
-  shippedAt?: string;
-  deliveredAt?: string;
-  events?: Array<{
-    status: string;
-    location?: string;
-    timestamp: string;
-    note?: string;
-  }>;
-  createdAt: string;
-  updatedAt?: string;
 };
 
 export type ActorMerchant = {
@@ -329,36 +102,15 @@ export type ActorMerchant = {
   createdAt: string;
 };
 
-/**
- * Merchant-side mirror of one non-current storefront key (a keyHistory entry of the
- * storefrontDid DID document). rkey = the bare kid fragment. See ADR 0013 / ADR 0014 / ADR 0015.
- */
-export type ActorStorefrontKeys = {
-  $type: "diamonds.whereditgo.bazaar.actor.storefrontKeys";
-  storefrontDid: string;
-  id: string;
-  type: "Multikey";
-  controller?: string;
-  publicKeyMultibase: string;
-  supersededBy: string;
-  revoked?: boolean;
-  syncedAt?: string;
-};
-
-export type CatalogItem = DigitalItem | Collection | PhysicalItem | BazaarItem | Product;
+export type CatalogItem = BazaarItem | Product;
 
 /**
- * The legacy types (DigitalItem, Collection, PhysicalItem) still carry their
- * own artistDid field. The current types (BazaarItem, Product) carry no
- * merchant field at all -- their own repo (at://merchantDid/{collection}/rkey)
- * already identifies the merchant, so it's derived from `itemUri` instead.
+ * catalog.item and catalog.product carry no merchant field: their own repo
+ * (at://merchantDid/{collection}/rkey) already identifies the merchant, so it
+ * is derived from `itemUri` -- which is why this takes the URI at all.
  */
-export function catalogItemMerchantDid(item: CatalogItem, itemUri: string): string {
-  if ("artistDid" in item) return item.artistDid;
+export function catalogItemMerchantDid(_item: CatalogItem, itemUri: string): string {
   return repoDidFromAtUri(itemUri) ?? "";
 }
 
-/** catalog.item (BazaarItem) has no artworkCid of its own — artwork lives at the product level for the new type. */
-export function catalogItemArtworkCid(item: CatalogItem): string | undefined {
-  return "artworkCid" in item ? item.artworkCid : undefined;
-}
+

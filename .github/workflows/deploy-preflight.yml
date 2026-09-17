@@ -41,10 +41,9 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
           VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
-          VITE_STOREFRONT_DID: ${{ secrets.VITE_STOREFRONT_DID }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
-          VITE_LEXICON_NAMESPACE: ${{ secrets.VITE_LEXICON_NAMESPACE }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
@@ -56,10 +55,9 @@ jobs:
             AWS_ACCESS_KEY_ID
             AWS_SECRET_ACCESS_KEY
             FLY_API_TOKEN
+            FLY_APP_NAME
             VITE_ATPROTO_SERVICE
-            VITE_STOREFRONT_DID
             VITE_APP_URL
-            VITE_LEXICON_NAMESPACE
             VITE_MERCHANT_DID
             VITE_API_ORIGIN
           )
@@ -109,10 +107,9 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME: ${{ secrets.FLY_APP_NAME_STG }}
           VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
-          VITE_STOREFRONT_DID: ${{ secrets.VITE_STOREFRONT_DID }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
-          VITE_LEXICON_NAMESPACE: ${{ secrets.VITE_LEXICON_NAMESPACE }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
@@ -124,10 +121,9 @@ jobs:
             AWS_ACCESS_KEY_ID
             AWS_SECRET_ACCESS_KEY
             FLY_API_TOKEN
+            FLY_APP_NAME
             VITE_ATPROTO_SERVICE
-            VITE_STOREFRONT_DID
             VITE_APP_URL
-            VITE_LEXICON_NAMESPACE
             VITE_MERCHANT_DID
             VITE_API_ORIGIN
           )

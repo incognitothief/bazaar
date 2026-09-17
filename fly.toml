@@ -1,6 +1,7 @@
-# Rename `app` to your Fly app name before the first deploy.
+# Placeholder. The real app name is passed at deploy time with --app, from FLY_APP locally or
+# the FLY_APP_NAME secret in CI, so this file stays the same in every fork.
 # Staging uses fly.stg.toml (separate app and volume).
-app = "bazaar-g5nqca"
+app = "your-app-name"
 primary_region = "ams"
 
 [build]
@@ -22,7 +23,7 @@ primary_region = "ams"
   cpu_kind = "shared"
   memory = "2048mb"
 
-# Create once: fly volumes create bazaar_data_prod --region ams --size 1
+# Create once, with the name below: fly volumes create bazaar_data_prd --region ams --size 1 -a <your-app>
 [[mounts]]
   source = "bazaar_data_prd"
   destination = "/data"

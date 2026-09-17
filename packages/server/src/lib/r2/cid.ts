@@ -17,9 +17,3 @@ export function cidFromSha256Digest32(digest32: Uint8Array): string {
   return CID.createV1(rawCodec.code, mh).toString();
 }
 
-/** When full bytes are in memory (small files). */
-export async function rawSha256Cid(bytes: Uint8Array): Promise<string> {
-  const { sha256 } = await import("multiformats/hashes/sha2");
-  const mh = await sha256.digest(bytes);
-  return CID.createV1(rawCodec.code, mh).toString();
-}

@@ -25,8 +25,8 @@ spec-conformance problems in the storefront DID stack:
 - `publicKeyMultibase` / `did:key` now go through `@atproto/crypto` (`p256-pub` multicodec varint
   `0x80 0x24` + compressed point, base58btc).
 - `appSig` on `purchase.receipt` / `purchase.consent` is a compact low-S IEEE-P1363 signature
-  (`packages/server/src/lib/atproto/sign.ts`), with a **temporary** DER-accepting fallback for
-  pre-migration field receipts.
+  (`packages/server/src/lib/atproto/sign.ts`). The DER-accepting fallback described here was
+  removed in ADR 0019; `purchase.consent` was retired in ADR 0016.
 - `APP_SERVICE_*` → `APP_MERCHANT_*`; `kid` fragment `app-key-…` → `merchant-key-…`.
 - The served DID document dropped the empty `authentication` array.
 
@@ -243,7 +243,7 @@ with a message rather than serving a broken document. Verification reads the in-
    **reject immediately**, no signature check.
 2. Otherwise return an ordered PEM list: the hinted key (if `kid` resolves and is not revoked),
    then the current key, then every non-revoked `keyHistory` key newest → oldest.
-3. `verifyReceiptPayload` per candidate: compact low-S IEEE-P1363 first, DER fallback
+3. `verifyReceiptPayload` per candidate: compact low-S IEEE-P1363 only (DER fallback removed, ADR 0019)
    (transitional, §6).
 
 `packages/server/src/routes/download.ts` — the two entitlement checks call this;
@@ -273,17 +273,18 @@ The outgoing key is **retired**: only in `keyHistory`, still trusted for the rec
    with the new key; buyers whose session has expired must re-authenticate first. There is no
    fully automatic recovery.
 
-### 6. Transitional state (single resolution method target)
+### 6. Transitional state (single resolution method target) — RESOLVED
+
+> **Resolved 2026-09-15.** The target state below is now the actual state. The DER fallback was
+> removed in [ADR 0019](0019-single-receipt-signature-path.md) and `bazaarIdentifiers` was deleted
+> wholesale in [ADR 0018](0018-remove-legacy-record-types.md). The field receipts were **not**
+> migrated first: the break was taken deliberately and the affected buyers compensated, so
+> receipts issued before the 2026-08-29 remediation are permanently unverifiable.
 
 The DER-accepting fallback in `verifyCanonical` (`sign.ts`) and the DER signer left in
-`bazaarIdentifiers.ts` exist only for records issued before the 2026-08-29 remediation. **Target
+`bazaarIdentifiers.ts` existed only for records issued before the 2026-08-29 remediation. **Target
 state: one resolution method** — compact low-S IEEE-P1363, verified against a key selected by
 `kid` from `keyHistory` / `app_keys`.
-
-Removal is tracked by
-`bazaar-vault/Tickets/2026-08-29 Remove DER appSig fallback after field-receipt migration.md`,
-gated on migrating the known (all self-issued) field receipts. `bazaarIdentifiers` is deprecated
-wholesale (§7) — its signer is expected to be deleted, not converted.
 
 ### 7. `actor.merchant` identity gap (surfaced, not resolved here)
 
@@ -319,7 +320,7 @@ Full write-up:
 | Revocation | optional boolean `revoked: true` on the `keyHistory` entry; no timestamp is a verification input |
 | Source of truth | environment only (`APP_MERCHANT_PRIVATE_KEY` / `_KID` / `_PUBLIC_MULTIBASE` / `_KEY_HISTORY`) |
 | `app_keys` table | runtime cache + audit surface, rebuilt from env each boot; zero authority |
-| Signature format | compact low-S IEEE-P1363; DER accepted transitionally on verify only |
+| Signature format | compact low-S IEEE-P1363 only (DER fallback removed, ADR 0019) |
 | DID route | `packages/server/src/routes/wellKnown.ts` |
 
 ## Consequences
@@ -338,7 +339,7 @@ Full write-up:
   history.
 - Distinguishing a revoked key's records from a generic bad signature requires the `keyHistory`
   extension — a bare Multikey resolver just sees "signature does not verify against any method".
-- The DER fallback and the `bazaarIdentifiers` DER signer linger until field-receipt migration.
+- ~~The DER fallback and the `bazaarIdentifiers` DER signer linger until field-receipt migration.~~ Both removed: `bazaarIdentifiers` in ADR 0018, the DER fallback in ADR 0019 (without migrating the field receipts — they are permanently unverifiable).
 - DID document is built once at boot; rotation lands on redeploy (acceptable for a rare op).
 - Full JSON-LD consumers must fetch `/ns/v1` (or the fixed project URL) to expand `keyHistory`
   terms; document-shape validators that only accept string `@context` entries (ATCute, Bluesky)

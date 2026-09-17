@@ -3,27 +3,17 @@ import {
   getCatalogItem,
   getCatalogProduct,
   listBazaarItemRows,
-  listCollectionRows,
-  listDigitalItemRows,
   listListingRows,
-  listPhysicalItemRows,
   listProductRows,
   type ListingRow,
 } from "@/lib/atproto/records";
 import { sortCatalogEntriesByRelease } from "@/lib/catalogSort";
-import type {
-  BazaarItem,
-  Collection,
-  DigitalItem,
-  Listing,
-  PhysicalItem,
-  Product,
-} from "@/types/lexicons";
+import type { BazaarItem, Listing, Product } from "@/types/lexicons";
 
 export type CatalogEntry = {
   uri: string;
   cid: string;
-  item: DigitalItem | Collection | PhysicalItem | BazaarItem | Product;
+  item: BazaarItem | Product;
   /** catalog.product only -- ERP-only presigned R2 URLs, never on the PDS record (see resolveCoverImages server-side). */
   coverImages?: Array<{ objectId: string; url: string }>;
   /** catalog.product only -- ERP-only UI classification ("music", "generic", ...). */
@@ -51,7 +41,7 @@ function indexActiveListings(rows: ListingRow[]): Record<string, Listing> {
   return map;
 }
 
-export function useCatalog(artistDid: string | undefined): CatalogState {
+export function useCatalog(merchantDid: string | undefined): CatalogState {
   const [entries, setEntries] = useState<CatalogEntry[]>([]);
   const [listingsByItemUri, setListingsByItemUri] = useState<
     Record<string, Listing>
@@ -61,7 +51,7 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
   const [error, setError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
-    if (!artistDid?.startsWith("did:")) {
+    if (!merchantDid?.startsWith("did:")) {
       setEntries([]);
       setListingsByItemUri({});
       setListingRows([]);
@@ -72,15 +62,11 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
     setLoading(true);
     setError(null);
     try {
-      const [digitalRows, collectionRows, physicalRows, bazaarItemRows, productRows, listings] =
-        await Promise.all([
-          listDigitalItemRows(artistDid),
-          listCollectionRows(artistDid),
-          listPhysicalItemRows(artistDid),
-          listBazaarItemRows(artistDid),
-          listProductRows(artistDid),
-          listListingRows(artistDid),
-        ]);
+      const [bazaarItemRows, productRows, listings] = await Promise.all([
+        listBazaarItemRows(merchantDid),
+        listProductRows(merchantDid),
+        listListingRows(merchantDid),
+      ]);
       const byItem = indexActiveListings(listings);
       const productCoverImages = await Promise.all(
         productRows.map((r) => getCatalogProduct(r.uri)),
@@ -90,21 +76,6 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
         bazaarItemRows.map((r) => getCatalogItem(r.uri)),
       );
       const merged: CatalogEntry[] = [
-        ...digitalRows.map((r) => ({
-          uri: r.uri,
-          cid: r.cid,
-          item: r.item,
-        })),
-        ...collectionRows.map((r) => ({
-          uri: r.uri,
-          cid: r.cid,
-          item: r.item,
-        })),
-        ...physicalRows.map((r) => ({
-          uri: r.uri,
-          cid: r.cid,
-          item: r.item,
-        })),
         ...bazaarItemRows.map((r, i) => ({
           uri: r.uri,
           cid: r.cid,
@@ -131,7 +102,7 @@ export function useCatalog(artistDid: string | undefined): CatalogState {
     } finally {
       setLoading(false);
     }
-  }, [artistDid]);
+  }, [merchantDid]);
 
   useEffect(() => {
     void refetch();

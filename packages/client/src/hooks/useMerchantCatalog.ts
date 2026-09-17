@@ -2,28 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import {
   listCatalogItemRows,
   listCatalogProductRows,
-  listCollectionRows,
-  listDigitalItemRows,
   listListingRows,
-  listPhysicalItemRows,
   type CatalogItemRow,
   type CatalogProductRow,
   type ListingRow,
 } from "@/lib/atproto/records";
-import type { Collection, DigitalItem, PhysicalItem } from "@/types/lexicons";
 
 export type MerchantItemRow =
-  | { kind: "digital"; uri: string; cid: string; item: DigitalItem }
-  | { kind: "collection"; uri: string; cid: string; item: Collection }
-  | { kind: "physical"; uri: string; cid: string; item: PhysicalItem }
   | { kind: "item"; uri: string; cid: string; item: CatalogItemRow }
   | { kind: "product"; uri: string; cid: string; item: CatalogProductRow };
 
 function rowCreatedAtMs(row: MerchantItemRow): number {
-  if (row.kind === "item" || row.kind === "product") {
-    return new Date(row.item.recordCreatedAt ?? row.item.capturedAt).getTime();
-  }
-  return new Date(row.item.createdAt).getTime();
+  return new Date(row.item.recordCreatedAt ?? row.item.capturedAt).getTime();
 }
 
 export type MerchantCatalogState = {
@@ -39,14 +29,12 @@ export type MerchantCatalogState = {
 /**
  * The listing that best represents an item's current state -- one per item
  * URI. A standalone listing (no parentListing) outranks a sold-under-product
- * child listing; a live/paused listing outranks an archived/superseded one;
- * ties break on newest. Child listings are included so an item that only
- * sells inside a product still shows a status (and can't be re-listed on top).
+ * child listing; ties break on newest. Child listings are included so an item
+ * that only sells inside a product still shows a status (and can't be
+ * re-listed on top).
  */
 function listingRank(r: ListingRow): number {
-  const terminal =
-    r.listing.status === "archived" || r.listing.status === "superseded";
-  return (terminal ? 0 : 4) + (r.listing.parentListing ? 0 : 2);
+  return r.listing.parentListing ? 0 : 1;
 }
 
 function indexPrimaryListings(rows: ListingRow[]): Record<string, ListingRow> {
@@ -97,34 +85,12 @@ export function useMerchantCatalog(
     setLoading(true);
     setError(null);
     try {
-      const [digital, collections, physical, catalogItems, catalogProducts, listings] =
-        await Promise.all([
-          listDigitalItemRows(merchantDid),
-          listCollectionRows(merchantDid),
-          listPhysicalItemRows(merchantDid),
-          listCatalogItemRows(),
-          listCatalogProductRows(),
-          listListingRows(merchantDid),
-        ]);
+      const [catalogItems, catalogProducts, listings] = await Promise.all([
+        listCatalogItemRows(),
+        listCatalogProductRows(),
+        listListingRows(merchantDid),
+      ]);
       const merged: MerchantItemRow[] = [
-        ...digital.map((r) => ({
-          kind: "digital" as const,
-          uri: r.uri,
-          cid: r.cid,
-          item: r.item,
-        })),
-        ...collections.map((r) => ({
-          kind: "collection" as const,
-          uri: r.uri,
-          cid: r.cid,
-          item: r.item,
-        })),
-        ...physical.map((r) => ({
-          kind: "physical" as const,
-          uri: r.uri,
-          cid: r.cid,
-          item: r.item,
-        })),
         ...catalogItems.map((r) => ({
           kind: "item" as const,
           uri: r.uri,

@@ -19,8 +19,6 @@ import { MerchantInventoryPage } from "@/routes/MerchantInventoryPage";
 import { MerchantInventoryEditPage } from "@/routes/MerchantInventoryEditPage";
 import { AddProductPage } from "@/routes/AddProductPage";
 import { MerchantProductDetailPage } from "@/routes/MerchantProductDetailPage";
-import { UploadTracksPage } from "@/routes/UploadTracksPage";
-import { UploadPhysicalPage } from "@/routes/UploadPhysicalPage";
 import { CreateListingPage } from "@/routes/CreateListingPage";
 import { LicensePage } from "@/routes/LicensePage";
 import { SettingsPage } from "@/routes/SettingsPage";
@@ -54,10 +52,6 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="dashboard" replace /> },
       { path: "dashboard", element: <DashboardPage /> },
-      {
-        path: "upload/digital",
-        element: <Navigate to="/merchant/upload/tracks" replace />,
-      },
       { path: "inventory", element: <MerchantInventoryPage /> },
       { path: "inventory/new", element: <AddProductPage /> },
       { path: "inventory/products", element: <MerchantProductDetailPage /> },
@@ -65,8 +59,6 @@ const router = createBrowserRouter([
         path: "inventory/edit",
         element: <MerchantInventoryEditPage />,
       },
-      { path: "upload/tracks", element: <UploadTracksPage /> },
-      { path: "upload/physical", element: <UploadPhysicalPage /> },
       {
         path: "listings",
         element: <Navigate to="/merchant/inventory" replace />,

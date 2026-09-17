@@ -1,4 +1,5 @@
 import type { Agent } from "@atproto/api";
+import { col } from "@bazaar/shared";
 import { AtUri } from "@atproto/syntax";
 import { DeleteObjectCommand, HeadObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { eq } from "drizzle-orm";
@@ -11,27 +12,25 @@ import {
   paymentFulfillment,
 } from "../db/schema";
 import { isS3NotFound } from "./r2/diagnostics";
-import { INVENTORY_MASTER_OBJECT_NAME, inventoryObjectKey } from "./r2/inventoryKey";
-
-function lexiconNs(): string {
-  return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
-}
 
 /**
  * Permanent deletion of one storefront catalog entry: its PDS record(s), its
  * R2 bytes, and its ERP rows.
  *
- * Deliberately written against an AT-URI rather than a record type. A product
- * and a legacy digital item/collection differ in exactly one respect -- how
- * their bytes are resolved (see resolveEntryObjects) -- so everything else
- * (ownership, listing checks, cascade, verification, record deletion) is a
- * single path. When the legacy record types are removed, only that one branch
- * goes with them.
+ * Written against an AT-URI rather than a record type. A product and a
+ * standalone catalog.item differ only in what they fan out to -- a product
+ * cascades to its member items and product assets, an item is itself -- so
+ * ownership, listing checks, byte resolution, verification and record
+ * deletion are a single path.
+ *
+ * The legacy branch this originally carried (ADR 0017) is gone with the
+ * legacy record types; both remaining kinds resolve bytes the same way,
+ * through catalogItems.objectId -> inventory_upload_object.r2Key.
  *
  * ORDER IS LOAD-BEARING. See executeDeletion.
  */
 
-export type EntryKind = "product" | "legacy";
+export type EntryKind = "product" | "item";
 
 export type PdsRecordRef = {
   uri: string;
@@ -40,16 +39,11 @@ export type PdsRecordRef = {
   label: string;
 };
 
-/**
- * `indexed` objects came from an inventory_upload_object row. `recomputed`
- * ones were derived from the record's own rkey via the legacy key scheme and
- * have no DB row backing them -- once the PDS record is gone there is nothing
- * left that can name them, which is precisely why records are deleted last.
- */
+/** Every object is backed by an inventory_upload_object row. */
 export type R2ObjectRef = {
   key: string;
   label: string;
-  source: "indexed" | "recomputed";
+  source: "indexed";
 };
 
 export type DeletionBlocker = {
@@ -77,14 +71,14 @@ export type DeletionManifest = {
   receiptCount: number;
 };
 
-type ItemRef = { uri: string; cid?: string };
+type Ref = { uri: string; cid?: string };
 
-function parseItemRefs(raw: string | null | undefined): ItemRef[] {
+function parseItemRefs(raw: string | null | undefined): Ref[] {
   if (!raw) return [];
   try {
     const v = JSON.parse(raw);
     if (!Array.isArray(v)) return [];
-    return v.filter((e): e is ItemRef => !!e && typeof e.uri === "string");
+    return v.filter((e): e is Ref => !!e && typeof e.uri === "string");
   } catch {
     return [];
   }
@@ -114,46 +108,13 @@ function objectRefsForRow(
   return { refs, objectId: row.id };
 }
 
-/**
- * THE legacy branch. New items resolve bytes through catalogItems.objectId ->
- * inventory_upload_object.r2Key. Legacy items have no such link, so they are
- * looked up by the upload row's own rkey, and only if that misses do we fall
- * back to recomputing the key the way the legacy download path does.
- */
-function resolveLegacyObjects(db: Db, ownerDid: string, rkey: string) {
-  const refs: R2ObjectRef[] = [];
-  const objectIds: string[] = [];
-
-  const rows = db
-    .select()
-    .from(inventoryUploadObject)
-    .where(eq(inventoryUploadObject.rkey, rkey))
-    .all();
-
-  for (const row of rows) {
-    const r = objectRefsForRow(row, "Legacy file");
-    refs.push(...r.refs);
-    objectIds.push(r.objectId);
-  }
-
-  if (rows.length === 0) {
-    refs.push({
-      key: inventoryObjectKey(ownerDid, rkey, INVENTORY_MASTER_OBJECT_NAME),
-      label: "Legacy master file (recomputed key — not indexed)",
-      source: "recomputed",
-    });
-  }
-
-  return { refs, objectIds };
-}
-
 /** Listings on the merchant's PDS that point at `uris`. */
 async function findBlockingListings(
   agent: Agent,
   ownerDid: string,
   uris: Set<string>,
 ): Promise<DeletionBlocker[]> {
-  const collection = `${lexiconNs()}.catalog.listing`;
+  const collection = col("catalog.listing");
   const blockers: DeletionBlocker[] = [];
   let cursor: string | undefined;
 
@@ -210,8 +171,7 @@ export async function buildDeletionManifest(
     return { error: "not_owner", status: 404 };
   }
 
-  const ns = lexiconNs();
-  const isProduct = at.collection === `${ns}.catalog.product`;
+  const isProduct = at.collection === col("catalog.product");
 
   const pdsRecords: PdsRecordRef[] = [];
   const r2Objects: R2ObjectRef[] = [];
@@ -302,30 +262,30 @@ export async function buildDeletionManifest(
       });
     }
   } else {
-    entryKind = "legacy";
-    try {
-      const rec = await agent.com.atproto.repo.getRecord({
-        repo: ownerDid,
-        collection: at.collection,
-        rkey: at.rkey,
-      });
-      const val = rec.data.value as { title?: unknown };
-      if (typeof val?.title === "string" && val.title.trim()) {
-        title = val.title.trim();
-      }
-    } catch {
-      // Unreachable record: fall back to the rkey rather than failing the
-      // manifest -- the merchant still needs to be able to delete it.
-    }
+    entryKind = "item";
+    const itemRow = db.select().from(catalogItems).where(eq(catalogItems.uri, entryUri)).get();
+    if (!itemRow || itemRow.merchantDid !== ownerDid) return { error: "not_found", status: 404 };
+    title = itemRow.title;
+
     pdsRecords.push({
       uri: entryUri,
       collection: at.collection,
       rkey: at.rkey,
-      label: `Legacy record: ${at.collection.split(".").pop()}`,
+      label: `Item: ${itemRow.title}`,
     });
-    const legacy = resolveLegacyObjects(db, ownerDid, at.rkey);
-    r2Objects.push(...legacy.refs);
-    objectIds.push(...legacy.objectIds);
+
+    if (itemRow.objectId) {
+      const obj = db
+        .select()
+        .from(inventoryUploadObject)
+        .where(eq(inventoryUploadObject.id, itemRow.objectId))
+        .get();
+      if (obj) {
+        const r = objectRefsForRow(obj, `Item file: ${itemRow.title}`);
+        r2Objects.push(...r.refs);
+        objectIds.push(r.objectId);
+      }
+    }
   }
 
   const blockers = await findBlockingListings(agent, ownerDid, referenceable);
@@ -362,8 +322,8 @@ export type DeletionOutcome = {
  *
  * A failure at 1 or 2 aborts with the records untouched, which is recoverable:
  * the merchant retries and the manifest still resolves. The inverse order --
- * record first, bytes second -- fails unrecoverably, because for a legacy
- * entry the record's rkey is the only thing that can regenerate its R2 key.
+ * record first, bytes second -- fails unrecoverably: with the record gone,
+ * nothing names the orphaned bytes.
  * Bytes without a record are invisible garbage; a record without bytes is a
  * visible, retryable inconsistency. We fail toward the latter.
  *
@@ -437,6 +397,8 @@ export async function executeDeletion(
       }
     }
     db.delete(catalogProducts).where(eq(catalogProducts.uri, manifest.entryUri)).run();
+  } else {
+    db.delete(catalogItems).where(eq(catalogItems.uri, manifest.entryUri)).run();
   }
 
   // 4. PDS records, children before parent

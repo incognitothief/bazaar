@@ -137,7 +137,7 @@ function listingHasV5License(listing: Record<string, unknown>): boolean {
   );
 }
 
-/** Child singles require an active parent collection listing when parentListing is set. */
+/** A member item sold individually requires an active parent product listing when parentListing is set. */
 export async function parentListingAllowsSale(
   parentListingUri: string,
 ): Promise<boolean> {
@@ -543,11 +543,6 @@ export async function fulfillCheckoutSession(opts: {
   if (typeof itemCid === "string" && itemCid.length > 0) {
     purchasedGood.cid = itemCid;
   }
-  const variantSku = ref.variantSku as string | undefined;
-  if (typeof variantSku === "string" && variantSku.length > 0) {
-    purchasedGood.variantSku = variantSku;
-  }
-
   // Frozen download entitlement -- captured now, folded into storefrontSig, and
   // written onto the receipt so later product edits can't move it.
   const grantedItems = resolveGrantedItems(itemUri, item, itemCid);
@@ -562,7 +557,15 @@ export async function fulfillCheckoutSession(opts: {
   if (
     privateKeyRaw &&
     !privateKeyRaw.includes("PLACEHOLDER") &&
-    buyerDidValid(buyerDid)
+    buyerDidValid(buyerDid) &&
+    // Both fields are part of the signed payload now, so a receipt that lacks
+    // either cannot be verified later. Leave it unsigned rather than mint a
+    // signature over a payload no verifier can reconstruct. In practice this
+    // never trips: resolveGrantedItems yields a ref for every catalog.item and
+    // every catalog.product (items is minLength 1), and checkout is gated on
+    // the listing carrying a licenseGrant.
+    grantedDigest &&
+    licenseGrantCid
   ) {
     try {
       storefrontSig = signReceiptPayload({
@@ -578,6 +581,13 @@ export async function fulfillCheckoutSession(opts: {
     } catch (e) {
       console.warn("Receipt signing failed:", e);
     }
+  } else if (!grantedDigest || !licenseGrantCid) {
+    console.warn(
+      `Receipt for ${paymentRef} left unsigned: ` +
+        `${!grantedDigest ? "no grantedItems digest" : ""}` +
+        `${!grantedDigest && !licenseGrantCid ? " and " : ""}` +
+        `${!licenseGrantCid ? "no licenseGrant cid" : ""}`,
+    );
   }
 
   const receiptKidEnv = storefrontKidFromEnv();

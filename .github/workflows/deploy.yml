@@ -95,10 +95,9 @@ jobs:
       - name: Fly deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
           VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
-          VITE_STOREFRONT_DID: ${{ secrets.VITE_STOREFRONT_DID }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
-          VITE_LEXICON_NAMESPACE: ${{ secrets.VITE_LEXICON_NAMESPACE }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
@@ -107,12 +106,14 @@ jobs:
             echo "FLY_API_TOKEN secret is not set."
             exit 1
           fi
+          if [ -z "${FLY_APP_NAME:-}" ]; then
+            echo "FLY_APP_NAME secret is not set (fly.toml holds a placeholder)."
+            exit 1
+          fi
 
-          flyctl deploy --remote-only --no-cache \
+          flyctl deploy --remote-only --no-cache --app "${FLY_APP_NAME}" \
             --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
-            --build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
-            --build-arg VITE_LEXICON_NAMESPACE="${VITE_LEXICON_NAMESPACE:-}" \
             --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
             --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"
 
@@ -177,10 +178,9 @@ jobs:
       - name: Fly deploy (staging)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME: ${{ secrets.FLY_APP_NAME_STG }}
           VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
-          VITE_STOREFRONT_DID: ${{ secrets.VITE_STOREFRONT_DID }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
-          VITE_LEXICON_NAMESPACE: ${{ secrets.VITE_LEXICON_NAMESPACE }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
@@ -189,11 +189,13 @@ jobs:
             echo "FLY_API_TOKEN secret is not set."
             exit 1
           fi
+          if [ -z "${FLY_APP_NAME:-}" ]; then
+            echo "FLY_APP_NAME_STG secret is not set (fly.stg.toml holds a placeholder)."
+            exit 1
+          fi
 
-          flyctl deploy --remote-only --no-cache --config fly.stg.toml \
+          flyctl deploy --remote-only --no-cache --config fly.stg.toml --app "${FLY_APP_NAME}" \
             --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
-            --build-arg VITE_STOREFRONT_DID="${VITE_STOREFRONT_DID:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
-            --build-arg VITE_LEXICON_NAMESPACE="${VITE_LEXICON_NAMESPACE:-}" \
             --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
             --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"

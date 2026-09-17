@@ -1,8 +1,8 @@
 /**
  * Collection NSID from an AT-URI (`at://did:plc:…/collection/rkey`) --
- * this is what a record's "type" actually is, since it's the same
- * information every itemRef.itemType used to duplicate. Use this instead
- * of a stored itemType field, which no longer exists on itemRef.
+ * this is what a record's "type" actually is. Use it instead of a stored
+ * type field: `defs#ref` deliberately carries none, because the URI already
+ * says what it points to.
  */
 export function collectionFromAtUri(uri: string): string | null {
   if (!uri.startsWith("at://")) return null;

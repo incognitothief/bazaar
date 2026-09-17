@@ -1,3 +1,4 @@
+import { col } from "@bazaar/shared";
 import { AtUri } from "@atproto/syntax";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -6,19 +7,12 @@ import { Hono } from "hono";
 import type { Db } from "../db";
 import { catalogItems, catalogProducts, inventoryUploadObject } from "../db/schema";
 import type { OAuthClient } from "../lib/atproto/oauth";
-import { getAgentForDid } from "../lib/atproto/resolvePds";
 import { getSessionAgent } from "../lib/atproto/session";
 import { storefrontPublicKeyPemFromEnv, verifyReceiptPayload } from "../lib/atproto/sign";
 import { entitlementDigest } from "../lib/atproto/entitlement";
 import { candidatePemsForKid, getStorefrontKeys } from "../lib/storefrontKeys";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import { isS3NoSuchKey } from "../lib/r2/diagnostics";
-import {
-  extensionForDigital,
-  INVENTORY_MASTER_OBJECT_NAME,
-  inventoryObjectKey,
-  sanitizeInventoryFilename,
-} from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import {
   buildProductZip,
@@ -26,25 +20,20 @@ import {
   rebuildProductZipCacheByUri,
   presignCachedProductPackage,
 } from "../lib/productZip";
-import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 
-function lexiconNs(): string {
-  return process.env.LEXICON_NAMESPACE?.trim() || "diamonds.whereditgo.bazaar";
-}
+const COL_RECEIPT = col("purchase.receipt");
+const COL_PRODUCT = col("catalog.product");
+const COL_ITEM = col("catalog.item");
 
-const COL_RECEIPT = `${lexiconNs()}.purchase.receipt`;
-const COL_PRODUCT = `${lexiconNs()}.catalog.product`;
-const COL_ITEM = `${lexiconNs()}.catalog.item`;
-
-type ItemRef = {
+type Ref = {
   uri: string;
   cid?: string;
 };
 
 type PurchaseReceipt = {
-  purchasedGood: ItemRef;
-  listing: ItemRef;
-  licenseGrant?: ItemRef;
+  purchasedGood: Ref;
+  listing: Ref;
+  licenseGrant?: Ref;
   payment?: { processor: string; ref: string };
   purchasedAt: string;
   storefrontSig: string;
@@ -52,35 +41,25 @@ type PurchaseReceipt = {
   kid?: string;
   /**
    * Frozen entitlement: the catalog.item refs this purchase covers, captured
-   * at checkout. Present on current receipts; absent on legacy ones, which
-   * fall back to live product/collection membership.
+   * at checkout. Required: a receipt without one does not verify, which
+   * fall back to live product membership.
    */
-  grantedItems?: ItemRef[];
+  grantedItems?: Ref[];
 };
 
-function frozenGrant(rec: PurchaseReceipt): ItemRef[] | null {
+function frozenGrant(rec: PurchaseReceipt): Ref[] | null {
   return Array.isArray(rec.grantedItems) && rec.grantedItems.length > 0
     ? rec.grantedItems
     : null;
 }
 
-/** itemRef no longer carries a stored type field (removed as redundant with the URI itself); the AT-URI's own collection segment is the only source of truth. */
+/** defs#ref carries no stored type field (redundant with the URI itself); the AT-URI's own collection segment is the only source of truth. */
 
 /** True when at least one storefront verification key is configured (env or key history). */
 function storefrontVerifyKeysAvailable(): boolean {
   return (
     getStorefrontKeys().byKid.size > 0 || storefrontPublicKeyPemFromEnv() !== null
   );
-}
-
-/** AT-URI collection NSID is authoritative; `itemType` can disagree with server LEXICON_NAMESPACE. */
-function receiptItemIsCollection(itemUri: string): boolean {
-  try {
-    const u = new AtUri(itemUri);
-    return u.collection.endsWith(".catalog.collection");
-  } catch {
-    return false;
-  }
 }
 
 function receiptItemIsProduct(itemUri: string): boolean {
@@ -92,17 +71,6 @@ function receiptItemIsProduct(itemUri: string): boolean {
 }
 
 /** ERP-first (catalogProducts.items), not a PDS getRecord -- products are ERP-first everywhere else, and checkout already pinned the CID this receipt was issued against. */
-function productContainsItem(db: Db, productUri: string, itemUri: string): boolean {
-  const row = db.select().from(catalogProducts).where(eq(catalogProducts.uri, productUri)).get();
-  if (!row) return false;
-  try {
-    const refs = JSON.parse(row.items) as Array<{ uri: string }>;
-    return refs.some((ref) => ref.uri === itemUri);
-  } catch {
-    return false;
-  }
-}
-
 function safeVerifyReceiptForBuyer(
   rec: PurchaseReceipt,
   sessionDid: string,
@@ -114,12 +82,6 @@ function safeVerifyReceiptForBuyer(
     return false;
   }
 }
-
-type CollectionRecord = {
-  $type: string;
-  title?: string;
-  items: Array<{ uri: string; role?: string }>;
-};
 
 export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
   const r = new Hono();
@@ -137,10 +99,8 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
     } catch {
       return c.json({ error: "invalid_itemUri" }, 400);
     }
-    const isLegacyDigital =
-      !!itemAt.rkey && itemAt.collection.endsWith(".catalog.item.digital");
     const isCatalogItem = !!itemAt.rkey && itemAt.collection === COL_ITEM;
-    if (!isLegacyDigital && !isCatalogItem) {
+    if (!isCatalogItem) {
       return c.json({ error: "not_digital_item" }, 400);
     }
 
@@ -165,52 +125,23 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
         const rec = row.value as PurchaseReceipt;
         if (!rec?.purchasedGood?.uri) continue;
 
-        // Current receipts: entitlement is exactly the frozen grant. A later
-        // edit to the product's items[] cannot add or remove access.
+        // Entitlement is exactly the frozen grant. A later edit to the
+        // product's items[] cannot add or remove access. A receipt with no
+        // frozen grant no longer verifies at all (ADR 0019), so there is no
+        // live-membership fallback behind this.
         const grant = frozenGrant(rec);
-        if (grant) {
-          if (!grant.some((g) => g.uri === itemUriRaw)) continue;
-          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-          entitled = true;
-          receipt = rec;
-          break;
-        }
-
-        // Legacy receipts (no grantedItems): resolve against live membership.
-        if (rec.purchasedGood.uri === itemUriRaw) {
-          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-          entitled = true;
-          receipt = rec;
-          break;
-        }
-        if (receiptItemIsCollection(rec.purchasedGood.uri)) {
-          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-          const ok = await collectionContainsDigitalMember(
-            rec.purchasedGood.uri,
-            itemUriRaw,
-          );
-          if (ok) {
-            entitled = true;
-            receipt = rec;
-            break;
-          }
-        }
-        if (isCatalogItem && receiptItemIsProduct(rec.purchasedGood.uri)) {
-          if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-          if (productContainsItem(db, rec.purchasedGood.uri, itemUriRaw)) {
-            entitled = true;
-            receipt = rec;
-            break;
-          }
-        }
+        if (!grant) continue;
+        if (!grant.some((g) => g.uri === itemUriRaw)) continue;
+        if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
+        entitled = true;
+        receipt = rec;
+        break;
       } catch (e) {
         console.warn("download: skip receipt row", e);
       }
     }
 
     if (!entitled || !receipt) return c.json({ error: "not_entitled" }, 403);
-
-    const artistDid = itemAt.hostname;
     const rkey = itemAt.rkey;
 
     if (isCatalogItem) {
@@ -241,112 +172,6 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
         );
       }
     }
-
-    const key = inventoryObjectKey(artistDid, rkey, INVENTORY_MASTER_OBJECT_NAME);
-
-    let filenameForDownload = `track_${rkey}.bin`;
-    try {
-      const catalogAgent = await getAgentForDid(artistDid);
-      const dig = await catalogAgent.com.atproto.repo.getRecord({
-        repo: artistDid,
-        collection: itemAt.collection,
-        rkey: itemAt.rkey,
-      });
-      const digital = dig.data.value as Record<string, unknown>;
-      const title =
-        typeof digital.title === "string" && digital.title.trim()
-          ? digital.title.trim()
-          : rkey;
-      const formats = digital.formats as string[] | undefined;
-      const ext = extensionForDigital(
-        formats,
-        digital.fileFormat as string | undefined,
-      );
-      const safeBase = sanitizeInventoryFilename(
-        title.replace(/\.[^./\\]+$/g, "") || `track_${rkey}`,
-      );
-      filenameForDownload = `${safeBase}.${ext}`;
-    } catch (e) {
-      console.warn("download: could not resolve digital title for filename", e);
-    }
-
-    const disp = `attachment; filename="${filenameForDownload.replace(/"/g, "")}"`;
-
-    try {
-      const cmd = new GetObjectCommand({
-        Bucket: cfg.bucket,
-        Key: key,
-        ResponseContentDisposition: disp,
-      });
-      const url = await getSignedUrl(client, cmd, { expiresIn: 900 });
-      const expiresAt = new Date(Date.now() + 900_000).toISOString();
-      return c.json({ url, expiresAt, filename: filenameForDownload });
-    } catch (e) {
-      if (isS3NoSuchKey(e)) {
-        return c.json({ error: "master_not_in_r2" }, 404);
-      }
-      console.error("download presign failed:", e);
-      return c.json(
-        { error: "download_failed", message: e instanceof Error ? e.message : String(e) },
-        502,
-      );
-    }
-  });
-
-  /**
-   * Zip of all digital member files for a purchased collection.
-   * Query: collectionUri=at://...
-   */
-  r.get("/collection-zip", async (c) => {
-    const sess = await getSessionAgent(c, oauthClient);
-    if (!sess) return c.json({ error: "Unauthorized" }, 401);
-
-    const collectionUriRaw = c.req.query("collectionUri")?.trim();
-    if (!collectionUriRaw) return c.json({ error: "collectionUri_required" }, 400);
-
-    let colAt: AtUri;
-    try {
-      colAt = new AtUri(collectionUriRaw);
-    } catch {
-      return c.json({ error: "invalid_collectionUri" }, 400);
-    }
-    if (!colAt.rkey || !colAt.collection.endsWith(".catalog.collection")) {
-      return c.json({ error: "not_collection" }, 400);
-    }
-
-    const cfg = r2ConfigFromEnv();
-    if (!cfg.ok) return c.json({ error: "r2_unconfigured", message: cfg.reason }, 503);
-    const client = getR2S3Client(cfg);
-
-    const list = await sess.agent.com.atproto.repo.listRecords({
-      repo: sess.did,
-      collection: COL_RECEIPT,
-      limit: 100,
-    });
-
-    if (!storefrontVerifyKeysAvailable())
-      return c.json({ error: "app_key_missing" }, 503);
-
-    let entitled = false;
-    for (const row of list.data.records) {
-      try {
-        const rec = row.value as PurchaseReceipt;
-        if (!rec?.purchasedGood?.uri) continue;
-        if (!receiptItemIsCollection(rec.purchasedGood.uri)) continue;
-        if (rec.purchasedGood.uri !== collectionUriRaw) continue;
-        if (!safeVerifyReceiptForBuyer(rec, sess.did)) continue;
-        entitled = true;
-        break;
-      } catch (e) {
-        console.warn("download collection-zip: skip receipt row", e);
-      }
-    }
-
-    if (!entitled) return c.json({ error: "not_entitled" }, 403);
-
-    const result = await buildLegacyCollectionZip(client, cfg, collectionUriRaw);
-    if (result instanceof Response) return result;
-    return c.json({ error: result.error }, result.status);
   });
 
   /**
@@ -409,8 +234,8 @@ export function createDownloadRouter(db: Db, oauthClient: OAuthClient) {
       .get();
     if (!product) return c.json({ error: "not_found" }, 404);
 
-    // Current receipts package exactly the frozen grant; legacy receipts
-    // package the live product.
+    // The zip packages exactly the frozen grant. entitledReceipt verified, and
+    // verification requires a frozen grant (ADR 0019), so this is always set.
     const grant = frozenGrant(entitledReceipt);
     const entitledUris = grant?.map((g) => g.uri);
 
@@ -471,10 +296,13 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
       ? pems
       : [storefrontPublicKeyPemFromEnv()].filter((p): p is string => !!p);
 
-  // Current receipts fold the grantedItems digest into storefrontSig as a sixth
-  // payload field; legacy receipts sign only the five-field payload.
+  // The signed payload is a fixed seven fields (ADR 0019). A receipt without
+  // a frozen grant or a licenseGrant cid cannot reconstruct it, so it does not
+  // verify -- no five- or six-field fallback any more.
   const grant = frozenGrant(rec);
-  const digest = grant ? entitlementDigest(grant) : undefined;
+  const licenseGrantCid = rec.licenseGrant?.cid;
+  if (!grant || !licenseGrantCid) return false;
+  const digest = entitlementDigest(grant);
 
   return candidates.some((publicKeyPem) =>
     verifyReceiptPayload({
@@ -483,7 +311,7 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
       itemUri: rec.purchasedGood.uri,
       listingCid: rec.listing.cid ?? "",
       buyerDid: sessionDid,
-      licenseGrantCid: rec.licenseGrant?.cid,
+      licenseGrantCid,
       entitlementDigest: digest,
       storefrontSig: rec.storefrontSig,
       publicKeyPem,
@@ -491,29 +319,3 @@ function verifyReceiptForBuyer(rec: PurchaseReceipt, sessionDid: string): boolea
   );
 }
 
-async function collectionContainsDigitalMember(
-  collectionUri: string,
-  digitalItemUri: string,
-): Promise<boolean> {
-  let at: AtUri;
-  try {
-    at = new AtUri(collectionUri);
-  } catch {
-    return false;
-  }
-  if (!at.rkey) return false;
-  try {
-    const agent = await getAgentForDid(at.hostname);
-    const got = await agent.com.atproto.repo.getRecord({
-      repo: at.hostname,
-      collection: at.collection,
-      rkey: at.rkey,
-    });
-    const val = got.data.value as CollectionRecord;
-    if (!val?.items?.length) return false;
-    return val.items.some((i) => i.uri === digitalItemUri);
-  } catch (e) {
-    console.warn("collectionContainsDigitalMember: getRecord failed", e);
-    return false;
-  }
-}

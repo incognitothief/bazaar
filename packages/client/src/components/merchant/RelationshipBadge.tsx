@@ -5,8 +5,8 @@ import type { RelationshipDescriptor } from "./inventoryCommander";
 /**
  * Small chip describing how an inventory row sits in the listing graph:
  * a product, an item sold on its own, an item that only ships inside a
- * product, or an item with no listing at all. Rendered nothing for legacy
- * grains (`none`).
+ * product, or an item with no listing at all. Renders nothing when there
+ * is no relationship to show.
  */
 export function RelationshipBadge({
   relationship,

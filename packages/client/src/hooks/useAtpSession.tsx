@@ -193,10 +193,3 @@ export function useAtpSession(): AtpSessionContextValue {
   return ctx;
 }
 
-/** Dev-only: set a fake session so merchant routes work without OAuth. */
-export function setMockAtpSessionForDev(s: AtpSession | null): void {
-  if (!import.meta.env.DEV) return;
-  if (s) localStorage.setItem(MOCK_KEY, JSON.stringify(s));
-  else localStorage.removeItem(MOCK_KEY);
-  window.location.reload();
-}

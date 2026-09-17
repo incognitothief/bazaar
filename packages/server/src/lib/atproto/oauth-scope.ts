@@ -2,17 +2,7 @@
  * ATProto OAuth scopes: base `atproto` plus per-collection repo actions.
  * @see https://atproto.com/specs/oauth
  */
-
-const DEFAULT_LEXICON_NS = "diamonds.whereditgo.bazaar";
-
-function lexiconNamespace(): string {
-  const raw = process.env.LEXICON_NAMESPACE?.trim();
-  return raw && raw.length > 0 ? raw : DEFAULT_LEXICON_NS;
-}
-
-function col(ns: string, suffix: string): string {
-  return `${ns}.${suffix}`;
-}
+import { col } from "@bazaar/shared";
 
 function repoAction(
   collection: string,
@@ -26,34 +16,28 @@ function repoAction(
  * Keep in sync with client `BAZAAR_COLLECTION` + create/putRecord usage.
  */
 export function bazaarRepoOAuthScopes(): string[] {
-  const ns = lexiconNamespace();
   return [
-    repoAction(col(ns, "catalog.item"), "create"),
-    repoAction(col(ns, "catalog.item"), "update"),
-    repoAction(col(ns, "catalog.product"), "create"),
-    repoAction(col(ns, "catalog.product"), "update"),
-    repoAction(col(ns, "catalog.item.digital"), "create"),
-    repoAction(col(ns, "catalog.collection"), "create"),
-    repoAction(col(ns, "catalog.listing"), "create"),
-    repoAction(col(ns, "catalog.listing"), "update"),
-    repoAction(col(ns, "catalog.listing"), "delete"),
+    repoAction(col("catalog.item"), "create"),
+    repoAction(col("catalog.item"), "update"),
+    repoAction(col("catalog.product"), "create"),
+    repoAction(col("catalog.product"), "update"),
+    repoAction(col("catalog.listing"), "create"),
+    repoAction(col("catalog.listing"), "update"),
+    repoAction(col("catalog.listing"), "delete"),
     // Permanent catalog deletion (lib/deleteCatalogEntry.ts). Declared for
     // correctness -- `transition:generic` is what actually authorizes these
     // today, but that scope is transitional and these become load-bearing
     // when it goes away.
-    repoAction(col(ns, "catalog.item"), "delete"),
-    repoAction(col(ns, "catalog.product"), "delete"),
-    repoAction(col(ns, "catalog.item.digital"), "delete"),
-    repoAction(col(ns, "catalog.collection"), "delete"),
-    repoAction(col(ns, "catalog.item.physical"), "delete"),
-    repoAction(col(ns, "license.terms"), "delete"),
-    repoAction(col(ns, "license.terms"), "create"),
-    repoAction(col(ns, "purchase.receipt"), "create"),
-    repoAction(col(ns, "actor.merchant"), "create"),
-    repoAction(col(ns, "actor.merchant"), "update"),
-    repoAction(col(ns, "actor.storefrontKeys"), "create"),
-    repoAction(col(ns, "actor.storefrontKeys"), "update"),
-    repoAction(col(ns, "actor.storefrontKeys"), "delete"),
+    repoAction(col("catalog.item"), "delete"),
+    repoAction(col("catalog.product"), "delete"),
+    repoAction(col("license.terms"), "delete"),
+    repoAction(col("license.terms"), "create"),
+    repoAction(col("purchase.receipt"), "create"),
+    repoAction(col("actor.merchant"), "create"),
+    repoAction(col("actor.merchant"), "update"),
+    repoAction(col("actor.storefrontKeys"), "create"),
+    repoAction(col("actor.storefrontKeys"), "update"),
+    repoAction(col("actor.storefrontKeys"), "delete"),
   ];
 }
 
@@ -65,8 +49,7 @@ export function bazaarRepoOAuthScopes(): string[] {
  * PDS consent screen honest about what Bazaar can actually do on a buyer's repo.
  */
 export function buyerRepoOAuthScopes(): string[] {
-  const ns = lexiconNamespace();
-  return [repoAction(col(ns, "purchase.receipt"), "create")];
+  return [repoAction(col("purchase.receipt"), "create")];
 }
 
 /**

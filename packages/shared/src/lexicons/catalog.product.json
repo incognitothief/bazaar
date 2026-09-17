@@ -35,7 +35,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
+              "$ref": "diamonds.whereditgo.bazaar.defs#ref"
             },
             "minLength": 1,
             "description": "The catalog.item records that compose this product, in display order. Freely mutable via putRecord. A buyer's entitlement is frozen at purchase time as purchase.receipt.grantedItems, so editing this list later does not change what an existing buyer can download -- a removed item stays available to them, an added item does not reach them."

@@ -35,20 +35,17 @@ export const meta = sqliteTable("meta", {
     .$defaultFn(() => new Date()),
 });
 
-/** Stripe PaymentIntent → PDS receipt fulfillment state machine. */
-/** Resumable inventory uploads + deferred PDS publish (digital first; discriminator for future physical). */
+/** Resumable inventory uploads + deferred PDS publish. */
 export const inventoryUploadSession = sqliteTable("inventory_upload_session", {
   id: text("id").primaryKey(),
   merchantDid: text("merchant_did").notNull(),
-  /** e.g. digital — reserved for physical expansion */
-  inventoryKind: text("inventory_kind").notNull().default("digital"),
   status: text("status").notNull().default("active"),
   draftJson: text("draft_json"),
   publishedAt: integer("published_at", { mode: "timestamp" }),
   publishError: text("publish_error"),
   pdsSnapshotJson: text("pds_snapshot_json"),
   /**
-   * inventoryKind "product" sessions only. Either a fresh TID minted at
+   * Either a fresh TID minted at
    * session creation (new product -- becomes that catalog.product record's
    * actual rkey at publish, passed explicitly rather than left to the PDS
    * to assign) or the rkey of an already-existing product (adding items /
@@ -86,7 +83,8 @@ export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
    * Pixel dimensions for raster image masters, read client-side at upload
    * (createImageBitmap) and passed through the publish draft -- ERP-only,
    * never on the PDS record, same lifecycle as durationMs. Null for
-   * non-image files, vector art (no intrinsic px size), or legacy uploads.
+   * non-image files, vector art (no intrinsic px size), or uploads predating
+   * this column.
    */
   mediaWidth: integer("media_width"),
   mediaHeight: integer("media_height"),
@@ -94,7 +92,7 @@ export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
   /**
    * R2 key of a webp derivative for this object, if one was generated
    * (best-effort, "artwork"-role objects only -- see lib/webpDerivative.ts).
-   * Null means either generation wasn't attempted (legacy upload, non-image
+   * Null means either generation wasn't attempted (upload predating this column, non-image
    * file) or it failed; either way the read path falls back to r2Key.
    * Never used for the product download package, only storefront display.
    */
@@ -108,24 +106,6 @@ export const inventoryUploadObject = sqliteTable("inventory_upload_object", {
 });
 
 /** Append-only publish hints for merchant listings UI (not lexicon). */
-export const inventoryPrefillLog = sqliteTable(
-  "inventory_prefill_log",
-  {
-    id: text("id").primaryKey(),
-    merchantDid: text("merchant_did").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp" })
-      .notNull()
-      .$defaultFn(() => new Date()),
-    payloadJson: text("payload_json").notNull(),
-  },
-  (t) => ({
-    merchantCreatedIdx: index("idx_inventory_prefill_merchant_created").on(
-      t.merchantDid,
-      t.createdAt,
-    ),
-  }),
-);
-
 export const inventoryUploadPart = sqliteTable(
   "inventory_upload_part",
   {
@@ -235,7 +215,7 @@ export const catalogProducts = sqliteTable("catalog_products", {
   description: text("description"),
   /** JSON-serialized string[] -- freeform, seller-authored, no taxonomy. Mirrors catalog.item's own tags field. */
   tags: text("tags"),
-  /** JSON-serialized itemRef[] — the product's declared composition. */
+  /** JSON-serialized defs#ref[] — the product's declared composition. */
   items: text("items").notNull(),
   /**
    * UI-only classification (e.g. "music", "generic") -- deliberately NOT on
@@ -317,10 +297,11 @@ export const catalogProductAssets = sqliteTable(
   }),
 );
 
+/** Stripe PaymentIntent → PDS receipt fulfillment state machine. */
 export const paymentFulfillment = sqliteTable("payment_fulfillment", {
   paymentIntentId: text("payment_intent_id").primaryKey(),
   checkoutSessionId: text("checkout_session_id"),
-  /** Purchaser repo DID (from Checkout Session metadata); nullable for legacy rows. */
+  /** Purchaser repo DID (from Checkout Session metadata); nullable for rows predating this column. */
   buyerDid: text("buyer_did"),
   status: text("status").notNull(),
   attemptCount: integer("attempt_count").notNull().default(0),

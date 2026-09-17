@@ -935,10 +935,11 @@ export async function rebuildProductZipCacheByUri(db: Db, productUri: string): P
 /**
  * True when a buyer's frozen entitlement (from `purchase.receipt.
  * grantedItems`) covers exactly the product's *current* items[] -- the only
- * case the precomputed cache is allowed to answer for. `undefined` means a
- * legacy receipt with no frozen grant, which already resolves against live
- * product membership (see download.ts), so it always matches "current" by
- * definition. Order-independent; ignores each ref's cid.
+ * case the precomputed cache is allowed to answer for. `undefined` means no
+ * frozen grant was supplied, which no longer reaches here from download.ts --
+ * a receipt without one does not verify (ADR 0019) -- but is kept as a
+ * permissive default for other callers. Order-independent; ignores each ref's
+ * cid.
  */
 export function entitlementMatchesCurrentItems(
   product: Pick<CatalogProductRow, "items">,

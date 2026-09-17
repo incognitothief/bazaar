@@ -17,14 +17,12 @@ import { listingStatusBadgeVariant } from "@/components/merchant/merchantItemDis
 import { useAtpSession } from "@/hooks/useAtpSession";
 import { useMerchantAgent } from "@/hooks/useMerchantAgent";
 import { useZipProgress } from "@/hooks/useZipProgress";
-import { fetchLatestInventoryPrefill } from "@/lib/api/inventoryApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
 import {
   buildItemRefFromUri,
   createListing,
   getCatalogProduct,
   hasCompletedSale,
-  isTerminalListingStatus,
   listCatalogItemRows,
   listCatalogProductRows,
   listLicensesWithStatus,
@@ -111,22 +109,6 @@ export function CreateListingPage() {
     setLoading(true);
     try {
       let targetUri = uriParam;
-      let prefill: {
-        licenseUri?: string;
-        licenseGrantCid?: string;
-        priceUsd?: string;
-      } | null = null;
-      if (!targetUri && source === "upload") {
-        const { prefill: p } = await fetchLatestInventoryPrefill().catch(
-          () => ({
-            prefill: null,
-          }),
-        );
-        if (p?.primaryItemUri) {
-          targetUri = p.primaryItemUri;
-          prefill = p;
-        }
-      }
       if (!targetUri) {
         setEntity(null);
         setPackageZipStatus(null);
@@ -178,8 +160,7 @@ export function CreateListingPage() {
         for (const m of members) {
           const childRow = rows.find(
             (r) =>
-              r.listing.item.uri === m.uri &&
-              !isTerminalListingStatus(r.listing.status),
+              r.listing.item.uri === m.uri,
           );
           if (childRow) {
             attach[m.uri] = !childRow.listing.parentListing;
@@ -202,14 +183,12 @@ export function CreateListingPage() {
         ? rows.find(
             (r) =>
               r.listing.item.uri === parentUri &&
-              !r.listing.parentListing &&
-              !isTerminalListingStatus(r.listing.status),
+              !r.listing.parentListing,
           )
         : undefined;
       const own = rows.find(
         (r) =>
-          r.listing.item.uri === targetUri &&
-          !isTerminalListingStatus(r.listing.status),
+          r.listing.item.uri === targetUri,
       );
 
       if (own) {
@@ -228,11 +207,6 @@ export function CreateListingPage() {
         }
       }
 
-      if (prefill) {
-        setLicenseUri(prefill.licenseUri ?? "");
-        setLicenseCid(prefill.licenseGrantCid ?? "");
-        if (prefill.priceUsd) setPriceUsd(prefill.priceUsd);
-      }
     } finally {
       setLoading(false);
     }
@@ -250,8 +224,7 @@ export function CreateListingPage() {
     return listingRows.find(
       (r) =>
         r.listing.item.uri === parentProductUri &&
-        !r.listing.parentListing &&
-        !isTerminalListingStatus(r.listing.status),
+        !r.listing.parentListing,
     );
   }, [listingRows, parentProductUri]);
 
@@ -261,8 +234,7 @@ export function CreateListingPage() {
     if (!entity) return undefined;
     return listingRows.find(
       (r) =>
-        r.listing.item.uri === entity.uri &&
-        !isTerminalListingStatus(r.listing.status),
+        r.listing.item.uri === entity.uri,
     );
   }, [listingRows, entity]);
 
@@ -309,8 +281,7 @@ export function CreateListingPage() {
     (itemUri: string) =>
       listingRows.find(
         (r) =>
-          r.listing.item.uri === itemUri &&
-          !isTerminalListingStatus(r.listing.status),
+          r.listing.item.uri === itemUri,
       ),
     [listingRows],
   );
@@ -343,8 +314,7 @@ export function CreateListingPage() {
     (itemUri: string) =>
       listingRows.some(
         (r) =>
-          r.listing.item.uri === itemUri &&
-          !isTerminalListingStatus(r.listing.status),
+          r.listing.item.uri === itemUri,
       ),
     [listingRows],
   );

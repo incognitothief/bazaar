@@ -98,7 +98,7 @@ export type PaymentFulfillmentRow = {
   receiptCid: string | null;
   itemUri: string | null;
   listingUri: string | null;
-  /** ERP-first (catalogItems/catalogProducts); null for rows predating this column or a legacy digital/physical/collection sale. */
+  /** ERP-first (catalogItems/catalogProducts); null for rows predating this column. */
   itemTitle: string | null;
   createdAt: string;
   updatedAt: string;

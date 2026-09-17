@@ -144,7 +144,7 @@ describe("executeDeletion ordering guarantee", () => {
     const res = await executeDeletion(noopDb, agent, OWNER, manifest(), client, "bucket");
 
     expect("error" in res).toBe(false);
-    // Parent last: its rkey is the only thing that can name a legacy entry's bytes.
+    // Parent last: with the record gone, nothing names orphaned bytes.
     expect(deleted).toEqual(["i1", "p1"]);
   });
 

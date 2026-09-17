@@ -62,13 +62,9 @@ import { itemMetaLabel, isAudioMeta } from "@/lib/itemMetaLabel";
 import { formatMoney } from "@/lib/format";
 import { probeImageSize, probeVideoDuration } from "@/lib/media/probe";
 import { cn, formatBytes, moveArrayItem } from "@/lib/utils";
-import type { ItemRef, LicenseTerms, Listing } from "@/types/lexicons";
+import type { Ref, LicenseTerms, Listing } from "@/types/lexicons";
 
 const titleFromFileName = (name: string) => name.replace(/\.[^./\\]+$/, "");
-
-function isTerminalStatus(s: Listing["status"]): boolean {
-  return s === "archived" || s === "superseded";
-}
 
 export function MerchantProductDetailPage() {
   const [searchParams] = useSearchParams();
@@ -104,7 +100,7 @@ export function MerchantProductDetailPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
-  const [items, setItems] = useState<ItemRef[]>([]);
+  const [items, setItems] = useState<Ref[]>([]);
   const [productType, setProductType] = useState<string | null>(null);
   const [artIncludedInDownload, setArtIncludedInDownload] = useState(false);
 
@@ -147,7 +143,7 @@ export function MerchantProductDetailPage() {
     setTitle(p.title);
     setDescription(p.description ?? "");
     setTags(p.tags ?? []);
-    setItems(p.items as ItemRef[]);
+    setItems(p.items as Ref[]);
     setProductType(p.productType);
     setArtIncludedInDownload(p.artIncludedInDownload);
     setAssets(productAssets ?? { coverImages: [], includedAssets: [] });
@@ -156,7 +152,7 @@ export function MerchantProductDetailPage() {
     // size / dimensions) -- only this endpoint joins the upload object, same
     // as the storefront product page.
     const memberMetas = await Promise.all(
-      (p.items as ItemRef[]).map((ref) => getCatalogItem(ref.uri)),
+      (p.items as Ref[]).map((ref) => getCatalogItem(ref.uri)),
     );
     setItemsByUri(
       Object.fromEntries(
@@ -169,21 +165,15 @@ export function MerchantProductDetailPage() {
     const rows = await listListingRows(p.merchantDid).catch(() => []);
     const primary = rows
       .filter((r) => r.listing.item.uri === uri && !r.listing.parentListing)
-      .sort((a, b) => {
-        const at = isTerminalStatus(a.listing.status) ? 1 : 0;
-        const bt = isTerminalStatus(b.listing.status) ? 1 : 0;
-        if (at !== bt) return at - bt;
-        return (
-          Date.parse(b.listing.createdAt) - Date.parse(a.listing.createdAt)
-        );
-      })[0];
-    const primaryActive =
-      primary && !isTerminalStatus(primary.listing.status) ? primary : null;
-    setListing(primaryActive?.listing ?? null);
-    setListingUri(primaryActive?.uri ?? null);
-    if (primaryActive?.listing.licenseGrant?.uri) {
+      .sort(
+        (a, b) =>
+          Date.parse(b.listing.createdAt) - Date.parse(a.listing.createdAt),
+      )[0];
+    setListing(primary?.listing ?? null);
+    setListingUri(primary?.uri ?? null);
+    if (primary?.listing.licenseGrant?.uri) {
       const lt = await getRecordValueWithCid<LicenseTerms>(
-        primaryActive.listing.licenseGrant.uri,
+        primary.listing.licenseGrant.uri,
       ).catch(() => null);
       setLicense(lt?.value ?? null);
       setLicenseCid(lt?.cid ?? null);
@@ -192,10 +182,9 @@ export function MerchantProductDetailPage() {
       setLicenseCid(null);
     }
 
-    const memberUris = new Set((p.items as ItemRef[]).map((r) => r.uri));
+    const memberUris = new Set((p.items as Ref[]).map((r) => r.uri));
     const byItem: Record<string, Listing> = {};
     for (const r of rows) {
-      if (isTerminalStatus(r.listing.status)) continue;
       if (r.listing.item.uri === uri) continue;
       if (!memberUris.has(r.listing.item.uri)) continue;
       byItem[r.listing.item.uri] = r.listing;
@@ -307,7 +296,7 @@ export function MerchantProductDetailPage() {
     async (file: File) => {
       setAddingItem(true);
       try {
-        const { sessionId } = await createInventorySession("product", uri);
+        const { sessionId } = await createInventorySession(uri);
         const { objects } = await registerInventoryObjects(sessionId, [
           {
             slotId: "new-item",
@@ -345,7 +334,7 @@ export function MerchantProductDetailPage() {
           ],
         });
         const { items: created } = await publishItemsSession(sessionId);
-        const newRefs: ItemRef[] = created.map((it) => ({
+        const newRefs: Ref[] = created.map((it) => ({
           uri: it.uri,
           cid: it.cid,
         }));
@@ -378,7 +367,7 @@ export function MerchantProductDetailPage() {
     async (file: File) => {
       setUploadingCoverArt(true);
       try {
-        const { sessionId } = await createInventorySession("product", uri);
+        const { sessionId } = await createInventorySession(uri);
         const { objects } = await registerInventoryObjects(sessionId, [
           {
             slotId: "cover-art",
@@ -414,7 +403,7 @@ export function MerchantProductDetailPage() {
         (prev) => new Set([...prev, ...entries.map((e) => e.id)]),
       );
       try {
-        const { sessionId } = await createInventorySession("product", uri);
+        const { sessionId } = await createInventorySession(uri);
         const { objects } = await registerInventoryObjects(
           sessionId,
           entries.map((entry) => ({
@@ -485,7 +474,7 @@ export function MerchantProductDetailPage() {
     if (!product) return false;
     const sameItems =
       items.length === product.items.length &&
-      items.every((r, i) => r.uri === (product.items as ItemRef[])[i]?.uri);
+      items.every((r, i) => r.uri === (product.items as Ref[])[i]?.uri);
     return (
       title.trim() !== product.title ||
       (description.trim() || "") !== (product.description ?? "") ||
@@ -547,7 +536,7 @@ export function MerchantProductDetailPage() {
       setTitle(product.title);
       setDescription(product.description ?? "");
       setTags(product.tags ?? []);
-      setItems(product.items as ItemRef[]);
+      setItems(product.items as Ref[]);
     }
     setEditing(false);
   }
@@ -622,7 +611,7 @@ export function MerchantProductDetailPage() {
             onClick: () => setDeleteTarget(uri),
             // A live listing blocks deletion server-side regardless; surfacing
             // it here saves the merchant a round trip into the dialog.
-            disabled: !!listing && !isTerminalStatus(listing.status),
+            disabled: !!listing,
             disabledHint: "Unlist this product before deleting it",
           },
         ]
@@ -640,7 +629,7 @@ export function MerchantProductDetailPage() {
     : [];
 
   const renderItemRow = (
-    ref: ItemRef,
+    ref: Ref,
     marker: number | "bullet" | null,
     index: number,
   ) => {
@@ -1032,7 +1021,7 @@ export function MerchantProductDetailPage() {
           <p className="whitespace-pre-wrap text-sm text-muted-foreground">
             {typeof license.licenseText === "string"
               ? license.licenseText
-              : "Legacy license format — see full terms."}
+              : "License text unavailable — see full terms."}
           </p>
           {licenseCid ? (
             <a

@@ -1,17 +1,12 @@
-import type { Agent } from "@atproto/api";
 import { ItemCard } from "./ItemCard";
 import type { CatalogEntry } from "@/hooks/useCatalog";
 import type { Listing } from "@/types/lexicons";
 
 export function InventoryGrid({
-  agent,
-  artistDid,
   entries,
   listingsByItemUri,
   previewItemUri,
 }: {
-  agent: Agent;
-  artistDid: string;
   entries: CatalogEntry[];
   listingsByItemUri: Record<string, Listing>;
   /** Mark this item’s card as a local preview (see devCatalogDummy). */
@@ -24,8 +19,6 @@ export function InventoryGrid({
       {visible.map((e) => (
         <ItemCard
           key={e.uri}
-          agent={agent}
-          artistDid={artistDid}
           itemUri={e.uri}
           item={e.item}
           coverImages={e.coverImages}

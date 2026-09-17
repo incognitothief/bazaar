@@ -17,7 +17,7 @@ pulumi select prod
 
 ## Setting up Cloudflare account
 
-These are manual steps that need to be performed in the cloudfront dashboard
+These are manual steps that need to be performed in the Cloudflare dashboard
 
 - Make a cloudflare account
 - Create an API token for Workers R2 Storage:Edit
@@ -58,7 +58,10 @@ GitHub repository secrets (Settings → Secrets and variables → Actions):
 - PULUMI_BACKEND_URL — s3://… R2 backend URL (query params for endpoint/region)
 - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 S3 API keys (R2 → Manage R2 API Tokens), NOT the Cloudflare API token.
   Must allow read+write on the SAME bucket as PULUMI_BACKEND_URL (incl. ListBucket). Scoped-only-to-primary-bucket tokens → 403 on .pulumi/meta.yaml.
-- FLY_API_TOKEN — deploy token for the Fly org that owns `app` in fly.toml (`fly tokens create deploy`, or https://fly.io/dashboard/personal/tokens ). Wrong/missing token → `unauthorized`.
+- FLY_APP_NAME — your Fly app name, and FLY_APP_NAME_STG for staging. `fly.toml` and
+  `fly.stg.toml` carry placeholders so the repo does not name anyone's deployment; the real
+  name is passed with `--app` at deploy time. Locally, set `FLY_APP` instead.
+- FLY_API_TOKEN — deploy token for the Fly org that owns the app (`fly tokens create deploy`, or https://fly.io/dashboard/personal/tokens ). Wrong/missing token → `unauthorized`.
 
 The action will run on push and deploy the application
 
@@ -68,13 +71,19 @@ The GitHub secrets above are CI/deploy-only — the running app never reads them
 (`packages/server/.env.example`) must be set separately on each Fly app:
 
 ```
-fly secrets set KEY=value -a <app>   # bazaar-g5nqca (prod) / bazaar-jwkvxw (staging)
+fly secrets set KEY=value -a <your-app>
 ```
 
 At minimum:
 
 - `MERCHANT_DID` — store owner DID, required for `/api/merchant/*`
-- `STOREFRONT_PRIVATE_KEY` — signs receipts/consent and `bazaarRid`/`bazaarWid`/`bazaarPid`
+- **Storefront signing identity — from `make storefront-key` (see below)**:
+  `STOREFRONT_DID`, `STOREFRONT_PRIVATE_KEY`, `STOREFRONT_KID`,
+  `STOREFRONT_PUBLIC_MULTIBASE`. These build the DID document served at
+  `/.well-known/did.json`, which is how anyone verifies a receipt your store issued. If they
+  are unset the app still starts, serves a DID document with no `verificationMethod`, and
+  signs receipts nobody can verify — one warning line at boot is the only signal.
+  (`STOREFRONT_KEY_HISTORY` is added later, on key rotation.)
 - Inventory uploads: `CF_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`
 - **Litestream DB backups — a separate credential set from the one above, all four required
   together**: `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`. If even one
@@ -84,19 +93,61 @@ At minimum:
 
 See `packages/server/.env.example` for the full list of server env vars.
 
-## Create a DID for the bazaar instance
+## Create the storefront identity
 
-Your storefront needs an identifier. Create one using the included script:
-
-_run_
+Your storefront is identified by a `did:web:` DID. AT Protocol resolves it by fetching
+`https://<your-domain>/.well-known/did.json`, which this app serves — so the domain in the DID
+must be the domain the store is reachable at.
 
 ```bash
 npm i
-chmod 700 scripts/gen-did.sh
-./scripts/gen-did.sh
+make storefront-key DOMAIN=store.example.com
 ```
 
-be sure to save all of this information somewhere secure. Without it, you will not be able to prove ownership of your store
+`DOMAIN` is the address your store is reachable at; pasting the URL straight from your browser
+works. This writes a key file under `keys/` and prints the secrets to set:
+
+```
+fly secrets set -a <app> \
+  STOREFRONT_DID=… STOREFRONT_KID=… STOREFRONT_PRIVATE_KEY=… STOREFRONT_PUBLIC_MULTIBASE=…
+```
+
+**Set them in one command.** Applying them separately leaves a window where the deployment has
+part of an identity, and receipts signed in it will not verify.
+
+Confirm it worked by fetching `https://<your-domain>/.well-known/did.json` — it should list a
+`verificationMethod` whose fragment matches your `STOREFRONT_KID`.
+
+### Your key files
+
+`keys/` holds one file per key. **Keep them.** They are what lets a later rotation rebuild
+`STOREFRONT_KEY_HISTORY`; without them you cannot prove past receipts came from your store.
+
+They contain private keys in plain text. They are gitignored and excluded from Docker builds,
+but keep them out of shared folders and backups, and delete any you are sure you no longer need.
+
+Re-running `make storefront-key` with key files present re-prints the secrets without
+generating anything — use it when setting up a new deployment from the same identity.
+
+### Rotating the key
+
+```bash
+make storefront-key-rotate
+```
+
+A new key becomes active; the old one is marked **retired** — still listed in the DID document
+and still trusted for receipts it already signed. You get an updated block including
+`STOREFRONT_KEY_HISTORY`; set all of it together.
+
+### Revoking a key
+
+```bash
+make storefront-key-revoke KID=storefront-key-2026-09-16
+```
+
+Use this when a key **leaked**, not when rotating on schedule. A revoked key is dropped from the
+DID document, and receipts naming it are rejected outright — including ones that were signed
+legitimately before the leak. Rotate first; the active key cannot be revoked.
 
 ## Setting up OAuth
 
@@ -105,5 +156,3 @@ make sure you have a domain for your store. If have a domain registered elsewher
 ## Allowing multipart uploads direct to R2
 
 Set CORS settings on bucket to point to your bazaar instance. This will speed up upload times. Defaults to uploading files through backend proxy
-
-## GH level secrets are half for client injection, half for CICD (not to be confused with inventory bucket/server config)

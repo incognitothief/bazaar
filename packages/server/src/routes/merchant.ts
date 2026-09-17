@@ -27,17 +27,10 @@ import {
 } from "../lib/deleteCatalogEntry";
 import { r2ConfigFromEnv } from "../lib/r2/env";
 import { isS3NoSuchKey } from "../lib/r2/diagnostics";
-import {
-  extensionForDigital,
-  INVENTORY_MASTER_OBJECT_NAME,
-  inventoryObjectKey,
-  sanitizeInventoryFilename,
-} from "../lib/r2/inventoryKey";
 import { getR2S3Client } from "../lib/r2/s3Client";
 import { resolveCoverImages } from "../lib/productAssets";
 import { buildProductZip, rebuildProductZipCache, rebuildProductZipCacheByUri, presignCachedProductPackage } from "../lib/productZip";
 import { getZipProgress, listZipProgress } from "../lib/zipProgress";
-import { buildLegacyCollectionZip } from "../lib/legacyCollectionZip";
 import { captureCatalogItem, captureCatalogProduct } from "./atproto";
 import {
   businessEmailFromEnv,
@@ -263,7 +256,7 @@ export function createMerchantRouter(db: Db, oauthClient: OAuthClient) {
       .limit(LIST_LIMIT)
       .all();
 
-    /** ERP-first title lookup -- covers every catalog.item/catalog.product sale with no PDS round trip. Rows from before this pipeline recorded itemUri, or sales of a legacy digital/physical/collection item, fall back to null and the client shows the raw URI. */
+    /** ERP-first title lookup -- covers every catalog.item/catalog.product sale with no PDS round trip. Rows from before this pipeline recorded itemUri fall back to null and the client shows the raw URI. */
     const itemUris = Array.from(
       new Set(rows.map((r) => r.itemUri).filter((u): u is string => !!u)),
     );
@@ -427,7 +420,7 @@ export function createMerchantRouter(db: Db, oauthClient: OAuthClient) {
    * merchant item views). An item has no cover art of its own -- it lives
    * on the parent catalog.product (catalogProductAssets) -- so this resolves
    * each item's owning product by scanning products' items[] for a matching
-   * itemRef.uri, then reuses that product's already-resolved cover images.
+   * the product's item refs, then reuses its already-resolved cover images.
    */
   r.get("/catalog/items", async (c) => {
     const denied = merchantGuard(c);
@@ -916,111 +909,6 @@ export function createMerchantRouter(db: Db, oauthClient: OAuthClient) {
     }
 
     const result = await buildProductZip(db, r2, product);
-    if (result instanceof Response) return result;
-    return c.json({ error: result.error }, result.status);
-  });
-
-  /**
-   * Store-owner: presigned download for a single legacy catalog.item.digital's
-   * master file -- an incident-response tool, no purchase/entitlement check,
-   * just "does this item belong to me." Legacy keys are deterministic
-   * (inventoryObjectKey), recomputed from the URI alone, unlike the
-   * new-scheme route above which needs a DB lookup.
-   */
-  r.get("/catalog/legacy/item-download", async (c) => {
-    const denied = merchantGuard(c);
-    if (denied) return denied;
-    const owner = process.env.MERCHANT_DID!.trim();
-    const uri = c.req.query("uri");
-    if (!uri) return c.json({ error: "uri required" }, 400);
-    let at: AtUri;
-    try {
-      at = new AtUri(uri);
-    } catch {
-      return c.json({ error: "invalid_uri" }, 400);
-    }
-    if (!at.rkey || !at.collection.endsWith(".catalog.item.digital")) {
-      return c.json({ error: "not_a_digital_item" }, 400);
-    }
-    if (at.hostname !== owner) return c.json({ error: "not_found" }, 404);
-
-    const r2 = r2ConfigFromEnv();
-    if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
-    const client = getR2S3Client(r2);
-    const key = inventoryObjectKey(at.hostname, at.rkey, INVENTORY_MASTER_OBJECT_NAME);
-
-    let fileName = `track_${at.rkey}.bin`;
-    try {
-      const agent = await getAgentForDid(at.hostname);
-      const rec = await agent.com.atproto.repo.getRecord({
-        repo: at.hostname,
-        collection: at.collection,
-        rkey: at.rkey,
-      });
-      const digital = rec.data.value as Record<string, unknown>;
-      const title =
-        typeof digital.title === "string" && digital.title.trim()
-          ? digital.title.trim()
-          : at.rkey;
-      const formats = digital.formats as string[] | undefined;
-      const ext = extensionForDigital(formats, digital.fileFormat as string | undefined);
-      const safeBase = sanitizeInventoryFilename(
-        title.replace(/\.[^./\\]+$/g, "") || `track_${at.rkey}`,
-      );
-      fileName = `${safeBase}.${ext}`;
-    } catch (e) {
-      console.warn("legacy item-download: could not resolve title for filename", e);
-    }
-
-    try {
-      const url = await getSignedUrl(
-        client,
-        new GetObjectCommand({
-          Bucket: r2.bucket,
-          Key: key,
-          ResponseContentDisposition: `attachment; filename="${fileName.replace(/"/g, "")}"`,
-        }),
-        { expiresIn: 3600 },
-      );
-      return c.json({ url, fileName });
-    } catch (e) {
-      if (isS3NoSuchKey(e)) return c.json({ error: "master_not_in_r2" }, 404);
-      return c.json(
-        { error: "download_failed", message: e instanceof Error ? e.message : String(e) },
-        502,
-      );
-    }
-  });
-
-  /**
-   * Store-owner: the same zip a buyer would receive for this legacy
-   * collection, assembled on demand for support/incident triage. Assembly
-   * lives in lib/legacyCollectionZip.ts, shared with the buyer-facing
-   * /api/download/collection-zip route -- this endpoint's only job is the
-   * ownership check, not entitlement.
-   */
-  r.get("/catalog/legacy/collection-download", async (c) => {
-    const denied = merchantGuard(c);
-    if (denied) return denied;
-    const owner = process.env.MERCHANT_DID!.trim();
-    const uri = c.req.query("uri");
-    if (!uri) return c.json({ error: "uri required" }, 400);
-    let at: AtUri;
-    try {
-      at = new AtUri(uri);
-    } catch {
-      return c.json({ error: "invalid_uri" }, 400);
-    }
-    if (!at.rkey || !at.collection.endsWith(".catalog.collection")) {
-      return c.json({ error: "not_a_collection" }, 400);
-    }
-    if (at.hostname !== owner) return c.json({ error: "not_found" }, 404);
-
-    const r2 = r2ConfigFromEnv();
-    if (!r2.ok) return c.json({ error: "r2_unconfigured", message: r2.reason }, 503);
-    const client = getR2S3Client(r2);
-
-    const result = await buildLegacyCollectionZip(client, r2, uri);
     if (result instanceof Response) return result;
     return c.json({ error: result.error }, result.status);
   });

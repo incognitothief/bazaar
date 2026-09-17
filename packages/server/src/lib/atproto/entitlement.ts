@@ -58,8 +58,9 @@ export function entitlementDigest(items: readonly GrantedItemRef[]): string {
  *
  * - catalog.item -> itself, with `purchasedItemCid`
  * - catalog.product -> its member item refs (canonicalized)
- * - collection (legacy) / unrecognised / product with no items -> undefined,
- *   leaving the download path on live-membership resolution
+ * - unrecognised collection / product with no items -> undefined. A receipt
+ *   without a grant does not verify (ADR 0019), so this is a rejection, not a
+ *   fallback to live membership.
  */
 export function resolveGrantedItems(
   purchasedUri: string,

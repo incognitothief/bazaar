@@ -16,49 +16,27 @@
         ],
         "properties": {
           "item": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#itemRef"
+            "$ref": "diamonds.whereditgo.bazaar.defs#ref"
           },
           "price": {
-            "$ref": "diamonds.whereditgo.bazaar.defs#money"
-          },
-          "compareAtPrice": {
             "$ref": "diamonds.whereditgo.bazaar.defs#money"
           },
           "status": {
             "type": "string",
             "knownValues": [
               "active",
-              "paused",
-              "soldOut",
-              "scheduled",
-              "archived",
-              "superseded"
-            ]
+              "paused"
+            ],
+            "description": "Whether the listing is currently offered. Only these two states are produced: retiring a listing deletes the record rather than marking it."
           },
           "licenseGrant": {
             "$ref": "diamonds.whereditgo.bazaar.defs#ref",
-            "description": "The license.terms record governing this listing, pinned at listing creation. Required. Takes precedence over defaultLicenseUri on the item or collection. Different listings for the same item may reference different license.terms records, enabling per-tier pricing (e.g. personal vs. commercial). cid anchors the offered terms so that receipt resolution is consistent even if the license.terms record is later updated."
+            "description": "The license.terms record governing this listing, pinned at listing creation. Required. Different listings for the same item may reference different license.terms records, enabling per-tier pricing (e.g. personal vs. commercial). cid anchors the offered terms so that receipt resolution is consistent even if the license.terms record is later updated."
           },
           "parentListing": {
             "type": "string",
             "format": "at-uri",
-            "description": "When this listing sells a member digital item as an individual single, the AT-URI of the parent catalog.listing for the collection. Absent for standalone singles and for the collection listing itself. Used for storefront grouping and cascade pause when the collection listing is paused."
-          },
-          "supersededBy": {
-            "type": "string",
-            "format": "at-uri",
-            "description": "AT-URI of the listing record that replaced this one following a material change. Set when status is superseded."
-          },
-          "availableFrom": {
-            "type": "string",
-            "format": "datetime"
-          },
-          "availableUntil": {
-            "type": "string",
-            "format": "datetime"
-          },
-          "maxPurchasesPerBuyer": {
-            "type": "integer"
+            "description": "When this listing sells a member catalog.item individually, the AT-URI of the parent catalog.listing for the product it belongs to. Absent for standalone items and for the product listing itself. Used for storefront grouping and cascade pause when the product listing is paused."
           },
           "createdAt": {
             "type": "string",

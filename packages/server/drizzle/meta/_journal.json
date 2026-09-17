@@ -155,6 +155,20 @@
       "when": 1789306161047,
       "tag": "0021_futuristic_pepper_potts",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1789514843707,
+      "tag": "0022_broad_mariko_yashida",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1789518933072,
+      "tag": "0023_sticky_human_robot",
+      "breakpoints": true
     }
   ]
 }

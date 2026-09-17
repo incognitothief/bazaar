@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import { Helmet } from "react-helmet-async";
-import { createPublicAgent } from "@/lib/atproto/session";
 import {
-  buildDummyDigitalItem,
+  buildDummyProduct,
   buildDummyListing,
   catalogDummyEnabled,
   resolveDummyItemAtUri,
@@ -30,7 +29,6 @@ export function HomePage() {
   const { profile: merchantProfile, loading: merchantProfileLoading } =
     useActorMerchantProfile(merchantDid);
   const { entries, listingsByItemUri, loading, error } = useCatalog(merchantDid);
-  const agent = createPublicAgent();
 
   const merchantHeaderPending =
     merchantProfileLoading && merchantDid?.startsWith("did:");
@@ -53,7 +51,7 @@ export function HomePage() {
 
   const gridEntries: CatalogEntry[] = useMemo(() => {
     if (!showStorefrontDummy || !dummyItemUri) return entries;
-    const item = buildDummyDigitalItem(dummyItemUri, merchantDid!);
+    const item = buildDummyProduct(dummyItemUri, merchantDid!);
     const synthetic: CatalogEntry = {
       uri: dummyItemUri,
       cid: "bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -169,8 +167,6 @@ export function HomePage() {
             </p>
           ) : null}
           <InventoryGrid
-            agent={agent}
-            artistDid={merchantDid}
             entries={gridEntries}
             listingsByItemUri={gridListings}
             previewItemUri={showStorefrontDummy ? dummyItemUri : null}

@@ -1,15 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { AtUri } from "@atproto/syntax";
 import { toast } from "sonner";
 
-import { ArtworkImage } from "@/components/public/ArtworkImage";
-import { CollectionMemberDownloads } from "@/components/public/TrackList";
 import { CopyButton } from "@/components/shared/CopyButton";
-import { FormatBadge } from "@/components/shared/FormatBadge";
 import { MarkdownBody } from "@/components/shared/MarkdownBody";
-import { MetadataChip } from "@/components/shared/MetadataChip";
 import { TagTokens } from "@/components/shared/TagTokens";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -24,14 +20,10 @@ import {
   getCatalogProduct,
   getRecordValue,
 } from "@/lib/atproto/records";
-import { createPublicAgent } from "@/lib/atproto/session";
 import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import { productTypeConfig } from "@/lib/productTypes";
 import {
-  catalogItemArtworkCid,
-  catalogItemMerchantDid,
   type CatalogItem,
-  type Collection,
   type LicenseTerms,
   type PurchaseReceipt,
 } from "@/types/lexicons";
@@ -124,7 +116,6 @@ export function PurchaseDetailPage() {
   const { receiptUri: enc } = useParams<{ receiptUri: string }>();
   const receiptUri = enc ? decodeURIComponent(enc) : "";
   const { session, loading } = useAtpSession();
-  const agent = useMemo(() => createPublicAgent(), []);
 
   const [receipt, setReceipt] = useState<PurchaseReceipt | null>(null);
   const [receiptCid, setReceiptCid] = useState<string | null>(null);
@@ -285,32 +276,6 @@ export function PurchaseDetailPage() {
     }
   }
 
-  async function downloadCollectionZip(collectionUri: string) {
-    if (!session) return;
-    setZipBusy(true);
-    try {
-      const url = createBrowserApiURL("/api/download/collection-zip");
-      url.searchParams.set("collectionUri", collectionUri);
-      const res = await fetch(url.href, { credentials: "include" });
-      if (!res.ok) {
-        throw new Error(await inventoryHttpErrorMessage(res));
-      }
-      const blob = await res.blob();
-      const dispo = res.headers.get("Content-Disposition");
-      const match = dispo?.match(/filename="([^"]+)"/);
-      const name = match?.[1] ?? "collection.zip";
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Download failed");
-    } finally {
-      setZipBusy(false);
-    }
-  }
-
   if (loading || pageLoading) {
     return (
       <div className="px-4 py-8 text-muted-foreground sm:px-6">Loading…</div>
@@ -408,24 +373,21 @@ export function PurchaseDetailPage() {
     );
   }
 
-  const isDigital = item.$type === BAZAAR_COLLECTION.digitalItem;
-  const isCollection = item.$type === BAZAAR_COLLECTION.collection;
   const isProduct = item.$type === BAZAAR_COLLECTION.product;
   const isMusicProduct =
     isProduct && productTypeConfig(productType).value === "music";
   const isCatalogItemSingle = item.$type === BAZAAR_COLLECTION.item;
-  // What this receipt actually entitles: the frozen grant, or every current
-  // member for a legacy receipt that predates grantedItems.
+  // What this receipt actually entitles: the frozen grant. The fallback to
+  // every current member only catches a receipt with no grant, which cannot
+  // verify and so cannot download anyway (ADR 0019) -- display only.
   const entitledMemberUris =
     isProduct && "items" in item
       ? Array.isArray(receipt.grantedItems) && receipt.grantedItems.length > 0
         ? receipt.grantedItems.map((g) => g.uri)
         : item.items.map((r) => r.uri)
       : [];
-  const blobDid = catalogItemMerchantDid(item, receipt.purchasedGood.uri);
   const coverUrl = coverImages[0]?.url;
-  const artworkCid = catalogItemArtworkCid(item);
-  const hasArtwork = !!coverUrl || !!artworkCid;
+  const hasArtwork = !!coverUrl;
 
   return (
     <article className="mx-auto w-full min-w-0 max-w-2xl space-y-8 px-4 sm:px-6 pb-8">
@@ -453,16 +415,7 @@ export function PurchaseDetailPage() {
                 alt=""
                 className="h-full w-full object-cover"
               />
-            ) : (
-              <ArtworkImage
-                agent={agent}
-                did={blobDid}
-                cid={artworkCid}
-                itemUri={receipt.purchasedGood.uri}
-                alt=""
-                className="h-full w-full"
-              />
-            )}
+            ) : null}
           </button>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-muted aspect-square max-h-64" />
@@ -512,33 +465,11 @@ export function PurchaseDetailPage() {
         </div>
       </section>
 
-      {isDigital && "formats" in item && item.formats?.length ? (
-        <div className="flex flex-wrap gap-2">
-          {item.formats.map((f: string) => (
-            <FormatBadge key={f} format={f} />
-          ))}
-        </div>
-      ) : null}
-
       {"tags" in item && item.tags?.length ? (
         <TagTokens tags={item.tags} part="tokens" />
       ) : null}
 
       <section className="flex flex-wrap gap-2" aria-label="Metadata">
-        {"releaseDate" in item && item.releaseDate ? (
-          <MetadataChip>
-            Released:{" "}
-            {new Date(item.releaseDate).toLocaleDateString("en-US", {
-              timeZone: "UTC",
-            })}
-          </MetadataChip>
-        ) : null}
-        {"durationMs" in item && item.durationMs ? (
-          <MetadataChip>{Math.round(item.durationMs / 60000)} min</MetadataChip>
-        ) : null}
-        {"genre" in item
-          ? item.genre?.map((g) => <MetadataChip key={g}>{g}</MetadataChip>)
-          : null}
         {"tags" in item && item.tags?.length ? (
           <TagTokens tags={item.tags} part="plain" />
         ) : null}
@@ -557,19 +488,6 @@ export function PurchaseDetailPage() {
           {license?.licenseText ?? "License terms could not be loaded."}
         </p>
       </section>
-
-      {isCollection ? (
-        <section className="space-y-4">
-          <h2 className="text-lg font-medium">Your downloads</h2>
-          <CollectionMemberDownloads
-            collection={item as Collection}
-            onDownloadItem={(u) => void downloadDigitalItemUri(u)}
-            onDownloadZip={() => void downloadCollectionZip(receipt.purchasedGood.uri)}
-            zipBusy={zipBusy}
-            itemBusyUri={itemDownloadingUri}
-          />
-        </section>
-      ) : null}
 
       {isProduct && "items" in item ? (
         <section className="space-y-4">
@@ -623,7 +541,7 @@ export function PurchaseDetailPage() {
         </section>
       ) : null}
 
-      {isDigital || isCatalogItemSingle ? (
+      {isCatalogItemSingle ? (
         <section>
           <Button
             type="button"
@@ -635,7 +553,7 @@ export function PurchaseDetailPage() {
         </section>
       ) : null}
 
-      {!isDigital && !isCollection && !isProduct && !isCatalogItemSingle ? (
+      {!isProduct && !isCatalogItemSingle ? (
         <p className="text-sm text-muted-foreground">
           Download is not available for this item type.
         </p>
@@ -654,16 +572,7 @@ export function PurchaseDetailPage() {
                 alt=""
                 className="block max-h-[85vh] max-w-[85vw] object-contain"
               />
-            ) : (
-              <ArtworkImage
-                agent={agent}
-                did={blobDid}
-                cid={artworkCid}
-                itemUri={receipt.purchasedGood.uri}
-                alt=""
-                className="max-h-[85vh] max-w-[85vw]"
-              />
-            )}
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>
