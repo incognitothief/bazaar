@@ -46,7 +46,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check CLA signature
-        uses: contributor-assistant/github-action@v2.6.1
+        # Pinned to a SHA, not a tag: this job runs with contents: write under
+        # pull_request_target, so a moved tag would execute unreviewed code at the
+        # highest privilege in this repo. ca4a40a is v2.6.1 (2024-09-26). To upgrade,
+        # resolve the new tag to its SHA and replace both the ref and this comment.
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
