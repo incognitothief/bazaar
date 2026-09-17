@@ -1,11 +1,15 @@
-# Env vars: DATABASE_PATH, R2_BUCKET, R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+# Env vars: DATABASE_PATH, R2_BUCKET_NAME, CF_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
+# These are the SAME four the app uses for inventory uploads (packages/server/src/lib/r2/env.ts),
+# on purpose: Litestream once had its own R2_BUCKET / R2_ENDPOINT, one word away from the app's
+# names, and deleting R2_BUCKET silently disabled backups while uploads kept working. One set
+# means backups cannot be off while the app can still reach R2.
 dbs:
   - path: ${DATABASE_PATH}
     replicas:
       - type: s3
-        bucket: ${R2_BUCKET}
+        bucket: ${R2_BUCKET_NAME}
         path: litestream
-        endpoint: ${R2_ENDPOINT}
+        endpoint: https://${CF_ACCOUNT_ID}.r2.cloudflarestorage.com
         access-key-id: ${R2_ACCESS_KEY_ID}
         secret-access-key: ${R2_SECRET_ACCESS_KEY}
         force-path-style: true

@@ -84,12 +84,11 @@ At minimum:
   are unset the app still starts, serves a DID document with no `verificationMethod`, and
   signs receipts nobody can verify — one warning line at boot is the only signal.
   (`STOREFRONT_KEY_HISTORY` is added later, on key rotation.)
-- Inventory uploads: `CF_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`
-- **Litestream DB backups — a separate credential set from the one above, all four required
-  together**: `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`. If even one
-  of these four is missing, `docker-entrypoint.sh` silently runs the app with **no backups** — no
-  error, no log line. After setting them, confirm Litestream is actually running via `fly logs`
-  right after a restart (it prints its own startup lines) — don't just trust that the vars are set.
+- Cloudflare R2 — **inventory uploads and Litestream DB backups share one credential set**:
+  `CF_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`. All four are
+  required together. Without them the app starts with no backups and prints a line saying so.
+  After setting them, confirm Litestream is actually running via `fly logs` right after a
+  restart (it prints its own startup lines) — don't just trust that the vars are set.
 
 See `packages/server/.env.example` for the full list of server env vars.
 
