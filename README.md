@@ -1,6 +1,7 @@
 # Bazaar
 
 Note: Must be set up on github in order to deploy to fly.io. (`fly` only supports github)
+smoke test changes
 
 ## Setting up Cloudflare R2
 
