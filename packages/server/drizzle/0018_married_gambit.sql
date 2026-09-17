@@ -1,1 +1,0 @@
-ALTER TABLE `payment_fulfillment` DROP COLUMN `consent_uri`;

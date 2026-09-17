@@ -1,1 +1,0 @@
-ALTER TABLE `inventory_upload_session` ADD `product_rkey` text;

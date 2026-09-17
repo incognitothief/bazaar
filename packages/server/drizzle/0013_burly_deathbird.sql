@@ -1,1 +1,0 @@
-ALTER TABLE `inventory_upload_object` ADD `webp_r2_key` text;
