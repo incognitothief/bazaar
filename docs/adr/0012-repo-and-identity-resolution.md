@@ -128,14 +128,24 @@ equivalent to a real one when reasoning about what's actually protected.
 - More network calls on a cold cache miss (a DID doc fetch, and for handles, a second DID-doc
   fetch for verification) — mitigated by the 1-hour cache, but a burst of first-time DIDs (e.g.
   loading a payment activity table full of new buyers) means that many concurrent resolutions.
-- Six client call sites still call `createPublicAgent()` directly against the fixed host, not yet
+- ~~Six client call sites still call `createPublicAgent()` directly against the fixed host, not yet
   migrated to per-DID resolution: `HomePage`, `ItemDetailPage`, `PurchaseDetailPage`,
   `SettingsPage`, `PublicHeaderAccount`, `useActorMerchantProfile`. Same bug class remains latent
-  there.
+  there.~~ **Closed 2026-09-17** — `HomePage` and `PurchaseDetailPage` were migrated earlier; the
+  remaining four now resolve per-DID. `ItemDetailPage` was the clearest instance: it already
+  awaited `agentForRepo(authorDid)` for the merchant's display name, then passed the *fixed-host*
+  agent to `fetchBlobObjectUrl()` for that same DID's avatar blob — so a merchant off the default
+  host rendered with a name and no avatar.
 
 **Deferred**
 
-- Migrating the six `createPublicAgent()` call sites above.
+- ~~Migrating the six `createPublicAgent()` call sites above.~~ Done 2026-09-17.
+- One instance of this bug class remains: `createProxyAgent(did)` (`lib/atproto/session.ts`)
+  serves its `getRecord`/`listRecords` reads from `createPublicAgent()`, i.e. the fixed host, while
+  its writes proxy through the server which resolves correctly. A merchant whose own PDS is not
+  `VITE_ATPROTO_SERVICE` therefore writes successfully and reads back empty. The fix is to resolve
+  on the per-call `input.repo` rather than on the session DID, since the `ATPRepoClient` interface
+  already declares those methods as returning promises.
 - Item purchased / license name columns on the merchant payment activity page — mechanically
   possible now (receipt on buyer's PDS → item/license on the merchant's own repo) but real
   per-row I/O; not implemented.
