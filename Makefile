@@ -4,8 +4,6 @@ SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
 DOCKER_IMAGE ?= bazaar:local
-PULUMI_STACK ?= prod
-INFRA_DIR := packages/infra
 
 # When nix + flake.nix are present, npm installs run inside the pinned dev shell.
 NIX_AVAILABLE := $(shell command -v nix >/dev/null 2>&1 && test -f flake.nix && echo yes)
@@ -17,7 +15,6 @@ endif
 
 # Optional Docker build-args (same names as Dockerfile / deploy workflow).
 # Export from your shell or a local .env before `make docker-build`.
-VITE_ATPROTO_SERVICE ?=
 VITE_APP_URL ?=
 VITE_MERCHANT_DID ?=
 VITE_API_ORIGIN ?=
@@ -39,7 +36,7 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: shell
-shell: ## Enter Nix dev shell (node 22, bun, pulumi, flyctl, docker, …)
+shell: ## Enter Nix dev shell (node 22, bun, flyctl, docker, …)
 	@command -v nix >/dev/null 2>&1 || { echo "nix is not installed; see https://nixos.org/download.html"; exit 1; }
 	nix develop
 
@@ -128,7 +125,6 @@ tunnel: ## Expose Vite :5173 via cloudflared; then make dev CLOUDFLARED_URL=<pri
 .PHONY: docker-build
 docker-build: ## Build the production Docker image locally
 	docker build \
-		--build-arg VITE_ATPROTO_SERVICE="$(VITE_ATPROTO_SERVICE)" \
 		--build-arg VITE_APP_URL="$(VITE_APP_URL)" \
 		--build-arg VITE_MERCHANT_DID="$(VITE_MERCHANT_DID)" \
 		--build-arg VITE_API_ORIGIN="$(VITE_API_ORIGIN)" \
@@ -139,22 +135,13 @@ docker-build: ## Build the production Docker image locally
 docker-run: ## Run the local Docker image on port 3000 (volume: bazaar-data)
 	docker run --rm -p 3000:3000 -v bazaar-data:/data "$(DOCKER_IMAGE)"
 
-.PHONY: infra-preview
-infra-preview: ## Pulumi preview (packages/infra; set PULUMI_STACK=prod|stg)
-	cd "$(INFRA_DIR)" && npm run preview -- --stack "$(PULUMI_STACK)"
-
-.PHONY: infra-up
-infra-up: ## Pulumi up (packages/infra; set PULUMI_STACK=prod|stg)
-	cd "$(INFRA_DIR)" && npm run up -- --stack "$(PULUMI_STACK)"
-
 .PHONY: fly-deploy
 fly-deploy: ## Deploy to Fly production (requires FLY_APP, FLY_API_TOKEN and VITE_* env)
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
 	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.toml holds a placeholder, not your app name)"; exit 1; }
 	flyctl deploy --remote-only --app "$${FLY_APP}" \
-		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
-		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
+		--build-arg VITE_MERCHANT_DID="$${VITE_MERCHANT_DID:-}" \
 		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"
 
 .PHONY: fly-deploy-stg
@@ -162,7 +149,6 @@ fly-deploy-stg: ## Deploy to Fly staging (requires FLY_APP, FLY_API_TOKEN and VI
 	@test -n "$${FLY_API_TOKEN:-}" || { echo "FLY_API_TOKEN is not set"; exit 1; }
 	@test -n "$${FLY_APP:-}" || { echo "FLY_APP is not set (fly.stg.toml holds a placeholder, not your app name)"; exit 1; }
 	flyctl deploy --remote-only --config fly.stg.toml --app "$${FLY_APP}" \
-		--build-arg VITE_ATPROTO_SERVICE="$${VITE_ATPROTO_SERVICE:-}" \
 		--build-arg VITE_APP_URL="$${VITE_APP_URL:-}" \
-		--build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
+		--build-arg VITE_MERCHANT_DID="$${VITE_MERCHANT_DID:-}" \
 		--build-arg VITE_API_ORIGIN="$${VITE_API_ORIGIN:-}"

@@ -1,9 +1,0 @@
-name: bazaar-infra
-description: >-
-  Cloudflare R2: app bucket per stack; Pulumi state bucket is created only on stack `prod` (shared backend).
-  State uses the S3 backend on R2 (PULUMI_BACKEND_URL + AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).
-  Use stacks `prod` and `stg` for production vs staging primary buckets (see Pulumi.stg.yaml.example).
-runtime:
-  name: nodejs
-  options:
-    typescript: true

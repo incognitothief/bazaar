@@ -1,6 +1,5 @@
 # Fail fast before deploy if required secrets are missing.
 # Only secret *names* are printed when something is wrong; values are never echoed.
-# Optional (not checked): PULUMI_CONFIG_PASSPHRASE — only when the Pulumi stack uses passphrase-encrypted config.
 #
 # Production preflight: push to main (and workflow_dispatch on main).
 # Staging preflight runs only when ALL hold:
@@ -35,28 +34,16 @@ jobs:
     steps:
       - name: Verify required deploy secrets
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PULUMI_BACKEND_URL: ${{ secrets.PULUMI_BACKEND_URL }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
-          VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
           required=(
-            CLOUDFLARE_API_TOKEN
-            CLOUDFLARE_ACCOUNT_ID
-            PULUMI_BACKEND_URL
-            AWS_ACCESS_KEY_ID
-            AWS_SECRET_ACCESS_KEY
             FLY_API_TOKEN
             FLY_APP_NAME
-            VITE_ATPROTO_SERVICE
             VITE_APP_URL
             VITE_MERCHANT_DID
             VITE_API_ORIGIN
@@ -101,28 +88,16 @@ jobs:
     steps:
       - name: Verify required deploy secrets
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PULUMI_BACKEND_URL: ${{ secrets.PULUMI_BACKEND_URL }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME_STG }}
-          VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
           required=(
-            CLOUDFLARE_API_TOKEN
-            CLOUDFLARE_ACCOUNT_ID
-            PULUMI_BACKEND_URL
-            AWS_ACCESS_KEY_ID
-            AWS_SECRET_ACCESS_KEY
             FLY_API_TOKEN
             FLY_APP_NAME
-            VITE_ATPROTO_SERVICE
             VITE_APP_URL
             VITE_MERCHANT_DID
             VITE_API_ORIGIN

@@ -831,8 +831,7 @@ export async function putListing(
   if (!did) throw new Error("Not authenticated");
   const at = new AtUri(uri);
   if (at.hostname !== did) throw new Error("Listing repo mismatch");
-  const readAgent = await agentForRepo(did);
-  const cur = (await readAgent.com.atproto.repo.getRecord({
+  const cur = (await agent.com.atproto.repo.getRecord({
     repo: did,
     collection: BAZAAR_COLLECTION.listing,
     rkey: at.rkey,
@@ -865,8 +864,7 @@ export async function putCatalogItem(
   if (at.collection !== BAZAAR_COLLECTION.item) {
     throw new Error("Not a catalog.item record");
   }
-  const readAgent = await agentForRepo(did);
-  const cur = (await readAgent.com.atproto.repo.getRecord({
+  const cur = (await agent.com.atproto.repo.getRecord({
     repo: did,
     collection: at.collection,
     rkey: at.rkey,
@@ -911,8 +909,7 @@ export async function putCatalogProduct(
   if (at.collection !== BAZAAR_COLLECTION.product) {
     throw new Error("Not a catalog.product record");
   }
-  const readAgent = await agentForRepo(did);
-  const cur = (await readAgent.com.atproto.repo.getRecord({
+  const cur = (await agent.com.atproto.repo.getRecord({
     repo: did,
     collection: at.collection,
     rkey: at.rkey,

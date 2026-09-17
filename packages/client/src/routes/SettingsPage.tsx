@@ -21,7 +21,7 @@ import {
 } from "@/lib/atproto/records";
 import { browserApiUrl } from "@/lib/browserApi";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
-import { createPublicAgent } from "@/lib/atproto/session";
+import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import { pdslsRepoCollectionsUrl } from "@/lib/pdsls";
 import {
   scrollStripeConnectPanelIntoView,
@@ -215,7 +215,7 @@ export function SettingsPage() {
 
     void (async () => {
       try {
-        const pub = createPublicAgent();
+        const pub = await agentForRepo(session.did);
         const res = await pub.com.atproto.repo.listRecords({
           repo: session.did,
           collection: BAZAAR_COLLECTION.actorMerchant,

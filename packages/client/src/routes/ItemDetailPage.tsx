@@ -42,7 +42,6 @@ import {
   itemPathCanonical,
   itemPathPretty,
 } from "@/lib/itemPath";
-import { createPublicAgent } from "@/lib/atproto/session";
 import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import {
   defaultOgImageAbsolute,
@@ -140,7 +139,6 @@ export function ItemDetailPage() {
   const fromRkey = searchParams.get("from")?.trim() || null;
   const merchantDidEnv = import.meta.env.VITE_MERCHANT_DID?.trim() ?? "";
 
-  const agent = useMemo(() => createPublicAgent(), []);
   const { session } = useAtpSession();
   const buyerAgent = useMerchantAgent(session);
 
@@ -445,7 +443,7 @@ export function ItemDetailPage() {
       const cid = v?.avatarCid;
       if (!cid) return;
       try {
-        const url = await fetchBlobObjectUrl(agent, authorDid, cid);
+        const url = await fetchBlobObjectUrl(authorAgent, authorDid, cid);
         if (cancelled) {
           if (url) URL.revokeObjectURL(url);
           return;
@@ -475,7 +473,7 @@ export function ItemDetailPage() {
         return null;
       });
     };
-  }, [agent, item ? catalogItemMerchantDid(item, itemUri) : undefined]);
+  }, [item ? catalogItemMerchantDid(item, itemUri) : undefined]);
 
   const isProduct = item?.$type === BAZAAR_COLLECTION.product;
   const isCatalogItemSingle = item?.$type === BAZAAR_COLLECTION.item;

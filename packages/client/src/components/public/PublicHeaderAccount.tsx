@@ -4,7 +4,7 @@ import { useAtpSession } from "@/hooks/useAtpSession";
 import { getAuthRole } from "@/lib/auth";
 import { fetchBlobObjectUrl } from "@/lib/atproto/blobUrl";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
-import { createPublicAgent } from "@/lib/atproto/session";
+import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import { fetchActorAvatarByActor } from "@/lib/actorTypeahead";
 import type { ActorMerchant } from "@/types/lexicons";
 import { merchantSignInUrl } from "@/lib/signInReturn";
@@ -59,7 +59,7 @@ export function PublicHeaderAccount() {
 
     void (async () => {
       try {
-        const agent = createPublicAgent();
+        const agent = await agentForRepo(session.did);
         const res = await agent.com.atproto.repo.listRecords({
           repo: session.did,
           collection: BAZAAR_COLLECTION.actorMerchant,

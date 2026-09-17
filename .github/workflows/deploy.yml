@@ -1,9 +1,13 @@
-# Deploy: Pulumi (state in Cloudflare R2) then Fly.io.
+# Deploy to Fly.io.
 #
 # Triggers:
-#   - push to main → production (Pulumi stack prod, fly.toml)
+#   - push to main → production (fly.toml)
 #   - pull_request (opened / synchronize / reopened) → staging when repository variable DEPLOY_STG=true
-#     and the PR branch is from this repo (not a fork). Uses Pulumi stack stg and fly.stg.toml.
+#     and the PR branch is from this repo (not a fork). Uses fly.stg.toml.
+#
+# The R2 buckets this app uses are created once, by hand, and are not touched by CI — see README.
+# The image is built remotely by `flyctl deploy --remote-only`, so this workflow needs no Node
+# toolchain and no dependency install of its own; the Dockerfile runs `npm ci` in the builder stage.
 #
 # GitHub Environments (recommended): create `production` and `staging` and attach the same secret names
 # to each (values differ per env). Repository-level secrets are still visible to jobs if an environment
@@ -13,16 +17,13 @@
 #   DEPLOY_STG — set to true or 1 to enable staging deploys on PRs. Not read by the app.
 #
 # Secrets (environment or repository):
-#   CLOUDFLARE_API_TOKEN — Cloudflare API (Pulumi provider)
-#   CLOUDFLARE_ACCOUNT_ID — same as bazaar-infra:cloudflareAccountId
-#   PULUMI_CONFIG_PASSPHRASE — if the stack uses passphrase-encrypted config secrets
-#   PULUMI_BACKEND_URL — s3://… R2 backend URL (query params for endpoint/region)
-#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 S3 API keys (R2 → Manage R2 API Tokens), NOT the Cloudflare API token.
-#     Must allow read+write on the SAME bucket as PULUMI_BACKEND_URL (incl. ListBucket). Scoped-only-to-primary-bucket tokens → 403 on .pulumi/meta.yaml.
 #   FLY_API_TOKEN — deploy token for the Fly org that owns the app in fly.toml / fly.stg.toml (`fly tokens create deploy`).
+#   FLY_APP_NAME / FLY_APP_NAME_STG — the real app names (the fly*.toml files hold placeholders).
 #   VITE_* — passed as Docker build-args (see Fly deploy step).
 #
-# On each Fly app, set runtime secret MERCHANT_DID (server) to the store owner did — same value as VITE_MERCHANT_DID in the client build.
+# On each Fly app, set the runtime secrets the server needs — including MERCHANT_DID (same value as
+# VITE_MERCHANT_DID in the client build) and the R2 set (R2_BUCKET_NAME, CF_ACCOUNT_ID,
+# R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY). See packages/server/.env.example.
 
 name: Deploy
 
@@ -47,56 +48,16 @@ jobs:
       cancel-in-progress: false
     env:
       NODE_ENV: production
-      PULUMI_STACK: prod
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - uses: pulumi/actions@v6
-        with:
-          # Pinned: pulumi/actions installs "latest" by default, and an unpinned upgrade between
-          # 3.253.0 and 3.257.0 broke the S3 DIY backend against R2 (InvalidDigest on state writes;
-          # see PR #24109 for Pulumi's own partial fix). 3.253.0 is confirmed working against this
-          # backend. Bump deliberately, not by surprise.
-          pulumi-version: "3.253.0"
-
       - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Pulumi up (Cloudflare R2)
-        working-directory: packages/infra
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
-          PULUMI_BACKEND_URL: ${{ secrets.PULUMI_BACKEND_URL }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: auto
-        run: |
-          set -euo pipefail
-          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "CLOUDFLARE_API_TOKEN secret is not set."
-            exit 1
-          fi
-          if [ -z "${PULUMI_BACKEND_URL:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
-            echo "Set PULUMI_BACKEND_URL, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY secrets."
-            exit 1
-          fi
-          pulumi up --yes --stack "${PULUMI_STACK}"
 
       - name: Fly deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
-          VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
@@ -112,7 +73,6 @@ jobs:
           fi
 
           flyctl deploy --remote-only --no-cache --app "${FLY_APP_NAME}" \
-            --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
             --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
             --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"
@@ -130,56 +90,16 @@ jobs:
       cancel-in-progress: true
     env:
       NODE_ENV: production
-      PULUMI_STACK: stg
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - uses: pulumi/actions@v6
-        with:
-          # Pinned: pulumi/actions installs "latest" by default, and an unpinned upgrade between
-          # 3.253.0 and 3.257.0 broke the S3 DIY backend against R2 (InvalidDigest on state writes;
-          # see PR #24109 for Pulumi's own partial fix). 3.253.0 is confirmed working against this
-          # backend. Bump deliberately, not by surprise.
-          pulumi-version: "3.253.0"
-
       - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Pulumi up (Cloudflare R2)
-        working-directory: packages/infra
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
-          PULUMI_BACKEND_URL: ${{ secrets.PULUMI_BACKEND_URL }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: auto
-        run: |
-          set -euo pipefail
-          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "CLOUDFLARE_API_TOKEN secret is not set."
-            exit 1
-          fi
-          if [ -z "${PULUMI_BACKEND_URL:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
-            echo "Set PULUMI_BACKEND_URL, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY secrets."
-            exit 1
-          fi
-          pulumi up --yes --stack "${PULUMI_STACK}"
 
       - name: Fly deploy (staging)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME_STG }}
-          VITE_ATPROTO_SERVICE: ${{ secrets.VITE_ATPROTO_SERVICE }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
@@ -195,7 +115,6 @@ jobs:
           fi
 
           flyctl deploy --remote-only --no-cache --config fly.stg.toml --app "${FLY_APP_NAME}" \
-            --build-arg VITE_ATPROTO_SERVICE="${VITE_ATPROTO_SERVICE:-}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
             --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
             --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"

@@ -2,49 +2,30 @@
 
 Note: Must be set up on github in order to deploy to fly.io. (`fly` only supports github)
 
-## Setting up infra with `pulumi` for the first time
+## Setting up Cloudflare R2
 
-This is some pre-cursory bootstrapping for your stack. We have to create it locally first before integrating it into the automated CI workflow
+Bazaar needs **one R2 bucket per environment**. It holds inventory bytes and the Litestream
+SQLite backups (under a `litestream/` prefix). The bucket is created once, by hand — nothing in
+CI creates or modifies it, so a deploy can never rename or delete your storage.
 
-_run_
+These are manual steps in the Cloudflare dashboard:
 
-```
-pulumi login file://~/.pulumi
-cd packages/infra
-pulumi init prod
-pulumi select prod
-```
+- Make a Cloudflare account.
+- Go to the R2 dashboard and subscribe to the R2 service.
+- Create a bucket. `bazaar-prod` is the convention (`bazaar-stg` for staging), but any name
+  works — the app reads whatever you set as `R2_BUCKET_NAME`.
+- Create an **S3 API token** under R2 → Manage R2 API Tokens, with **Object Read & Write** on
+  that bucket. This is not the same thing as an account-level Cloudflare API token.
+- Note your **Account ID** from the dashboard sidebar (not the Zone ID).
 
-## Setting up Cloudflare account
-
-These are manual steps that need to be performed in the Cloudflare dashboard
-
-- Make a cloudflare account
-- Create an API token for Workers R2 Storage:Edit
-- Go to the R2 Dashboard and subscribe to the R2 service
-- Run in your terminal
+If you would rather do it from a terminal than the dashboard, the bucket step is:
 
 ```
-export CLOUDFLARE_API_TOKEN="your-token"
-pulumi up
+npx wrangler r2 bucket create bazaar-prod
 ```
 
-## migrating the local stack to cloud
-
-_following the steps in `packages/infra/index.ts`_
-
-- Create an S3 API Key (different than account API key)
-- Run
-
-```
-pulumi stack export > stack.json
-export AWS_ACCESS_KEY_ID="your-access-key-id"
-export AWS_SECRET_ACCESS_KEY="your-secret-access-key"
-pulumi login 's3://<state-bucket>?endpoint=https://<accountId>.r2.cloudflarestorage.com&region=auto&s3ForcePathStyle=true'
-pulumi stack init prod
-pulumi stack select prod
-pulumi stack import --file stack.json
-```
+The token still has to be minted in the dashboard. Keep the access key id and secret — they go
+into the Fly runtime secrets below as `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`.
 
 ## Setting up secrets
 
@@ -52,16 +33,15 @@ Make sure to set all the secrets for your GH Action to deploy
 
 GitHub repository secrets (Settings → Secrets and variables → Actions):
 
-- CLOUDFLARE_API_TOKEN — Cloudflare API (Pulumi provider)
-- CLOUDFLARE_ACCOUNT_ID — same as bazaar-infra:cloudflareAccountId
-- PULUMI_CONFIG_PASSPHRASE — if the stack uses passphrase-encrypted config secrets
-- PULUMI_BACKEND_URL — s3://… R2 backend URL (query params for endpoint/region)
-- AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 S3 API keys (R2 → Manage R2 API Tokens), NOT the Cloudflare API token.
-  Must allow read+write on the SAME bucket as PULUMI_BACKEND_URL (incl. ListBucket). Scoped-only-to-primary-bucket tokens → 403 on .pulumi/meta.yaml.
 - FLY_APP_NAME — your Fly app name, and FLY_APP_NAME_STG for staging. `fly.toml` and
   `fly.stg.toml` carry placeholders so the repo does not name anyone's deployment; the real
   name is passed with `--app` at deploy time. Locally, set `FLY_APP` instead.
 - FLY_API_TOKEN — deploy token for the Fly org that owns the app (`fly tokens create deploy`, or https://fly.io/dashboard/personal/tokens ). Wrong/missing token → `unauthorized`.
+- VITE_APP_URL, VITE_MERCHANT_DID, VITE_API_ORIGIN — build-args baked
+  into the client bundle at image build time.
+
+The R2 credentials are **not** GitHub secrets — CI never touches R2. They are Fly runtime
+secrets; see the next section.
 
 The action will run on push and deploy the application
 

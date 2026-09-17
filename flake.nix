@@ -15,12 +15,11 @@
           # Matches repo tooling:
           #   Node 22 + npm 10.9.2 (CI, Dockerfile builder, packageManager)
           #   Bun (server dev/build/test; Dockerfile runtime)
-          #   Pulumi + flyctl + cloudflared (infra / deploy / tunnel.sh)
+          #   flyctl + cloudflared (deploy / tunnel.sh)
           #   docker CLI (make docker-build), tsx (make storefront-key)
           packages = with pkgs; [
             nodejs_22
             bun
-            pulumi-bin
             flyctl
             cloudflared
             docker
@@ -40,7 +39,6 @@
 
             echo "Bazaar dev shell"
             echo "  node $(node -v)  bun $(bun --version 2>/dev/null || echo n/a)  npm $(npm -v 2>/dev/null || echo n/a)"
-            echo "  pulumi $(pulumi version 2>/dev/null | head -1 || echo n/a)"
             echo "  flyctl $(flyctl version 2>/dev/null | head -1 || echo n/a)"
             echo "  cloudflared $(cloudflared --version 2>/dev/null | head -1 || echo n/a)"
           '';

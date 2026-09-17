@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted, partially superseded by [ADR 0020](0020-remove-pulumi.md) (§1 layout, §4 storage, §6 CI/CD — Pulumi removed).
 
 ## Date
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { BAZAAR_COLLECTION } from "@/lib/atproto/ns";
-import { createPublicAgent } from "@/lib/atproto/session";
+import { agentForRepo } from "@/lib/atproto/pdsResolve";
 import type { ActorMerchant } from "@/types/lexicons";
 
 export type ActorMerchantProfileState = {
@@ -31,7 +31,7 @@ export function useActorMerchantProfile(
 
     void (async () => {
       try {
-        const agent = createPublicAgent();
+        const agent = await agentForRepo(merchantDid);
         const res = await agent.com.atproto.repo.listRecords({
           repo: merchantDid,
           collection: BAZAAR_COLLECTION.actorMerchant,
