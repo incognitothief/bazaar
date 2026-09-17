@@ -9,9 +9,16 @@
 # The image is built remotely by `flyctl deploy --remote-only`, so this workflow needs no Node
 # toolchain and no dependency install of its own; the Dockerfile runs `npm ci` in the builder stage.
 #
-# GitHub Environments (recommended): create `production` and `staging` and attach the same secret names
-# to each (values differ per env). Repository-level secrets are still visible to jobs if an environment
-# has no duplicate; see https://docs.github.com/en/actions/deployment/targeting-different-environments
+# GitHub Environments: `production` and `staging` each hold the same secret names with per-env
+# values. Repository-level secrets would still be visible to jobs if an environment had no
+# duplicate, so there are deliberately none at repo level.
+# See https://docs.github.com/en/actions/deployment/targeting-different-environments
+#
+# Each job verifies its required secrets as its FIRST step and names every missing one at once.
+# This replaces the separate deploy-preflight.yml, which declared `environment:` on its own jobs
+# and so created a second deployment needing its own approval — two clicks per deploy, and a
+# "fail fast" check that could not fail fast because it was waiting on a reviewer. Folding the
+# check into the deploy job keeps the verbose diagnostics and drops the duplicate gate.
 #
 # Repository variable (Settings → Secrets and variables → Actions → Variables):
 #   DEPLOY_STG — set to true or 1 to enable staging deploys on PRs. Not read by the app.
@@ -50,6 +57,43 @@ jobs:
       NODE_ENV: production
 
     steps:
+      # Verbose secret verification, folded in from the old deploy-preflight.yml. It runs
+      # before checkout and before flyctl, so a misconfigured deploy fails in seconds and
+      # names every missing secret at once rather than one per run. Only secret NAMES are
+      # ever printed; values are never echoed.
+      - name: Verify required secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
+          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
+          VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
+          VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
+        run: |
+          set -euo pipefail
+          required=(
+            FLY_API_TOKEN
+            FLY_APP_NAME
+            VITE_APP_URL
+            VITE_MERCHANT_DID
+            VITE_API_ORIGIN
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "All required production deploy secrets are set (values are never printed)."
+            exit 0
+          fi
+          echo "::error::Deploy aborted before contacting Fly — required secrets are missing or empty."
+          echo "::error::Set them on the 'production' environment: Settings → Environments → production → Environment secrets."
+          for name in "${missing[@]}"; do
+            echo "::error::  - ${name}"
+          done
+          exit 1
+
       - uses: actions/checkout@v4
 
       # Pinned to a SHA. @master moved with every upstream push, and this job holds
@@ -68,15 +112,6 @@ jobs:
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
-          if [ -z "${FLY_API_TOKEN:-}" ]; then
-            echo "FLY_API_TOKEN secret is not set."
-            exit 1
-          fi
-          if [ -z "${FLY_APP_NAME:-}" ]; then
-            echo "FLY_APP_NAME secret is not set (fly.toml holds a placeholder)."
-            exit 1
-          fi
-
           flyctl deploy --remote-only --no-cache --app "${FLY_APP_NAME}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
             --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
@@ -97,6 +132,43 @@ jobs:
       NODE_ENV: production
 
     steps:
+      # Verbose secret verification, folded in from the old deploy-preflight.yml. It runs
+      # before checkout and before flyctl, so a misconfigured deploy fails in seconds and
+      # names every missing secret at once rather than one per run. Only secret NAMES are
+      # ever printed; values are never echoed.
+      - name: Verify required secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME_STG: ${{ secrets.FLY_APP_NAME_STG }}
+          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
+          VITE_MERCHANT_DID: ${{ secrets.VITE_MERCHANT_DID }}
+          VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
+        run: |
+          set -euo pipefail
+          required=(
+            FLY_API_TOKEN
+            FLY_APP_NAME_STG
+            VITE_APP_URL
+            VITE_MERCHANT_DID
+            VITE_API_ORIGIN
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "All required staging deploy secrets are set (values are never printed)."
+            exit 0
+          fi
+          echo "::error::Deploy aborted before contacting Fly — required secrets are missing or empty."
+          echo "::error::Set them on the 'staging' environment: Settings → Environments → staging → Environment secrets."
+          for name in "${missing[@]}"; do
+            echo "::error::  - ${name}"
+          done
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master @ 2026-04-08 (see production job)
@@ -110,16 +182,23 @@ jobs:
           VITE_API_ORIGIN: ${{ secrets.VITE_API_ORIGIN }}
         run: |
           set -euo pipefail
-          if [ -z "${FLY_API_TOKEN:-}" ]; then
-            echo "FLY_API_TOKEN secret is not set."
-            exit 1
-          fi
-          if [ -z "${FLY_APP_NAME:-}" ]; then
-            echo "FLY_APP_NAME_STG secret is not set (fly.stg.toml holds a placeholder)."
-            exit 1
-          fi
 
           flyctl deploy --remote-only --no-cache --config fly.stg.toml --app "${FLY_APP_NAME}" \
             --build-arg VITE_APP_URL="${VITE_APP_URL:-}" \
             --build-arg VITE_MERCHANT_DID="${VITE_MERCHANT_DID:-}" \
             --build-arg VITE_API_ORIGIN="${VITE_API_ORIGIN:-}"
+
+  # Carried over from deploy-preflight.yml. No `environment:` here deliberately — this job
+  # must not create a deployment or wait on an approval; it only explains a skip.
+  staging-not-enabled:
+    name: Staging deploy (not enabled)
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.DEPLOY_STG != 'true' &&
+      vars.DEPLOY_STG != '1'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain skip
+        run: |
+          echo "::notice::Staging deploy skipped. Set repository variable DEPLOY_STG to true (or 1) under Settings → Secrets and variables → Actions → Variables. Fork PRs never deploy to staging regardless of this setting."
