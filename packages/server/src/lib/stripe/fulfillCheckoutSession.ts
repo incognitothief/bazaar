@@ -9,7 +9,7 @@ import { and, eq, isNull, like, lt, lte, ne, or } from "drizzle-orm";
 import type Stripe from "stripe";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../../db";
-import { meta, paymentFulfillment } from "../../db/schema";
+import { checkoutSnapshot, meta, paymentFulfillment } from "../../db/schema";
 import type { OAuthClient } from "../atproto/oauth";
 import { getAgentForDid } from "../atproto/resolvePds";
 import { storefrontKidFromEnv, signReceiptPayload } from "../atproto/sign";
@@ -25,6 +25,11 @@ const PROCESSING_STALE_MS = 120_000;
 const MAX_FULFILLMENT_ATTEMPTS = 30;
 const LAST_ERROR_CAP = 2000;
 const SWEEP_BATCH = 8;
+/**
+ * Checkout snapshots outlive the Stripe session (24h max) and the retry ladder
+ * (MAX_FULFILLMENT_ATTEMPTS with backoff capped at 1h) with a wide margin.
+ */
+const CHECKOUT_SNAPSHOT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type FulfillmentSource = "webhook" | "sweeper" | "client";
 
@@ -122,6 +127,57 @@ async function getListingAtCid(
     };
   } catch {
     return null;
+  }
+}
+
+type ListingSnapshot = {
+  listing: Record<string, unknown>;
+  cid: string;
+  /** The purchased item/product as checked out against; undefined when not captured (pre-snapshot sessions). */
+  item?: Record<string, unknown>;
+};
+
+type SnapshotLookup =
+  | { kind: "found"; snap: ListingSnapshot }
+  | { kind: "absent" }
+  | { kind: "mismatch" };
+
+/**
+ * The listing + purchased record captured at `POST /stripe/checkout` (ADR 0024).
+ * `mismatch` means the row exists but disagrees with the session metadata --
+ * never fulfill against a snapshot that isn't the one this session was opened for.
+ */
+function readCheckoutSnapshot(
+  db: Db,
+  snapshotId: string,
+  listingUri: string,
+  listingCid: string,
+  itemUri: string,
+): SnapshotLookup {
+  const row = db
+    .select()
+    .from(checkoutSnapshot)
+    .where(eq(checkoutSnapshot.id, snapshotId))
+    .get();
+  if (!row) return { kind: "absent" };
+  if (
+    row.listingUri !== listingUri ||
+    row.listingCid !== listingCid ||
+    row.itemUri !== itemUri
+  ) {
+    return { kind: "mismatch" };
+  }
+  try {
+    return {
+      kind: "found",
+      snap: {
+        listing: JSON.parse(row.listingJson) as Record<string, unknown>,
+        cid: row.listingCid,
+        item: JSON.parse(row.itemJson) as Record<string, unknown>,
+      },
+    };
+  } catch {
+    return { kind: "mismatch" };
   }
 }
 
@@ -385,7 +441,7 @@ async function readFulfillmentRow(
 }
 
 /**
- * Checkout.session.completed → verify PI + listing, write receipt to buyer PDS.
+ * Checkout.session.completed → verify PI against the checkout snapshot, write receipt to buyer PDS.
  * License terms are frozen atomically with the receipt (licenseGrant.cid folded
  * into storefrontSig) -- no separate consent record. Idempotent per PaymentIntent via
  * payment_fulfillment + row claim.
@@ -459,7 +515,30 @@ export async function fulfillCheckoutSession(opts: {
   const paymentRef = pi.id;
   const purchasedAt = new Date().toISOString();
 
-  const snap =
+  // Fulfill against what the buyer checked out against, not the listing's
+  // current state. A later edit, re-pin or pause is the merchant's business
+  // from here on; the buyer has paid and gets the receipt (ADR 0024).
+  let snap: ListingSnapshot | null = null;
+  const snapshotId = md.checkoutSnapshotId;
+  if (snapshotId) {
+    const found = readCheckoutSnapshot(
+      db,
+      snapshotId,
+      listingUri,
+      listingCidMeta,
+      itemUri,
+    );
+    if (found.kind === "mismatch") {
+      console.warn("Checkout snapshot disagrees with session metadata:", snapshotId);
+      await markDeadLetter(db, paymentRef, "checkout_snapshot_mismatch");
+      return;
+    }
+    if (found.kind === "found") snap = found.snap;
+  }
+  // Sessions opened before checkout snapshots existed (or whose row is gone)
+  // fall back to fetching the listing at its CID, which only works while the
+  // listing is unedited.
+  snap ??=
     tryDevStubListingSnapshot(listingUri, listingCidMeta, itemUri) ??
     (await getListingAtCid(listingUri, listingCidMeta));
   if (!snap) {
@@ -468,22 +547,10 @@ export async function fulfillCheckoutSession(opts: {
     return;
   }
 
+  // No status / parentListing re-check here: both were enforced when the
+  // checkout session was created, and a pause after that does not undo a
+  // payment that already happened.
   const { listing, cid: resolvedListingCid } = snap;
-  const listStatus = listing.status as string | undefined;
-  if (listStatus && listStatus !== "active") {
-    console.warn("Listing not active at webhook:", listingUri);
-    await markDeadLetter(db, paymentRef, "listing_not_active");
-    return;
-  }
-  const parentListingUri = listing.parentListing as string | undefined;
-  if (typeof parentListingUri === "string" && parentListingUri.length > 0) {
-    const parentOk = await parentListingAllowsSale(parentListingUri);
-    if (!parentOk) {
-      console.warn("Parent listing not active:", parentListingUri);
-      await markDeadLetter(db, paymentRef, "listing_parent_not_active");
-      return;
-    }
-  }
   if (!listingHasV5License(listing)) {
     console.warn("Listing missing license fields:", listingUri);
     await markDeadLetter(db, paymentRef, "listing_missing_license");
@@ -527,7 +594,7 @@ export async function fulfillCheckoutSession(opts: {
   const licenseGrantUri = listingLicenseGrant.uri;
   const licenseGrantCid = listingLicenseGrant.cid;
 
-  let item = await getRecordJson(itemUri);
+  let item = snap.item ?? (await getRecordJson(itemUri));
   if (
     !item &&
     devCheckoutStubAllowed() &&
@@ -777,6 +844,15 @@ export async function sweepPaymentFulfillment(
   const now = new Date();
   const nowMs = now.getTime();
   const staleBefore = new Date(nowMs - PROCESSING_STALE_MS);
+
+  db.delete(checkoutSnapshot)
+    .where(
+      lt(
+        checkoutSnapshot.createdAt,
+        new Date(nowMs - CHECKOUT_SNAPSHOT_RETENTION_MS),
+      ),
+    )
+    .run();
 
   const candidates = db
     .select()

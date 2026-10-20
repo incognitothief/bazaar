@@ -11,7 +11,7 @@ import { Hono } from "hono";
 import Stripe from "stripe";
 import { AtUri } from "@atproto/syntax";
 import type { Db } from "../db";
-import { paymentFulfillment } from "../db/schema";
+import { checkoutSnapshot, paymentFulfillment } from "../db/schema";
 import type { OAuthClient } from "../lib/atproto/oauth";
 import { storefrontWebOrigin } from "../lib/atproto/oauth-url";
 import {
@@ -212,6 +212,23 @@ export function createStripeRouter(db: Db, oauthClient: OAuthClient) {
         mock: true,
       });
     }
+    // Freeze what the buyer is paying for. Fulfillment reads this row rather
+    // than re-fetching the listing, which a PDS can only serve at its current
+    // version -- so a merchant edit or pause mid-checkout can't strand a paid
+    // order (ADR 0024).
+    const snapshotId = crypto.randomUUID();
+    db.insert(checkoutSnapshot)
+      .values({
+        id: snapshotId,
+        listingUri,
+        listingCid,
+        listingJson: JSON.stringify(listing),
+        itemUri,
+        itemCid: itemCid ?? null,
+        itemJson: JSON.stringify(item),
+      })
+      .run();
+    metadata.checkoutSnapshotId = snapshotId;
     try {
       const session = await stripe.checkout.sessions.create({
         mode: "payment",

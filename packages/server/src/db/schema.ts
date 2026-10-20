@@ -347,3 +347,33 @@ export const paymentFulfillment = sqliteTable("payment_fulfillment", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/**
+ * The listing (and purchased item/product) exactly as the buyer checked out
+ * against, captured by `POST /stripe/checkout` and keyed by the
+ * `checkoutSnapshotId` in the Stripe session metadata. Fulfillment reads this
+ * instead of re-fetching the listing at its CID, because a PDS only serves a
+ * record's current version: any merchant edit between checkout and payment
+ * would otherwise strand a paid order (ADR 0024).
+ */
+export const checkoutSnapshot = sqliteTable(
+  "checkout_snapshot",
+  {
+    id: text("id").primaryKey(),
+    listingUri: text("listing_uri").notNull(),
+    listingCid: text("listing_cid").notNull(),
+    /** getRecord value for the listing, JSON. */
+    listingJson: text("listing_json").notNull(),
+    itemUri: text("item_uri").notNull(),
+    /** Null when the item's CID was not reported (dev stub). */
+    itemCid: text("item_cid"),
+    /** getRecord value for the purchased item/product, JSON. */
+    itemJson: text("item_json").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => ({
+    createdAtIdx: index("idx_checkout_snapshot_created_at").on(t.createdAt),
+  }),
+);
