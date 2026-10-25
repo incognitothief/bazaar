@@ -1,11 +1,15 @@
-# Deploy production to Fly.io (fly.toml). Manual trigger only.
+# Deploy production to Fly.io (fly.toml). Triggered by pushing a `v*` tag:
 #
-# Spindle has no deployment environments or required reviewers, so the manual trigger is the
-# approval gate: nothing deploys production on push. It also has no concurrency groups — don't
-# start a second run while one is in flight.
+#   git tag v0.4.0 main && git push tangled v0.4.0
 #
-# The run is refused unless it is for main. A manual run only carries TANGLED_REF_NAME when it
-# was started against a ref; one without it is refused too, rather than guessing.
+# Spindle has no deployment environments or required reviewers, so the tag push is the approval
+# gate: pushing to main deploys nothing. Only accounts with write access can push a tag, unlike
+# a pull request, which anyone can open. `manual` is listed too for when Tangled's UI can start
+# one; it has no run button yet. There are no concurrency groups — don't push a second tag
+# while a deploy is in flight.
+#
+# The run is refused unless its commit is on main, whichever tag or ref started it. Spindle
+# clones only the triggering commit, so the check fetches main and tests ancestry.
 #
 # The image is built remotely by `flyctl deploy --remote-only`, so this workflow needs no Node
 # toolchain; the Dockerfile runs `npm ci` in its builder stage.
@@ -20,6 +24,8 @@
 # Runtime secrets live on the Fly app itself, as before — see packages/server/.env.example.
 
 when:
+  - event: ["push"]
+    tag: ["v*"]
   - event: ["manual"]
 
 engine: "nixery"
@@ -28,6 +34,7 @@ dependencies:
   nixpkgs:
     - flyctl
     - coreutils
+    - git
 
 steps:
   # Fails in seconds, before contacting Fly, and names every missing secret at once. Only
@@ -35,10 +42,12 @@ steps:
   - name: Verify ref and required secrets
     command: |
       set -euo pipefail
-      if [ "${TANGLED_REF_NAME:-}" != "main" ]; then
-        echo "Deploy aborted: production deploys only from main (this run is for '${TANGLED_REF_NAME:-<no ref>}')."
+      git fetch --quiet origin main
+      if ! git merge-base --is-ancestor "$TANGLED_SHA" FETCH_HEAD; then
+        echo "Deploy aborted: ${TANGLED_SHA} (${TANGLED_REF_NAME:-<no ref>}) is not on main. Production deploys only commits on main."
         exit 1
       fi
+      echo "Deploying ${TANGLED_REF_NAME:-<no ref>} @ ${TANGLED_SHA} (on main) to production."
       required=(
         FLY_API_TOKEN_PROD
         FLY_APP_NAME_PROD

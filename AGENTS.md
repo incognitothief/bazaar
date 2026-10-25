@@ -17,7 +17,7 @@ Makefile    Canonical command surface (`make help`)
 ```
 
 Deployment is Fly.io (`fly.toml` / `fly.stg.toml`). CI runs on Tangled spindles
-(`.tangled/workflows/`); deploys are manual-only — see
+(`.tangled/workflows/`); staging deploys on push to `staging`, production on a `v*` tag — see
 [ADR 0024](docs/adr/0024-mit-licence-and-tangled-ci.md).
 
 ## Rules

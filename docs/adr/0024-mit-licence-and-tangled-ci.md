@@ -3,7 +3,7 @@
 ## Status
 
 Accepted. `.github/workflows/` is removed in the same change, so once it reaches `main`
-production deploys only from Tangled, manually.
+production deploys only from Tangled, on a `v*` tag push.
 
 ## Date
 
@@ -39,13 +39,17 @@ abbreviated SHA, so `VITE_SOURCE_COMMIT` is only appended there when it is a ful
 `.tangled/workflows/` runs on the Tangled spindle, nixery engine:
 
 - `test.yml` — push to `main` and pull requests into `main`; same checks as `make ci`.
-- `deploy-production.yml` — **manual only**, refused unless the run is for `main`.
-- `deploy-staging.yml` — **manual only**, any ref.
+- `deploy-production.yml` — on push of a `v*` tag; refused unless the commit is on `main`.
+- `deploy-staging.yml` — on push to the `staging` branch.
+
+Both also list `manual`, but Tangled's UI has no way to start a manual run yet, so pushes are
+the triggers. Pushes need write access; pull requests do not, which is why nothing deploys
+from a PR.
 
 Differences from the GitHub setup, and why:
 
-- **No required reviewers.** Spindle has no deployment environments, so the manual trigger is
-  the production gate. Nothing deploys on push.
+- **No required reviewers.** Spindle has no deployment environments. Pushing a release tag is
+  the deliberate step that replaces the approval click; pushing to `main` deploys nothing.
 - **Secrets are repo-wide.** Every workflow, including PR test runs, can read every secret.
   Prod and staging get separate secret names (`*_PROD`, `*_STG`) and each `FLY_API_TOKEN_*`
   must be a deploy token scoped to its one Fly app (`fly tokens create deploy -a <app>`), so
@@ -53,7 +57,8 @@ Differences from the GitHub setup, and why:
 - **Staging is no longer deployed from PRs.** GitHub filtered out fork PRs by head repo;
   spindle exposes no equivalent, and secrets are repo-wide, so a PR trigger could hand a token
   to fork code. The `DEPLOY_STG` repo variable has no spindle equivalent and is gone with it.
-- **No concurrency groups.** Overlapping manual runs race; don't start one mid-deploy.
+- **No concurrency groups.** Overlapping runs race; don't push a second tag or `staging`
+  update mid-deploy.
 - **bun on nixery.** The server scripts run `npx --yes bun@1.4.0`, a prebuilt glibc binary
   that needs `/lib64/ld-linux-x86-64.so.2`. Nixery images have no `/lib64`, so the test
   workflow links nixpkgs' glibc loader there first.
@@ -66,8 +71,8 @@ Removing `.github/workflows/` means merging this change to `main` on GitHub depl
 so there is no window where both systems deploy production.
 
 1. Create the `*_PROD` / `*_STG` repo secrets on Tangled, with app-scoped deploy tokens.
-2. Run `deploy-staging` manually; confirm the deploy and timing.
-3. Merge to `main`, then run `deploy-production` manually from `main`.
+2. `git push tangled HEAD:staging`; confirm the staging deploy and timing.
+3. Merge to `main`, then tag it and push the tag: `git tag vX.Y.Z main && git push tangled vX.Y.Z`.
 4. Retire the remaining GitHub-hosted references (security-advisory link in
    `CONTRIBUTING.md`) and the GitHub environments, secrets and `cla-signatures` branch.
 

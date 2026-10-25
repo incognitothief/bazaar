@@ -1,10 +1,13 @@
-# Deploy staging to Fly.io (fly.stg.toml). Manual trigger only, from any ref.
+# Deploy staging to Fly.io (fly.stg.toml). Triggered by pushing to the `staging` branch:
+#
+#   git push --force tangled HEAD:staging
 #
 # Not triggered by pull requests: spindle exposes no way to tell a fork's PR from a same-repo
 # one, and secrets are repo-wide, so a PR trigger could hand the staging token to fork code.
-# Start a run against the branch you want on staging instead.
+# Only accounts with write access can push to `staging`. `manual` is listed too for when
+# Tangled's UI can start one; it has no run button yet.
 #
-# No concurrency groups in spindle — a second run started mid-deploy races the first.
+# No concurrency groups in spindle — a second push mid-deploy races the first.
 #
 # Repo secrets (Settings → Secrets). Spindle secrets are repo-wide, so FLY_API_TOKEN_STG must
 # be a deploy token scoped to the staging app alone: `fly tokens create deploy -a <stg-app>`.
@@ -13,6 +16,8 @@
 #   VITE_MERCHANT_DID_STG — passed as a Docker build-arg (see Fly deploy step).
 
 when:
+  - event: ["push"]
+    branch: ["staging"]
   - event: ["manual"]
 
 engine: "nixery"
