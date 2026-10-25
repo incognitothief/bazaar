@@ -1,0 +1,40 @@
+# CI: lexicon verification, monorepo build, server unit tests — the same checks as `make ci`.
+# Reads no secrets.
+#
+# The nixery image holds only the packages listed below: no /lib64, no grep or sed unless
+# listed. Node comes from nixpkgs, but the server scripts run `npx --yes bun@1.4.0`, which
+# downloads a prebuilt glibc binary that looks for the loader at /lib64. The "Build and test"
+# step links nixpkgs' glibc loader there so that binary runs; without it, every bun command
+# exits 1 with no output.
+
+when:
+  - event: ["push"]
+    branch: ["main"]
+  - event: ["pull_request"]
+    branch: ["main"]
+
+engine: "nixery"
+
+dependencies:
+  nixpkgs:
+    - nodejs_22
+    - coreutils
+    - glibc
+
+steps:
+  - name: Install dependencies
+    command: npm ci
+
+  - name: Validate Bazaar lexicons
+    command: npm run lexicons:validate
+
+  - name: Build and test
+    command: |
+      set -euo pipefail
+      glibc_lib="$(dirname "$(ls /nix/store/*-glibc-*/lib/ld-linux-x86-64.so.2 | head -1)")"
+      mkdir -p /lib64
+      ln -sf "$glibc_lib/ld-linux-x86-64.so.2" /lib64/ld-linux-x86-64.so.2
+      export LD_LIBRARY_PATH="$glibc_lib"
+
+      npm run build
+      npm run test -w @bazaar/server

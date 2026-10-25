@@ -3,13 +3,11 @@ const UPSTREAM_SOURCE_URL = "https://github.com/incognitothief/bazaar";
 /**
  * Where the "Source Code" footer link points.
  *
- * AGPL-3.0 section 13 requires that a modified Bazaar offered over a network prominently
- * offer its users the source of *that* version. Upstream's URL is only correct for an
- * unmodified deployment, so anyone running modified code sets `VITE_SOURCE_URL` to their
- * own repository at build time.
+ * Bazaar is MIT licensed, so this link is a courtesy rather than an obligation. Upstream's
+ * URL only describes an unmodified deployment; anyone running modified code who wants the
+ * link to show their own changes sets `VITE_SOURCE_URL` to their repository at build time.
  *
- * Both variables are optional. Unset, the link resolves to upstream, which is correct for
- * an unmodified deployment and is never broken.
+ * Both variables are optional. Unset, the link resolves to upstream, which is never broken.
  *
  * `VITE_SOURCE_COMMIT` is appended as a commit path when set, so the link resolves to the
  * exact running revision rather than whatever the default branch happens to be. It is only

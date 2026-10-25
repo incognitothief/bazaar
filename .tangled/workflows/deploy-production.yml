@@ -1,0 +1,68 @@
+# Deploy production to Fly.io (fly.toml). Manual trigger only.
+#
+# Spindle has no deployment environments or required reviewers, so the manual trigger is the
+# approval gate: nothing deploys production on push. It also has no concurrency groups — don't
+# start a second run while one is in flight.
+#
+# The run is refused unless it is for main. A manual run only carries TANGLED_REF_NAME when it
+# was started against a ref; one without it is refused too, rather than guessing.
+#
+# The image is built remotely by `flyctl deploy --remote-only`, so this workflow needs no Node
+# toolchain; the Dockerfile runs `npm ci` in its builder stage.
+#
+# Repo secrets (Settings → Secrets). Spindle secrets are repo-wide — every workflow, including
+# test runs for pull requests, can read them — so FLY_API_TOKEN_PROD must be a deploy token
+# scoped to the production app alone: `fly tokens create deploy -a <prod-app>`.
+#   FLY_API_TOKEN_PROD — deploy token for the production app.
+#   FLY_APP_NAME_PROD — the real app name (fly.toml holds a placeholder).
+#   VITE_MERCHANT_DID_PROD — passed as a Docker build-arg (see Fly deploy step).
+#
+# Runtime secrets live on the Fly app itself, as before — see packages/server/.env.example.
+
+when:
+  - event: ["manual"]
+
+engine: "nixery"
+
+dependencies:
+  nixpkgs:
+    - flyctl
+    - coreutils
+
+steps:
+  # Fails in seconds, before contacting Fly, and names every missing secret at once. Only
+  # secret NAMES are ever printed; values are never echoed.
+  - name: Verify ref and required secrets
+    command: |
+      set -euo pipefail
+      if [ "${TANGLED_REF_NAME:-}" != "main" ]; then
+        echo "Deploy aborted: production deploys only from main (this run is for '${TANGLED_REF_NAME:-<no ref>}')."
+        exit 1
+      fi
+      required=(
+        FLY_API_TOKEN_PROD
+        FLY_APP_NAME_PROD
+        VITE_MERCHANT_DID_PROD
+      )
+      missing=()
+      for name in "${required[@]}"; do
+        if [ -z "${!name:-}" ]; then
+          missing+=("$name")
+        fi
+      done
+      if [ "${#missing[@]}" -eq 0 ]; then
+        echo "All required production deploy secrets are set (values are never printed)."
+        exit 0
+      fi
+      echo "Deploy aborted before contacting Fly — required repo secrets are missing or empty:"
+      for name in "${missing[@]}"; do
+        echo "  - ${name}"
+      done
+      exit 1
+
+  - name: Fly deploy
+    command: |
+      set -euo pipefail
+      FLY_API_TOKEN="$FLY_API_TOKEN_PROD" flyctl deploy --remote-only --no-cache \
+        --app "$FLY_APP_NAME_PROD" \
+        --build-arg VITE_MERCHANT_DID="$VITE_MERCHANT_DID_PROD"

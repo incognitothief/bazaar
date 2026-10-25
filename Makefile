@@ -101,7 +101,7 @@ db-migrate: ## Apply Drizzle migrations
 	npm run db:migrate
 
 .PHONY: ci
-ci: install-ci lexicons-validate build test ## Run the same checks as .github/workflows/test.yml
+ci: install-ci lexicons-validate build test ## Run the same checks as .tangled/workflows/test.yml
 
 .PHONY: storefront-key
 storefront-key: ## Print the storefront secrets to set; first run needs DOMAIN=store.example.com

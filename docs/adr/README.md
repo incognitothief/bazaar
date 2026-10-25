@@ -29,6 +29,7 @@ were originally backfilled from) is deprecated — new decisions get an ADR here
 | [0021](0021-remove-fixed-host-fallback.md) | Remove the fixed-host fallback — resolution failure is an error | 2026-09-17 |
 | [0022](0022-remove-client-origin-env.md) | Remove `VITE_APP_URL` and `VITE_API_ORIGIN` — the client has no origin to configure | 2026-09-17 |
 | [0023](0023-public-cover-art-endpoint.md) | Serve cover art from our own origin for link previews | 2026-09-17 |
+| [0024](0024-mit-licence-and-tangled-ci.md) | Relicense to MIT, drop the CLA, move CI to Tangled spindles | 2026-10-25 |
 
 Alignment folders not given a dedicated ADR (covered by cross-refs above or out of scope):
 
