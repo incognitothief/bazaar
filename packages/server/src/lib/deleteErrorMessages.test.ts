@@ -7,7 +7,7 @@ import { join } from "node:path";
  * merchant-facing wording in the client.
  *
  * This lives in the server suite on purpose: CI runs `npm run test -w
- * @bazaar/server` and nothing else (.github/workflows/test.yml), and the
+ * @bazaar/server` and nothing else (.tangled/workflows/test.yml), and the
  * client package has no test runner. A guard in the client would never
  * execute. It reads both files as text rather than importing the client
  * module, since the client isn't built or resolvable from here.

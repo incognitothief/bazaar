@@ -3,7 +3,7 @@ node_modules
 dist
 **/dist
 .git
-.github
+.tangled
 alignment
 .turbo
 *.db

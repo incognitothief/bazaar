@@ -16,9 +16,9 @@ docs/adr/   Canonical decision log
 Makefile    Canonical command surface (`make help`)
 ```
 
-Deployment is Fly.io (`fly.toml` / `fly.stg.toml`). CI is moving from GitHub Actions
-(`.github/workflows/`) to Tangled spindles (`.tangled/workflows/`, deploys manual-only) —
-see [ADR 0024](docs/adr/0024-mit-licence-and-tangled-ci.md).
+Deployment is Fly.io (`fly.toml` / `fly.stg.toml`). CI runs on Tangled spindles
+(`.tangled/workflows/`); deploys are manual-only — see
+[ADR 0024](docs/adr/0024-mit-licence-and-tangled-ci.md).
 
 ## Rules
 

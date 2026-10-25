@@ -1,4 +1,4 @@
-const UPSTREAM_SOURCE_URL = "https://github.com/incognitothief/bazaar";
+const UPSTREAM_SOURCE_URL = "https://tangled.org/whereditgo.diamonds/bazaar";
 
 /**
  * Where the "Source Code" footer link points.
@@ -11,7 +11,7 @@ const UPSTREAM_SOURCE_URL = "https://github.com/incognitothief/bazaar";
  *
  * `VITE_SOURCE_COMMIT` is appended as a commit path when set, so the link resolves to the
  * exact running revision rather than whatever the default branch happens to be. It is only
- * appended for hosts where the path shape is known (GitHub, GitLab, Codeberg/Gitea);
+ * appended for hosts where the path shape is known (Tangled, GitHub, GitLab, Codeberg/Gitea);
  * otherwise the base URL is used unchanged.
  */
 export function sourceCodeUrl(): string {
@@ -30,8 +30,11 @@ export function sourceCodeUrl(): string {
     return base;
   }
 
-  // github.com and Gitea/Codeberg use /commit/<sha>; GitLab uses /-/commit/<sha>.
+  // Tangled, github.com and Gitea/Codeberg use /commit/<sha>; GitLab uses /-/commit/<sha>.
+  // Tangled 404s on an abbreviated SHA, so it only gets the path for a full one.
   if (host === "gitlab.com") return `${base}/-/commit/${commit}`;
+  if (host === "tangled.org")
+    return commit.length === 40 ? `${base}/commit/${commit}` : base;
   if (host === "github.com" || host === "codeberg.org")
     return `${base}/commit/${commit}`;
 

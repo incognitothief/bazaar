@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted. Production still deploys from GitHub Actions until the cutover below completes.
+Accepted. `.github/workflows/` is removed in the same change, so once it reaches `main`
+production deploys only from Tangled, manually.
 
 ## Date
 
@@ -31,9 +32,11 @@ already published under AGPL remain available under AGPL to whoever received the
 
 This gives up the dual-licensing option: anyone may run a modified, closed Bazaar as a
 service. The footer "Source Code" link (`sourceCodeUrl.ts`) stays as a courtesy, no longer
-an AGPL §13 obligation.
+an AGPL §13 obligation, and now defaults to the Tangled repository. Tangled 404s on an
+abbreviated SHA, so `VITE_SOURCE_COMMIT` is only appended there when it is a full 40 characters.
 
-**CI.** `.tangled/workflows/` runs on the Tangled spindle, nixery engine:
+**CI.** GitHub Actions (`.github/workflows/test.yml`, `deploy.yml`) is removed.
+`.tangled/workflows/` runs on the Tangled spindle, nixery engine:
 
 - `test.yml` — push to `main` and pull requests into `main`; same checks as `make ci`.
 - `deploy-production.yml` — **manual only**, refused unless the run is for `main`.
@@ -59,12 +62,13 @@ Differences from the GitHub setup, and why:
 
 ## Cutover
 
+Removing `.github/workflows/` means merging this change to `main` on GitHub deploys nothing,
+so there is no window where both systems deploy production.
+
 1. Create the `*_PROD` / `*_STG` repo secrets on Tangled, with app-scoped deploy tokens.
 2. Run `deploy-staging` manually; confirm the deploy and timing.
-3. Remove the GitHub `production` environment's deploy path (or `deploy.yml` itself) so only
-   one system can deploy production.
-4. Run `deploy-production` manually from `main`.
-5. Retire `.github/workflows/` and the GitHub-hosted references (`UPSTREAM_SOURCE_URL`,
-   security-advisory link in `CONTRIBUTING.md`) once Tangled is the canonical remote.
+3. Merge to `main`, then run `deploy-production` manually from `main`.
+4. Retire the remaining GitHub-hosted references (security-advisory link in
+   `CONTRIBUTING.md`) and the GitHub environments, secrets and `cla-signatures` branch.
 
 While both remotes are pushed, `git push tangled -o skip-ci` skips spindle runs.
