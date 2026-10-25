@@ -56,6 +56,9 @@ steps:
     command: |
       set -euo pipefail
       echo "Deploying ${TANGLED_REF_NAME:-<no ref>} @ ${TANGLED_SHA} to staging."
+      # flyctl reads FLY_API_TOKEN from the environment, and that repo secret is the
+      # production token. Keep this override; without it flyctl would present prod's token
+      # (scoped to the prod app, so the deploy would fail rather than cross over).
       FLY_API_TOKEN="$FLY_API_TOKEN_STG" flyctl deploy --remote-only --no-cache \
         --config fly.stg.toml --app "$FLY_APP_NAME_STG" \
         --build-arg VITE_MERCHANT_DID="$VITE_MERCHANT_DID_STG"

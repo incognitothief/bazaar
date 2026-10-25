@@ -15,11 +15,11 @@
 # toolchain; the Dockerfile runs `npm ci` in its builder stage.
 #
 # Repo secrets (Settings → Secrets). Spindle secrets are repo-wide — every workflow, including
-# test runs for pull requests, can read them — so FLY_API_TOKEN_PROD must be a deploy token
+# test runs for pull requests, can read them — so FLY_API_TOKEN must be a deploy token
 # scoped to the production app alone: `fly tokens create deploy -a <prod-app>`.
-#   FLY_API_TOKEN_PROD — deploy token for the production app.
-#   FLY_APP_NAME_PROD — the real app name (fly.toml holds a placeholder).
-#   VITE_MERCHANT_DID_PROD — passed as a Docker build-arg (see Fly deploy step).
+#   FLY_API_TOKEN — deploy token for the production app.
+#   FLY_APP_NAME — the real app name (fly.toml holds a placeholder).
+#   VITE_MERCHANT_DID — passed as a Docker build-arg (see Fly deploy step).
 #
 # Runtime secrets live on the Fly app itself, as before — see packages/server/.env.example.
 
@@ -49,9 +49,9 @@ steps:
       fi
       echo "Deploying ${TANGLED_REF_NAME:-<no ref>} @ ${TANGLED_SHA} (on main) to production."
       required=(
-        FLY_API_TOKEN_PROD
-        FLY_APP_NAME_PROD
-        VITE_MERCHANT_DID_PROD
+        FLY_API_TOKEN
+        FLY_APP_NAME
+        VITE_MERCHANT_DID
       )
       missing=()
       for name in "${required[@]}"; do
@@ -72,6 +72,6 @@ steps:
   - name: Fly deploy
     command: |
       set -euo pipefail
-      FLY_API_TOKEN="$FLY_API_TOKEN_PROD" flyctl deploy --remote-only --no-cache \
-        --app "$FLY_APP_NAME_PROD" \
-        --build-arg VITE_MERCHANT_DID="$VITE_MERCHANT_DID_PROD"
+      flyctl deploy --remote-only --no-cache \
+        --app "$FLY_APP_NAME" \
+        --build-arg VITE_MERCHANT_DID="$VITE_MERCHANT_DID"

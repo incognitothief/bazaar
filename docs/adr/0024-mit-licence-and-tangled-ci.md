@@ -51,9 +51,11 @@ Differences from the GitHub setup, and why:
 - **No required reviewers.** Spindle has no deployment environments. Pushing a release tag is
   the deliberate step that replaces the approval click; pushing to `main` deploys nothing.
 - **Secrets are repo-wide.** Every workflow, including PR test runs, can read every secret.
-  Prod and staging get separate secret names (`*_PROD`, `*_STG`) and each `FLY_API_TOKEN_*`
-  must be a deploy token scoped to its one Fly app (`fly tokens create deploy -a <app>`), so
-  a leaked staging token cannot touch production.
+  Production uses the plain names (`FLY_API_TOKEN`, `FLY_APP_NAME`, `VITE_MERCHANT_DID`);
+  staging gets `*_STG` copies. Each Fly token must be a deploy token scoped to its one Fly
+  app (`fly tokens create deploy -a <app>`), so a leaked staging token cannot touch
+  production. Because flyctl reads `FLY_API_TOKEN` from the environment, and that name is the
+  production token in every workflow, the staging deploy overrides it explicitly.
 - **Staging is no longer deployed from PRs.** GitHub filtered out fork PRs by head repo;
   spindle exposes no equivalent, and secrets are repo-wide, so a PR trigger could hand a token
   to fork code. The `DEPLOY_STG` repo variable has no spindle equivalent and is gone with it.
@@ -70,7 +72,7 @@ Differences from the GitHub setup, and why:
 Removing `.github/workflows/` means merging this change to `main` on GitHub deploys nothing,
 so there is no window where both systems deploy production.
 
-1. Create the `*_PROD` / `*_STG` repo secrets on Tangled, with app-scoped deploy tokens.
+1. Create the production and `*_STG` repo secrets on Tangled, with app-scoped deploy tokens.
 2. `git push tangled HEAD:staging`; confirm the staging deploy and timing.
 3. Merge to `main`, then tag it and push the tag: `git tag vX.Y.Z main && git push tangled vX.Y.Z`.
 4. Retire the remaining GitHub-hosted references (security-advisory link in
