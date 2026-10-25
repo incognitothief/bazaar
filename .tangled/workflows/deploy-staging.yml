@@ -1,0 +1,64 @@
+# Deploy staging to Fly.io (fly.stg.toml). Triggered by pushing to the `staging` branch:
+#
+#   git push --force tangled HEAD:staging
+#
+# Not triggered by pull requests: spindle exposes no way to tell a fork's PR from a same-repo
+# one, and secrets are repo-wide, so a PR trigger could hand the staging token to fork code.
+# Only accounts with write access can push to `staging`. `manual` is listed too for when
+# Tangled's UI can start one; it has no run button yet.
+#
+# No concurrency groups in spindle — a second push mid-deploy races the first.
+#
+# Repo secrets (Settings → Secrets). Spindle secrets are repo-wide, so FLY_API_TOKEN_STG must
+# be a deploy token scoped to the staging app alone: `fly tokens create deploy -a <stg-app>`.
+#   FLY_API_TOKEN_STG — deploy token for the staging app.
+#   FLY_APP_NAME_STG — the real app name (fly.stg.toml holds a placeholder).
+#   VITE_MERCHANT_DID_STG — passed as a Docker build-arg (see Fly deploy step).
+
+when:
+  - event: ["push"]
+    branch: ["staging"]
+  - event: ["manual"]
+
+engine: "nixery"
+
+dependencies:
+  nixpkgs:
+    - flyctl
+    - coreutils
+
+steps:
+  - name: Verify required secrets
+    command: |
+      set -euo pipefail
+      required=(
+        FLY_API_TOKEN_STG
+        FLY_APP_NAME_STG
+        VITE_MERCHANT_DID_STG
+      )
+      missing=()
+      for name in "${required[@]}"; do
+        if [ -z "${!name:-}" ]; then
+          missing+=("$name")
+        fi
+      done
+      if [ "${#missing[@]}" -eq 0 ]; then
+        echo "All required staging deploy secrets are set (values are never printed)."
+        exit 0
+      fi
+      echo "Deploy aborted before contacting Fly — required repo secrets are missing or empty:"
+      for name in "${missing[@]}"; do
+        echo "  - ${name}"
+      done
+      exit 1
+
+  - name: Fly deploy (staging)
+    command: |
+      set -euo pipefail
+      echo "Deploying ${TANGLED_REF_NAME:-<no ref>} @ ${TANGLED_SHA} to staging."
+      # flyctl reads FLY_API_TOKEN from the environment, and that repo secret is the
+      # production token. Keep this override; without it flyctl would present prod's token
+      # (scoped to the prod app, so the deploy would fail rather than cross over).
+      FLY_API_TOKEN="$FLY_API_TOKEN_STG" flyctl deploy --remote-only --no-cache \
+        --config fly.stg.toml --app "$FLY_APP_NAME_STG" \
+        --build-arg VITE_MERCHANT_DID="$VITE_MERCHANT_DID_STG"

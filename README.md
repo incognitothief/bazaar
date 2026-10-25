@@ -138,25 +138,10 @@ Set CORS settings on bucket to point to your bazaar instance. This will speed up
 
 ## Licence
 
-Bazaar is licensed in two parts.
+Bazaar is licensed under the **MIT License** — the application and the lexicons alike. See
+[LICENSE](LICENSE).
 
-**The application** — everything in this repository unless noted below — is licensed under
-the **GNU Affero General Public License v3.0 only** (AGPL-3.0-only). See [LICENSE](LICENSE).
+Use it, modify it, self-host it, run a commercial store on it, or build a competing client,
+indexer or storefront against its lexicons. Keep the copyright notice; nothing else is asked.
 
-You may use, modify and self-host Bazaar freely, including to run a commercial store. If
-you modify Bazaar and offer it to others **over a network**, AGPL section 13 requires you
-to make your complete modified source available to those users.
-
-**The lexicons** — the eight schema documents in
-[`packages/shared/src/lexicons/*.json`](packages/shared/src/lexicons/) — are licensed under
-**Apache-2.0**. These describe Bazaar's record format on atproto, and a data format is only
-useful if anyone can implement it. Any client, indexer or competing storefront can read and
-write Bazaar records without taking on AGPL obligations. See
-[the lexicon README](packages/shared/src/lexicons/README.md) for the exact scope.
-
-If AGPL obligations don't work for your situation, commercial licensing is available —
-open an issue to start that conversation.
-
-Contributions are accepted under a [CLA](CLA.md); see [CONTRIBUTING.md](CONTRIBUTING.md).
-The CLA allows commercial relicensing, and commits in return that contributions stay
-available under AGPL.
+Contributions are accepted under the same licence; see [CONTRIBUTING.md](CONTRIBUTING.md).

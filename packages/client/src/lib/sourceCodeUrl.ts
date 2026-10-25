@@ -1,19 +1,17 @@
-const UPSTREAM_SOURCE_URL = "https://github.com/incognitothief/bazaar";
+const UPSTREAM_SOURCE_URL = "https://tangled.org/whereditgo.diamonds/bazaar";
 
 /**
  * Where the "Source Code" footer link points.
  *
- * AGPL-3.0 section 13 requires that a modified Bazaar offered over a network prominently
- * offer its users the source of *that* version. Upstream's URL is only correct for an
- * unmodified deployment, so anyone running modified code sets `VITE_SOURCE_URL` to their
- * own repository at build time.
+ * Bazaar is MIT licensed, so this link is a courtesy rather than an obligation. Upstream's
+ * URL only describes an unmodified deployment; anyone running modified code who wants the
+ * link to show their own changes sets `VITE_SOURCE_URL` to their repository at build time.
  *
- * Both variables are optional. Unset, the link resolves to upstream, which is correct for
- * an unmodified deployment and is never broken.
+ * Both variables are optional. Unset, the link resolves to upstream, which is never broken.
  *
  * `VITE_SOURCE_COMMIT` is appended as a commit path when set, so the link resolves to the
  * exact running revision rather than whatever the default branch happens to be. It is only
- * appended for hosts where the path shape is known (GitHub, GitLab, Codeberg/Gitea);
+ * appended for hosts where the path shape is known (Tangled, GitHub, GitLab, Codeberg/Gitea);
  * otherwise the base URL is used unchanged.
  */
 export function sourceCodeUrl(): string {
@@ -32,8 +30,11 @@ export function sourceCodeUrl(): string {
     return base;
   }
 
-  // github.com and Gitea/Codeberg use /commit/<sha>; GitLab uses /-/commit/<sha>.
+  // Tangled, github.com and Gitea/Codeberg use /commit/<sha>; GitLab uses /-/commit/<sha>.
+  // Tangled 404s on an abbreviated SHA, so it only gets the path for a full one.
   if (host === "gitlab.com") return `${base}/-/commit/${commit}`;
+  if (host === "tangled.org")
+    return commit.length === 40 ? `${base}/commit/${commit}` : base;
   if (host === "github.com" || host === "codeberg.org")
     return `${base}/commit/${commit}`;
 

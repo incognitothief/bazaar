@@ -16,7 +16,9 @@ docs/adr/   Canonical decision log
 Makefile    Canonical command surface (`make help`)
 ```
 
-Deployment is Fly.io (`fly.toml` / `fly.stg.toml`, `.github/workflows/deploy.yml`).
+Deployment is Fly.io (`fly.toml` / `fly.stg.toml`). CI runs on Tangled spindles
+(`.tangled/workflows/`); staging deploys on push to `staging`, production on a `v*` tag — see
+[ADR 0024](docs/adr/0024-mit-licence-and-tangled-ci.md).
 
 ## Rules
 
@@ -40,7 +42,7 @@ Deployment is Fly.io (`fly.toml` / `fly.stg.toml`, `.github/workflows/deploy.yml
 | `make test`                               | Server unit tests (Bun)                                                                      |
 | `make lexicons-validate`                  | Validate lexicons                                                                            |
 | `make db-generate` / `make db-migrate`    | Drizzle migrations                                                                           |
-| `make ci`                                 | `install-ci` + `lexicons-validate` + `build` + `test` — matches `.github/workflows/test.yml` |
+| `make ci`                                 | `install-ci` + `lexicons-validate` + `build` + `test` — matches `.tangled/workflows/test.yml` |
 | `make fly-deploy` / `make fly-deploy-stg` | Fly deploy                                                                                   |
 | `make docker-build` / `make docker-run`   | Local production image                                                                       |
 

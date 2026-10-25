@@ -4,39 +4,16 @@ Thanks for considering a contribution. Bazaar is in **alpha** and under active r
 lexicons, schema and deploy tooling all still move. Open an issue before starting anything
 substantial, so you don't build on a piece that's about to change.
 
-## Licence and the CLA
+## Licence
 
-Bazaar is licensed in two parts:
-
-- **The application** is **AGPL-3.0-only** (see [LICENSE](LICENSE)).
-- **The lexicons** in `packages/shared/src/lexicons/*.json` are **Apache-2.0**, so anyone
-  can implement Bazaar's record format without AGPL obligations. See
-  [that directory's README](packages/shared/src/lexicons/README.md).
-
-Check which side of that line your change falls on — contributions to the lexicon JSON are
-contributions to an Apache-2.0 licensed schema.
-
-Before your first pull request can be merged, you'll be asked to sign the
-[Contributor License Agreement](CLA.md). A bot comments on your PR with a link; signing
-takes a few seconds and is a one-off — every later PR is automatic.
-
-**What it means, briefly.** You keep the copyright in your work. You grant the maintainer a
-broad licence that includes the right to sublicense, which allows Bazaar to be offered under
-AGPL and, where appropriate, under commercial terms for users who can't accept AGPL
-obligations. You stay free to use and relicense your own contribution however you like.
-
-**What you get in return.** Section 6 of the CLA commits the maintainer to keeping your
-contribution available under AGPL. If Bazaar is ever relicensed commercially or taken
-proprietary, that doesn't claw your work back from the public — the AGPL rights people
-already hold in it stand.
+Bazaar is **MIT** licensed (see [LICENSE](LICENSE)), lexicons included. By opening a pull
+request you agree that your contribution is licensed under those same terms. There is no
+separate agreement to sign.
 
 **Disclose your sources.** If a contribution contains third-party material, or came out of
-a generative tool that may have reproduced someone else's code, say so in the PR. The CLA
-only covers material you actually hold rights in, and using an automated tool doesn't
-change that obligation.
-
-If that trade isn't one you want to make, that's a legitimate position — please still file
-issues and bug reports, which need no agreement at all.
+a generative tool that may have reproduced someone else's code, say so in the PR. You can
+only license material you actually hold rights in, and using an automated tool doesn't
+change that.
 
 ## Getting set up
 
